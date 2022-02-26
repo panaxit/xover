@@ -2246,7 +2246,7 @@ Object.defineProperty(xover.stores, 'active', {
                 xover.state.active = hashtag;
             } else {
                 await xover.stores[hashtag].render(/*true*/);
-                [input.stylesheets["loading.xslt"]].removeAll();
+                //[input.stylesheets["loading.xslt"]].removeAll();
             }
             //input.isActive = true;
             //xover.dom.refresh({ forced: true });
@@ -4403,7 +4403,7 @@ xover.Store = function (xml) {
             on_complete.apply(self, _this_arguments);
         };
         __document.status = "ready";
-        [__document.stylesheets["loading.xslt"]].removeAll();
+        //[__document.stylesheets["loading.xslt"]].removeAll();
     }
 
     _tag = config && config["tag"] || undefined;
