@@ -4348,6 +4348,7 @@ xover.Store = function (xml) {
 
     Object.defineProperty(this, 'initialize', {
         value: async function () {
+            store.state.initializing = true;
             //__document.documentElement && Object.entries(xover.manifest.modules || {}).filter(([key, value]) => !(key.match(/^#/)) && value["transforms"] && _manifest_filter_xpath(key)).reduce((stylesheet, [key, value]) => { return value["transforms"] }, []).map(stylesheet => __document.addStylesheet(stylesheet));
 
             xover.manifest.getConfig(this.tag, 'transforms').reverse().filter(transform => !__document.selectSingleNode(`comment()[.="Initialized by ${transform.href}"]`)).map(transform => {
@@ -4367,6 +4368,7 @@ xover.Store = function (xml) {
                     console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
                 }
             });
+            store.state.initializing = undefined;
             onComplete();
         },
         writable: false, enumerable: false, configurable: false
@@ -5847,7 +5849,8 @@ xover.modernize = function (targetWindow) {
                 return document.selectSingleNode(`//processing-instruction('xml-stylesheet')${predicate}`);
             }
 
-            XMLDocument.prototype.addStylesheet = function (definition, target) {
+            XMLDocument.prototype.addStylesheet = function (definition, target, refresh) {
+                let store = this.store;
                 let style_definition;
                 let document = (this.document || this);
                 if (definition.constructor === {}.constructor) {
@@ -5858,8 +5861,8 @@ xover.modernize = function (targetWindow) {
                 }
                 if (!this.getStylesheet(definition.href)) {
                     var pi = document.createProcessingInstruction('xml-stylesheet', style_definition);
-                    if (this.store) {
-                        this.store.render(/*true*/);
+                    if (store && (refresh || !store.state.initializing)) {
+                        store.render();
                     }
                     document.insertBefore(pi, target || document.selectSingleNode(`(processing-instruction('xml-stylesheet')${definition.role == 'init' ? '' : definition.role == 'binding' ? `[not(contains(.,'role="init"') or contains(.,'role="binding"'))]` : '[1=0]'} | *[1])[1]`));
                     return pi;
