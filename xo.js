@@ -1625,8 +1625,9 @@ xover.Manifest = function (manifest) {
     //});
 
     Object.defineProperty(_manifest, 'getConfig', {
-        value: xover.manifest.getConfig || function (entity_name, config_name) {
-            return Object.entries(_manifest.modules).filter(([key]) => entity_name === key || entity_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i"))).map(([key, value]) => value[config_name]).filter(value => value).flat(Infinity);
+        value: xover.manifest.getConfig || function (input, config_name) {
+            let tag_name = typeof (input) == 'string' && input || input.tag || "";
+            return Object.entries(_manifest.modules).filter(([key]) => tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && input instanceof xover.Store && input.selectSingleNode(key) || undefined).map(([key, value]) => value[config_name]).filter(value => value).flat(Infinity);
         },
         writable: true, enumerable: false, configurable: false
     });
@@ -4057,7 +4058,7 @@ xover.Store = function (xml) {
                     };
                     return stylesheet
                 })
-                , (xover.manifest.getConfig(context.tag, 'transforms') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
+                //, (xover.manifest.getConfig(context, 'transforms') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
                 , ["xover/databind.xslt"]);
             bindings = [...new Set(bindings)].filter(binding => binding);
             //let original = xover.xml.clone(context); //Se obtiene el original si se quieren comparar cambios
@@ -4345,7 +4346,7 @@ xover.Store = function (xml) {
             store.state.initializing = true;
             //__document.documentElement && Object.entries(xover.manifest.modules || {}).filter(([key, value]) => !(key.match(/^#/)) && value["transforms"] && _manifest_filter_xpath(key)).reduce((stylesheet, [key, value]) => { return value["transforms"] }, []).map(stylesheet => __document.addStylesheet(stylesheet));
 
-            xover.manifest.getConfig(this.tag, 'transforms').reverse().filter(transform => !__document.selectSingleNode(`comment()[.="Initialized by ${transform.href}"]`)).map(transform => {
+            xover.manifest.getConfig(this, 'transforms').reverse().filter(transform => !__document.selectSingleNode(`comment()[.="Initialized by ${transform.href}"]`)).map(transform => {
                 transform = __document.addStylesheet(transform);
             });
             let init_stylesheets = __document.stylesheets.filter(stylesheet => stylesheet.role == 'init');
