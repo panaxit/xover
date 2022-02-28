@@ -1357,6 +1357,8 @@ xover.ProcessingInstruction = function (stylesheet) {
     if (attribs.target) {
         attribs["target"] = ((attribs["target"] || '').replace(new RegExp("@(#[^\\s\\[]+)", "ig"), "[xo-store='$1']") || undefined);
         attribs["dependencies"] = [...attribs["target"].matchAll(new RegExp(`\\[xo-store=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []);
+    } else {
+        attribs["target"] = undefined;
     }
     for (let prop in attribs) {
         Object.defineProperty(stylesheet, prop, {
@@ -1368,7 +1370,7 @@ xover.ProcessingInstruction = function (stylesheet) {
         Object.defineProperty(stylesheet, 'document', {
             get: function () {
                 this.ownerDocument.store = this.ownerDocument.store || (xover.stores.find(this.ownerDocument).shift() || document.createElement('p')).store //Se pone esta solución pero debería tomar automáticamente el store. Ver si se puede solucionar este problema de raíz.
-                return this.ownerDocument.store && this.ownerDocument.store.library[this.href] || xover.library[this.href] || xover.library.load(this.href);
+                return this.ownerDocument.store && this.ownerDocument.store.library[this.href] || xover.library[this.href];// || xover.library.load(this.href);
             }
         });
     }
@@ -1935,19 +1937,10 @@ content_type["xml"] = "text/xml";
 
 xover.library = new Proxy({}, {
     get: function (self, key) {
-        let document;
-        if (key in self) {
-            document = self[key];
-        } else {
-            document = self.defaults[key];
+        if (!self[key]) {
+            self[key] = xo.fetch.xml(key).then(document => self[key] = document).catch(() => { self[key] = null; return null });
         }
-        if (document instanceof Document) {
-            Object.defineProperty(document, "href", {
-                value: key
-                , writable: true, enumerable: true, configurable: false
-            })
-        }
-        return document;
+        return self[key];
     },
     set: function (self, key, input) {
         self[key] = input;
@@ -2909,7 +2902,8 @@ xover.fetch.xml = async function (url, options = { rejectCodes: 500 }, on_succes
     });
     let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").reduce((arr, item) => { arr.push(item.getAttribute("href")); return arr; }, []) || [];
     if (imports.length) {
-        await xover.library.load(imports);
+        await Promise.all(imports.map(href => xover.library[href]));
+        //await xover.library.load(imports);
     }
     return return_value;
 }
@@ -3494,7 +3488,7 @@ xover.init = async function () {
         let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } });
         xover.manifest = new xover.Manifest(manifest.merge(xover.manifest));
         xover.modernize();
-        await xover.library.load(xover.manifest.transforms);
+        await Promise.all(xover.manifest.transforms.map(href => xover.library[href]));
         await xover.stores.restore();
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
@@ -3761,7 +3755,7 @@ xover.Store = function (xml) {
                     _library[key] = undefined;
                     if (forced) {
                         xover.library[key] = undefined;
-                        xover.library.load(key);
+                        //xover.library.load(key);
                     }
                 });
             },
@@ -4355,13 +4349,13 @@ xover.Store = function (xml) {
                 transform = __document.addStylesheet(transform);
             });
             let init_stylesheets = __document.stylesheets.filter(stylesheet => stylesheet.role == 'init');
+            await Promise.all(init_stylesheets.map(stylesheet => stylesheet.document));
             //await this.library.load(init_stylesheets.reduce((hrefs, stylesheet) => { hrefs[stylesheet.href] = undefined; return hrefs }, {}));
-            await this.library.load();
             init_stylesheets.map(stylesheet => {
-                stylesheet.replaceBy(__document.createComment('Initialized by ' + stylesheet.href));
-                let new_document = __document.transform(this.library[stylesheet.href]);
+                store.stylesheets[stylesheet.href].replaceBy(__document.createComment('Initialized by ' + stylesheet.href));
+                let new_document = __document.transform(stylesheet.document);
                 if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {/*La transformación no debe regresar un html ni otro documento del estándar*/
-                    this.document = __document.transform(this.library[stylesheet.href]);
+                    this.document = new_document;
                 } else {
                     delete stylesheet["role"];
                     __document.addStylesheet(stylesheet);
@@ -4895,11 +4889,10 @@ xover.dom.print = function () {
 }
 
 xover.listener.on('stateChanged', async function ({ target, attribute: key }) {
-    if (event.defaultPrevented) return;
-    let store = target.store;
-    await Promise.all(store.stylesheets.getDocuments());
-    let stylesheets = store.stylesheets.getDocuments();
-    stylesheets.filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
+    if (event.defaultPrevented || !(target && target.parentNode)) return;
+    let stylesheets = target.parentNode.stylesheets
+    if (!stylesheets) return;
+    await Promise.all(stylesheets.getDocuments()).then(document => document).filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
 });
 
 xover.listener.on('stateChanged::busy', function ({ target, value }) {
@@ -6018,6 +6011,31 @@ xover.modernize = function (targetWindow) {
                     },
                     set: function (value) {
                         if (this.textContent != value) {
+                            original_textContent.set.call(this, value);
+                            if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
+                                this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                            } else if (this.ownerDocument && this.ownerDocument.selectSingleNode && this.ownerDocument.store) {
+                                //this.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                                this.ownerDocument.store.render();
+                            }
+                            return original_textContent.set.call(this, value);
+                        } else {
+                            return original_textContent.set.call(this, value);
+                        }
+                    }
+                }
+            );
+
+            Object.defineProperty(ProcessingInstruction.prototype, 'textContent',
+                // Passing innerText or innerText.get directly does not work,
+                // wrapper function is required.
+                {
+                    get: function () {
+                        return original_textContent.get.call(this);
+                    },
+                    set: function (value) {
+                        if (this.textContent != value) {
+                            this.replaceBy(this.ownerDocument.createProcessingInstruction('xml-stylesheet', value));
                             original_textContent.set.call(this, value);
                             if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                                 this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
