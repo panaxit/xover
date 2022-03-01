@@ -631,33 +631,47 @@ xover.manifest = {};
 xover.messages = {};
 xover.server = new Proxy({}, {
     get: function (self, key) {
-        let handler = (async (parameters = {}, options = {}, payload) => {
+        let handler = (async (...args) => {
+
             if (!(xover.manifest.server && xover.manifest.server.endpoints && xover.manifest.server.endpoints[key])) {
                 throw (`Endpoint "${key}" not configured`);
             }
-            var url, params, payload;
+            args = args.filter(el => el);
+            let settings = args.pop() || {};
+            if (settings.constructor != {}.constructor) {
+                args.push(settings);
+                settings = {}
+            }
+            let payload = args.pop() || settings["payload"];
+            var url, params;
             let return_value, request, response;
-            params = new URLSearchParams(parameters);
-            url = new URL(xover.manifest.server["endpoints"][key], location.origin + location.pathname.replace(/[^/]+$/, ""));
-            [...params.entries()].map(([key, value]) => url.searchParams.set(key, value));
+            url = new xover.URL(xover.manifest.server["endpoints"][key], undefined, settings);
+            if (payload) {
+                if (url.method === 'POST') {
+                    settings["body"] = payload;
+                } else {
+                    settings["query"] = payload;
+                }
+            }
+            //[...new URLSearchParams(settings).entries()].map(([key, value]) => url.searchParams.set(key, value));
 
-            let headers = new Headers(options["headers"]);
+            let headers = new Headers(settings["headers"]);
             //headers.set("Accept", (headers.get("Accept") || "text/xml"))
             headers.set("X-Debugging", (headers.get("X-Debugging") || xover.debug.enabled));
             headers.set("X-Rebuild", (headers.get("X-Rebuild") || (xover.listener.keypress.altKey ? true : false)));
-            options["headers"] = headers;
+            settings["headers"] = headers;
             try {
-                [return_value, request, response] = await xover.fetch(url, options, payload).then(response => [response.body, response.request, response.originalResponse]);
+                [return_value, request, response] = await xover.fetch(url, settings).then(response => [response.body, response.request, response.originalResponse]);
             } catch (e) {
                 [return_value, request, response] = [e.body, e.request, e.originalResponse]
             }
-            return_value instanceof XMLDocument && options["stylesheets"] && options["stylesheets"].reverse().map(stylesheet => {
+            return_value instanceof XMLDocument && settings["stylesheets"] && settings["stylesheets"].reverse().map(stylesheet => {
                 return_value.addStylesheet(stylesheet);
             });
 
-            if (options["auto-process"] !== false) {
+            if (settings["auto-process"] !== false) {
                 if (return_value instanceof XMLDocument && (return_value.stylesheets || []).length) {
-                    return_value = new xover.Store(return_value, { tag: options["tag"], initiator: request.initiator });
+                    return_value = new xover.Store(return_value, { tag: settings["tag"], initiator: request.initiator });
                     return_value.render(/*true*/);
                     if (!return_value.isRendered) {
                         xover.stores.active = return_value;
@@ -666,7 +680,7 @@ xover.server = new Proxy({}, {
                     xover.dom.createDialog(return_value);
                 }
             }
-            let response_value = options["responseHandler"] && isFunction(options["responseHandler"]) ? options["responseHandler"](return_value, request, response) : return_value
+            let response_value = settings["responseHandler"] && isFunction(settings["responseHandler"]) ? settings["responseHandler"](return_value, request, response) : return_value
             return new Promise((resolve, reject) => {
                 if (response.status >= 200 && response.status < 300) {
                     resolve(response_value);
@@ -678,16 +692,16 @@ xover.server = new Proxy({}, {
 
         if (self.hasOwnProperty(key)/* && xover.manifest.server && xover.manifest.server.endpoints && xover.manifest.server.endpoints[key]*/) {
             Object.defineProperty(self[key], 'fetch', {
-                value: function (parameters = {}, options = {}, payload) {
-                    options["method"] = 'GET';
-                    return handler.apply(this, [parameters, options, payload]);
+                value: function (settings = {}) {
+                    settings["method"] = 'GET';
+                    return handler.apply(this, [settings]);
                 },
                 writable: true, enumerable: false, configurable: false
             });
             Object.defineProperty(self[key], 'post', {
-                value: function (parameters = {}, options = {}, payload) {
-                    options["method"] = 'POST';
-                    return handler.apply(this, [parameters, options, payload]);
+                value: function (settings = {}) {
+                    settings["method"] = 'POST';
+                    return handler.apply(this, [settings]);
                 },
                 writable: true, enumerable: false, configurable: false
             });
@@ -725,7 +739,7 @@ xover.session = new Proxy({}, {
         }
         return item;
     },
-    set: function (self, key, new_value) {
+    set: async function (self, key, new_value) {
         let refresh;
         let old_value = xover.session.getKey(key);
         if (new_value instanceof Array) {
@@ -742,7 +756,8 @@ xover.session = new Proxy({}, {
                 xover.stores.active.render();
             }
             let active_stores = xover.stores.getActive();
-            [...Object.values(active_stores), ...Object.values(active_stores.getInitiators())].map(store => store.stylesheets.getDocuments()).flat(Infinity).filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
+            let stylesheets = await Promise.all([...Object.values(active_stores), ...Object.values(active_stores.getInitiators())].map(store => store.stylesheets.getDocuments()).flat(Infinity))
+            stylesheets.filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
         }
         if (xover.session.id) {
             xover.storage.setKey(key, new_value);
@@ -838,7 +853,7 @@ Object.defineProperty(xover.session, 'login', {
     value: function () {
         if ('login' in xover.server) {
             try {
-                return xover.server.login.apply(xover.server, arguments);
+                return xover.server.login.apply(xover.server.login, arguments);
             } catch (e) {
                 console.error(e);
             }
@@ -1285,10 +1300,10 @@ xover.Source = function (source, tag) {
             value: async function () {
                 let promises = []
                 Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
-                    let [parameters, options = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
-                    options["tag"] = options["tag"] || tag;
+                    let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
+                    settings["tag"] = settings["tag"] || tag;
                     promises.push(new Promise(async (resolve, reject) => {
-                        let document = await xover.server[endpoint].apply(this, [parameters, options, payload]);
+                        let document = await xover.server[endpoint].apply(this, [parameters, settings, payload]);
                         await document.render(/*true*/);
                         if (document instanceof XMLDocument && !document.isRendered) {
                             xover.stores.active = document;
@@ -1387,7 +1402,6 @@ xover.storage = {};
 xover.tracking = {};
 xover.tracking.attributes = [];
 xover.tracking.prefixes = [];
-xover.fetch = {};
 xover.xml = {};
 xover.xml.namespaces = {};
 xover.xml.namespaces["debug"] = "http://panax.io/debug"
@@ -1627,7 +1641,7 @@ xover.Manifest = function (manifest) {
     Object.defineProperty(_manifest, 'getConfig', {
         value: xover.manifest.getConfig || function (input, config_name) {
             let tag_name = typeof (input) == 'string' && input || input.tag || "";
-            return Object.entries(_manifest.modules).filter(([key]) => tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && input instanceof xover.Store && input.selectSingleNode(key) || undefined).map(([key, value]) => value[config_name]).filter(value => value).flat(Infinity);
+            return [Object.entries(_manifest.modules).find(([key, value]) => config_name in value && (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && input instanceof xover.Store && input.selectSingleNode(key)))].filter(value => value).map(([key, value]) => value[config_name]).flat(Infinity);
         },
         writable: true, enumerable: false, configurable: false
     });
@@ -2572,8 +2586,8 @@ xover.Response = function (response, request) {
     if (response.status == 404) {
         if (file_name in xover.library.defaults) {
             response = new Response(xover.library.defaults[file_name], { headers: { "Content-type": "text/xsl" } })
-        } else if (request.options.tag in xover.stores.defaults) {
-            response = new Response(xover.stores.defaults[request.options.tag], { headers: { "Content-type": "text/xml" } })
+        } else if (request.settings.tag in xover.stores.defaults) {
+            response = new Response(xover.stores.defaults[request.settings.tag], { headers: { "Content-type": "text/xml" } })
         }
     }
     let self = this;
@@ -2743,36 +2757,61 @@ xover.Response = function (response, request) {
 }
 xover.Response.prototype = Object.create(Response.prototype);
 
-xover.Request = function (request, options = {}, payload) {
-    if (!(this instanceof xover.Request)) return new xover.Request(request, options, payload);
-    let url, req, method;
+xover.URL = function (url, base, settings = {}) {
+    if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
+    let method;
+    [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
+    if (settings.body) {
+        method = 'POST';
+    }
+    method = settings["method"] || method;
+    query = settings["query"];
+    url = new URL(url, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+    if (query instanceof URLSearchParams) {
+        [...query.entries()].map(([key, value]) => url.searchParams.set(key, value));
+    }
+    Object.defineProperty(url, 'method', {
+        get: function () {
+            return method;
+        }, set: function (input) {
+            return method = input;
+        }
+    })
+    Object.setPrototypeOf(url, URL.prototype);
+    return url;
+}
+
+xover.Request = function (request, settings = {}) {
+    if (!(this instanceof xover.Request)) return new xover.Request(request, settings);
+    let url, req;
     let self = this;
     let _request = request;
+    let query = new URLSearchParams(settings["query"] || settings["parameters"] || settings["params"]);
+    settings["query"] = query;
     if (request instanceof Request) {
         req = request;
+        if (Object.keys(settings).length) {
+            let { method, headers, mode, credentials, cache, redirect, referrer, integrity } = req;
+            let url = new xover.URL(req.url, location.origin + location.pathname.replace(/[^/]+$/, ""), settings);
+            req = new Request(url, Object.assign({ method, headers, mode, credentials, cache, redirect, referrer, integrity }, { body: settings.body }));
+        }
     } else {
+        let headers;
         if (request instanceof URL) {
-            url = request;
+            url = new xover.URL(request, undefined, settings);
         } else if (request.constructor == {}.constructor) {
-            [, method, url] = (request["url"] || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/)
-            url = new URL(url, location.origin + location.pathname.replace(/[^/]+$/, ""));
-            params = new URLSearchParams(xover.json.merge(request["parameters"], request["params"]));
-            [...params.entries()].map(([key, value]) => url.searchParams.set(key, value));
+            url = new xover.URL(url, undefined, settings);
         } else {
-            [, method, url] = (request || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/)
-            url = new URL(url, location.origin + location.pathname.replace(/[^/]+$/, ""));
+            url = new xover.URL(request, undefined, settings);
         }
         let fileExtension = url.pathname.substring(url.pathname.lastIndexOf('.') + 1);
-        let headers = new Headers(options["headers"]);
+        headers = new Headers(settings["headers"]);
         headers.set("Accept", (headers.get("Accept") || xover.mimeTypes[fileExtension] || '*/*'));
-
-        options = xover.json.merge({
-            method: (options["method"] || method || payload && 'POST' || 'GET')
-            , body: payload
-        }, options, {
+        settings["method"] = url.method;
+        settings = xover.json.merge(settings, {
             headers: headers
-        })
-        req = new Request(url, options);
+        });
+        req = new Request(url, settings);
     }
     if (req.method == 'POST' && ((event || {}).srcElement || {}).closest) {
         let form = event.srcElement.closest('form');
@@ -2802,8 +2841,8 @@ xover.Request = function (request, options = {}, payload) {
             return _request.initiator;
         }
     })
-    Object.defineProperty(self, 'options', {
-        value: options
+    Object.defineProperty(self, 'settings', {
+        value: settings
     })
     Object.defineProperty(self, 'parameters', {
         get: function () {
@@ -2815,15 +2854,17 @@ xover.Request = function (request, options = {}, payload) {
 }
 xover.Request.prototype = Object.create(Request.prototype);
 
-xover.fetch = async function (request, options = { rejectCodes: 500 }, payload) {
+xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
+    let payload = settings.payload || settings.body;
     if (payload) {
+        settings["method"] = 'POST';
         let pending = [];
         if (payload instanceof XMLDocument) {
             payload.$$("//@*[starts-with(.,'blob:')]").map(node => { pending.push(xover.server.uploadFile(node)) })
         }
         await Promise.all(pending);
     }
-    let req = new xover.Request(request, options, payload);
+    let req = new xover.Request(request, settings);
     var original_response;
     try {
         original_response = await fetch(req.clone());
@@ -2858,7 +2899,7 @@ xover.fetch = async function (request, options = { rejectCodes: 500 }, payload) 
         });
     }
 
-    if (!response.ok && (typeof (options.rejectCodes) == 'number' && response.status >= options.rejectCodes || options.rejectCodes instanceof Array && options.rejectCodes.includes(response.status))) {
+    if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
         return Promise.reject(response);
     } else if (response.status == 401) {
         xover.session.status = "unauthorized";
@@ -2885,11 +2926,11 @@ xover.fetch.from = async function () {
     return response.body;
 }
 
-xover.fetch.xml = async function (url, options = { rejectCodes: 500 }, on_success) {
-    options["headers"] = (options["headers"] || {});
-    options["headers"]["Accept"] = (options["headers"]["Accept"] || "text/xml, text/xsl")
+xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_success) {
+    settings["headers"] = (settings["headers"] || {});
+    settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "text/xml, text/xsl")
 
-    let response = await xover.fetch(url, options, on_success);
+    let response = await xover.fetch(url, settings, on_success);
     let return_value = response.document;
     //if (!return_value.documentElement && response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
     //    return_value = xover.json.toXML(return_value.documentElement);
@@ -2909,10 +2950,10 @@ xover.fetch.xml = async function (url, options = { rejectCodes: 500 }, on_succes
     return return_value;
 }
 
-xover.fetch.json = async function (url, options = { rejectCodes: 400 }, on_success) {
-    options["headers"] = (options["headers"] || {});
-    options["headers"]["Accept"] = (options["headers"]["Accept"] || "application/json")
-    let return_value = await xover.fetch(url, options, on_success).then(response => response.json);
+xover.fetch.json = async function (url, settings = { rejectCodes: 400 }, on_success) {
+    settings["headers"] = (settings["headers"] || {});
+    settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "application/json")
+    let return_value = await xover.fetch(url, settings, on_success).then(response => response.json);
     return return_value;
 }
 
@@ -4502,10 +4543,10 @@ xover.xml.getAttributeParts = function (attribute) {
 }
 
 xover.post = {}
-xover.post.to = async function (request, data, options) {
-    return xover.fetch(request, options, data);
+xover.post.to = async function (request, payload, settings = {}) {
+    settings["body"] = payload;
+    return xover.fetch(request, settings);
 }
-
 
 xover.json.toXML = function (json) {
     if (typeof (json) == "string") {
@@ -4893,7 +4934,8 @@ xover.listener.on('stateChanged', async function ({ target, attribute: key }) {
     if (event.defaultPrevented || !(target && target.parentNode)) return;
     let stylesheets = target.parentNode.stylesheets
     if (!stylesheets) return;
-    await Promise.all(stylesheets.getDocuments()).then(document => document).filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
+    let documents = await Promise.all(stylesheets.getDocuments()).then(document => document)
+    documents.filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
 });
 
 xover.listener.on('stateChanged::busy', function ({ target, value }) {
@@ -6133,7 +6175,7 @@ xover.modernize = function (targetWindow) {
             Element.prototype.setAttributeNS = function (namespace_URI, attribute, value, refresh = false) {
                 let target = this;
                 let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                namespace_URI = namespace_URI || target.resolveNS(prefix) || xover.xml.namespaces[prefix]
+                namespace_URI = namespace_URI || target.resolveNS(prefix) || xover.xml.namespaces[prefix];// || [attribute].includes("xmlns") && xover.xml.namespaces[attribute]
                 let old_value = target.getAttributeNS(namespace_URI, attribute);
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value;
                 let store = target.ownerDocument.store;
