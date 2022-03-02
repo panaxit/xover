@@ -627,7 +627,82 @@ xover.mimeTypes["json"] = "application/json"
 xover.mimeTypes["xml"] = "text/xml"
 xover.mimeTypes["xsl"] = "text/xsl"
 xover.mimeTypes["xslt"] = "text/xsl"
-xover.manifest = {};
+
+
+xover.Manifest = function (manifest = {}) {
+    let base_manifest = {
+        "server": { "database_id": undefined, "endpoints": {} },
+        "sources": {},
+        "transforms": [],
+        "namespaces": {},
+        "modules": {}
+    }
+    var _manifest = Object.assign(base_manifest, manifest);
+
+    Object.defineProperty(_manifest.sources, 'fetch', {
+        value: async function (key) {
+            let important_sources = Object.entries(_manifest.sources).filter(([_key, _value]) => _key.match(/!$/));
+            let tag = String(_manifest.sources[history.state.hash || (window.top || window).location.hash || "#"]).match(/^#/) && _manifest.sources[history.state.hash || (window.top || window).location.hash || "#"] || (window.top || window).location.hash || "#";
+
+            to_fetch = [...(key && _manifest.sources[key] && [[tag, _manifest.sources[key]]] || []), ...(!key && tag != '#' && !xover.stores[tag] && _manifest.sources[tag] && [[tag, _manifest.sources[tag]]] || [])];
+
+            if (to_fetch.length) {
+                to_fetch.map(async ([_key, _value]) => {
+                    //if (_key == "#" && typeof (_value) == "string" && _manifest.sources[_value]) {
+                    //    var doc = _value.fetch({ as: _value });
+                    //    xover.stores.active = doc;
+                    //} else {
+                    var doc = await _value.fetch({ as: _key });
+                    if (doc) {
+                        xover.stores.active = doc;
+                    }
+                    //}
+                });
+            } else if (!key && xover.stores[tag]) {
+                xover.stores.active = xover.stores[tag];
+            }
+            //}
+        },
+        writable: false, enumerable: false, configurable: false
+    });
+
+    //Object.defineProperty(_manifest, 'getConfig', {
+    //    value: (xover.manifest.getConfig || function (entity_name, config_name) {
+    //        return (_manifest.modules[entity_name]
+    //            || _manifest.modules[entity_name.toLowerCase()]
+    //            || {})[config_name]
+    //    }),
+    //    writable: true, enumerable: false, configurable: false
+    //});
+
+    //TODO: Revisar si esta sección se queda.
+    //Object.defineProperty(_manifest, 'setConfig', {
+    //    value: function (entity_name, property_name, value) {
+    //        if (arguments[0].constructor === {}.constructor) {
+    //            const { entity_name, ...rest } = arguments[0];
+    //            _manifest.modules[(entity_name || xover.data.hashTagName())] = (_manifest.modules[(entity_name || xover.data.hashTagName)] || {})
+    //            xover.json.merge(_manifest.modules[(entity_name || xover.data.hashTagName())], rest);
+    //        } else {
+    //            _manifest.modules[(entity_name || xover.data.hashTagName())] = (_manifest.modules[(entity_name || xover.data.hashTagName())] || {});
+    //            _manifest.modules[(entity_name || xover.data.hashTagName())][property_name] = value
+    //        }
+    //    },
+    //    writable: true, enumerable: false, configurable: false
+    //});
+
+    Object.setPrototypeOf(_manifest, xover.Manifest.prototype);
+
+    return _manifest;
+}
+
+Object.defineProperty(xover.Manifest.prototype, 'getConfig', {
+    value: function (input, config_name) {
+        let tag_name = typeof (input) == 'string' && input || input.tag || "";
+        return [Object.entries(this.modules).find(([key, value]) => config_name in value && (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key)))].filter(value => value).map(([key, value]) => value[config_name]).flat(Infinity);
+    },
+    writable: true, enumerable: false, configurable: false
+});
+xover.manifest = new xover.Manifest();
 xover.messages = {};
 xover.server = new Proxy({}, {
     get: function (self, key) {
@@ -1591,78 +1666,6 @@ Object.defineProperty(xover.debug, 'enabled', {
         xover.session.debug = !!input;
     }
 });
-
-xover.Manifest = function (manifest) {
-    let base_manifest = {
-        "server": { "database_id": undefined, "endpoints": {} },
-        "sources": {},
-        "transforms": [],
-        "namespaces": {},
-        "modules": {}
-    }
-    var _manifest = base_manifest.merge(manifest || {});
-
-    Object.defineProperty(_manifest.sources, 'fetch', {
-        value: async function (key) {
-            let important_sources = Object.entries(_manifest.sources).filter(([_key, _value]) => _key.match(/!$/));
-            let tag = String(_manifest.sources[history.state.hash || (window.top || window).location.hash || "#"]).match(/^#/) && _manifest.sources[history.state.hash || (window.top || window).location.hash || "#"] || (window.top || window).location.hash || "#";
-
-            to_fetch = [...(key && _manifest.sources[key] && [[tag, _manifest.sources[key]]] || []), ...(!key && tag != '#' && !xover.stores[tag] && _manifest.sources[tag] && [[tag, _manifest.sources[tag]]] || [])];
-
-            if (to_fetch.length) {
-                to_fetch.map(async ([_key, _value]) => {
-                    //if (_key == "#" && typeof (_value) == "string" && _manifest.sources[_value]) {
-                    //    var doc = _value.fetch({ as: _value });
-                    //    xover.stores.active = doc;
-                    //} else {
-                    var doc = await _value.fetch({ as: _key });
-                    if (doc) {
-                        xover.stores.active = doc;
-                    }
-                    //}
-                });
-            } else if (!key && xover.stores[tag]) {
-                xover.stores.active = xover.stores[tag];
-            }
-            //}
-        },
-        writable: false, enumerable: false, configurable: false
-    });
-
-    //Object.defineProperty(_manifest, 'getConfig', {
-    //    value: (xover.manifest.getConfig || function (entity_name, config_name) {
-    //        return (_manifest.modules[entity_name]
-    //            || _manifest.modules[entity_name.toLowerCase()]
-    //            || {})[config_name]
-    //    }),
-    //    writable: true, enumerable: false, configurable: false
-    //});
-
-    Object.defineProperty(_manifest, 'getConfig', {
-        value: xover.manifest.getConfig || function (input, config_name) {
-            let tag_name = typeof (input) == 'string' && input || input.tag || "";
-            return [Object.entries(_manifest.modules).find(([key, value]) => config_name in value && (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && input instanceof xover.Store && input.selectSingleNode(key)))].filter(value => value).map(([key, value]) => value[config_name]).flat(Infinity);
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-
-    //TODO: Revisar si esta sección se queda.
-    //Object.defineProperty(_manifest, 'setConfig', {
-    //    value: function (entity_name, property_name, value) {
-    //        if (arguments[0].constructor === {}.constructor) {
-    //            const { entity_name, ...rest } = arguments[0];
-    //            _manifest.modules[(entity_name || xover.data.hashTagName())] = (_manifest.modules[(entity_name || xover.data.hashTagName)] || {})
-    //            xover.json.merge(_manifest.modules[(entity_name || xover.data.hashTagName())], rest);
-    //        } else {
-    //            _manifest.modules[(entity_name || xover.data.hashTagName())] = (_manifest.modules[(entity_name || xover.data.hashTagName())] || {});
-    //            _manifest.modules[(entity_name || xover.data.hashTagName())][property_name] = value
-    //        }
-    //    },
-    //    writable: true, enumerable: false, configurable: false
-    //});
-
-    return _manifest;
-}
 
 var relative_path = (relative_path || "");
 
@@ -3277,7 +3280,7 @@ xover.xml.createDocument = function (xml, options = {}) {
         if (xml.namespaceURI && xml.namespaceURI.indexOf("http://www.w3.org") == 0) {
             result = result.parseFromString(sXML, "text/html");
         } else {
-            result = result.parseFromString(sXML, "text/xml");
+            result = result.parseFromString(sXML.replace(/[\u0000-\u001F]/g, (char) => ['\r', '\n', '\t'].includes(char) && char || ''), "text/xml");
         }
         if (sXML && result.getElementsByTagName && (result.getElementsByTagName('parsererror').length || 0) > 0) {
             [...result.querySelectorAll('parsererror div')].map(message => {
@@ -3308,18 +3311,8 @@ xover.xml.createDocument = function (xml, options = {}) {
         }
     }
 
-    var _manifest_filter_xpath = function (xpath) {
-        try {
-            return !!result.selectSingleNode(xpath);
-        } catch (e) {
-            return false;
-        }
-    }
-
     if (result.documentElement && !["http://www.w3.org/1999/xhtml", "http://www.w3.org/1999/XSL/Transform"].includes(result.documentElement.namespaceURI)) {
-        Object.entries((xover.manifest.modules || {})).filter(([key, value]) => key.match(/^[^#]/) && value["transforms"] && _manifest_filter_xpath(key)).reduce((stylesheet, [key, value]) => { return value["transforms"] }, []).map(stylesheet => {
-            result.addStylesheet(stylesheet);
-        });
+        xover.manifest.getConfig(result, 'transforms').reverse().forEach(stylesheet => result.addStylesheet(stylesheet));
     }
     return result;
 }
