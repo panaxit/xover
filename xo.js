@@ -479,7 +479,9 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             await xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
-        Object.values(xover.listener[event.type]).slice(0).reverse().map((handler) => !event.cancelBubble && handler.apply(event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
+        let listeners = Object.values(xover.listener[event.type]).slice(0);
+        let first_listener = listeners[0];
+        listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -498,9 +500,9 @@ Object.defineProperty(xover.listener, 'on', {
 });
 
 xover.listener.on('keyup', async function (event) {
-    if (event.defaultPrevented) { return; }
     if (event.keyCode == 27) {
-        xover.data.removeMessage(document.querySelector("[role='alertdialog']"));
+        let first_alert = document.querySelector("[role='alertdialog']");
+        first_alert && first_alert.removeAll();
     }
 })
 
@@ -736,9 +738,9 @@ xover.server = new Proxy({}, {
             headers.set("X-Rebuild", (headers.get("X-Rebuild") || (xover.listener.keypress.altKey ? true : false)));
             settings["headers"] = headers;
             try {
-                [return_value, request, response] = await xover.fetch(url, settings).then(response => [response.body, response.request, response.originalResponse]);
+                [return_value, request, response] = await xover.fetch(url, settings).then(response => [response.body, response.request, response]);
             } catch (e) {
-                [return_value, request, response] = [e.body, e.request, e.originalResponse]
+                [return_value, request, response] = [e.body, e.request, e]
             }
             return_value instanceof XMLDocument && settings["stylesheets"] && settings["stylesheets"].reverse().map(stylesheet => {
                 return_value.addStylesheet(stylesheet);
@@ -4782,17 +4784,10 @@ if (window.addEventListener) {
     window.attachEvent("onstorage", xover.storage.syncSession);
 };
 
-xover.data.removeMessage = function (target) {
-    message = target instanceof Element && target || xover.stores.active.selectSingleNode(`//x:message[@x:id="${target}"]`);
-    if (message) {
-        message.remove();
-        if (message.ownerDocument.documentElement) {
-            xover.stores.active.render(/*true*/);
-        } else {
-            navigate_back = true;
-        }
-    }
-}
+xover.listener.on('remove', function ({ target }) {
+    let source = target.source;
+    source && source.remove();
+})
 
 xover.listener.keypress = function (e = {}) {
     xover.listener.keypress.ctrlKey = e.ctrlKey;
@@ -6020,6 +6015,7 @@ xover.modernize = function (targetWindow) {
                     //    }, 50);
                     //});
                 }
+                window.top.dispatchEvent(new xover.listener.Event(`remove`, { target }));
             }
 
             Element.prototype.setAttributes = async function (attributes, refresh, delay) {
