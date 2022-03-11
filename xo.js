@@ -341,14 +341,26 @@ Object.defineProperty(xover.database, 'stores', {
 });
 
 Object.defineProperties(xover.database, {
+    read: {
+        value: async function (store_name, key, value) {
+            store = await this[store_name];
+            return store.get(key);
+        }
+    },
+    write: {
+        value: async function (store_name, key, value) {
+            store = await this[store_name];
+            return store.put(value, key);
+        }
+    },
     open: {
-        value: function (key, config = { autoIncrement: true }) {
+        value: function (key, config = { autoIncrement: true }, method = 'readwrite') {
             return new Promise(async (resolve, reject) => {
                 let stores = Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(xover.database)).filter(([prop, func]) => func["get"] || func["enumerable"]));
                 //let database = await indexedDB.databases().then(databases => databases.find(db => db.name == 'xover.database'));
                 let connection = indexedDB.open('xover.database', Object.keys(stores).length);
                 let handler = function (event) {
-                    let store = event.target.result.transaction([key], 'readwrite').objectStore(key);
+                    let store = event.target.result.transaction([key], method).objectStore(key);
                     store.add = function (...args) {
                         return new Promise((resolve, reject) => {
                             let request = IDBObjectStore.prototype.add.apply(store, args);
@@ -409,7 +421,7 @@ Object.defineProperties(xover.database, {
                                 reject(event.target.result);
                             };
 
-                            request.onsuccess = function (event) {
+                            request.onsuccess = async function (event) {
                                 let cursor = event.target.result;
                                 if (cursor) {
                                     records.push([cursor.key, store.get(cursor.key)])
@@ -502,7 +514,7 @@ Object.defineProperty(xover.listener, 'on', {
 xover.listener.on('keyup', async function (event) {
     if (event.keyCode == 27) {
         let first_alert = document.querySelector("[role='alertdialog']");
-        first_alert && first_alert.removeAll();
+        first_alert && first_alert.remove();
     }
 })
 
@@ -724,7 +736,7 @@ xover.server = new Proxy({}, {
             let return_value, request, response;
             url = new xover.URL(xover.manifest.server["endpoints"][key], undefined, settings);
             if (payload) {
-                if (url.method === 'POST') {
+                if (url.method === 'POST' || payload instanceof Document || !Object.entries(Object.fromEntries(new URLSearchParams(payload).entries())).length) {
                     settings["body"] = payload;
                 } else {
                     settings["query"] = payload;
@@ -769,16 +781,24 @@ xover.server = new Proxy({}, {
 
         if (self.hasOwnProperty(key)/* && xover.manifest.server && xover.manifest.server.endpoints && xover.manifest.server.endpoints[key]*/) {
             Object.defineProperty(self[key], 'fetch', {
-                value: function (settings = {}) {
-                    settings["method"] = 'GET';
+                value: function (...args) {
+                    let settings = args.pop() || {};
+                    if (settings.constructor === {}.constructor) {
+                        settings["method"] = 'GET';
+                    }
+                    args.push(settings)
                     return handler.apply(this, [settings]);
                 },
                 writable: true, enumerable: false, configurable: false
             });
             Object.defineProperty(self[key], 'post', {
-                value: function (settings = {}) {
-                    settings["method"] = 'POST';
-                    return handler.apply(this, [settings]);
+                value: function (...args) {
+                    let settings = args.pop() || {};
+                    if (settings.constructor === {}.constructor) {
+                        settings["method"] = 'POST';
+                    }
+                    args.push(settings)
+                    return handler.apply(this, args);
                 },
                 writable: true, enumerable: false, configurable: false
             });
@@ -946,7 +966,7 @@ Object.defineProperty(xover.session, 'logout', {
     value: function () {
         if ('logout' in xover.server) {
             try {
-                return xover.server.logout.apply(xover.server, arguments);
+                return xover.server.logout.apply(xover.server.logout, arguments);
             } catch (e) {
                 console.error(e);
             }
@@ -1958,7 +1978,7 @@ content_type["xml"] = "text/xml";
 xover.library = new Proxy({}, {
     get: function (self, key) {
         if (!self[key]) {
-            self[key] = xo.fetch.xml(key).then(document => self[key] = document).catch(() => { self[key] = null; return null });
+            self[key] = xover.fetch.xml(key).then(document => self[key] = document).catch(() => { self[key] = null; return null });
         }
         return self[key];
     },
@@ -3453,14 +3473,14 @@ xover.library.defaults["loading.xslt"] = xover.xml.createDocument(`
     xmlns="http://www.w3.org/1999/xhtml">                                                               
     <xsl:output method="xml" indent="no" />                                                             
     <xsl:template match="node()">                                                                       
-    <div class="loading" onclick="if (this.store &amp;&amp; (this.store.state.submitting || this.store.state.loading)) {{return}}; this.remove(); [this.store &amp;&amp; this.store.stylesheets['loading.xslt']].removeAll();">
+    <div class="loading" onclick="this.remove()">
       <div class="modal_content-loading">
         <div class="modal-dialog modal-dialog-centered">
           <div class="no-freeze-spinner">
             <div id="no-freeze-spinner">
               <div>
                 <i>
-                  <img src="./assets/favicon.png" class="ring_image"/>
+                  <img src="./assets/favicon.png" class="ring_image" onerror="this.remove()"/>
                 </i>
                 <div>
                 </div>
@@ -3784,6 +3804,15 @@ xover.Store = function (xml) {
         }
     });
 
+    if (!this.hasOwnProperty('save')) {
+        Object.defineProperty(this, 'save', {
+            value: async function () {
+                xover.database.write('stores', store.tag, (store.initiator || store));
+            },
+            writable: false, enumerable: false, configurable: false
+        })
+    }
+
     if (!_library.hasOwnProperty('clear')) {
         Object.defineProperty(_library, 'clear', {
             value: function (forced = true) {
@@ -3798,6 +3827,7 @@ xover.Store = function (xml) {
             writable: false, enumerable: false, configurable: false
         })
     }
+
     if (!_library.hasOwnProperty('load')) {
         Object.defineProperty(_library, 'load', {
             value: async function (list) {
@@ -3824,6 +3854,7 @@ xover.Store = function (xml) {
             writable: false, enumerable: false, configurable: false
         })
     }
+
     if (!_library.hasOwnProperty('reload')) {
         Object.defineProperty(_library, 'reload', {
             value: async function (list) {
@@ -3940,7 +3971,7 @@ xover.Store = function (xml) {
             if (value && ['function'].includes(typeof (value))) {
                 throw ('State value is not valid type');
             }
-            let old_value = target[name]
+            let old_value = store.state[name]
             if (old_value == value) return;
             target[name] = value;
             __document.documentElement.setAttributeNS(xover.xml.namespaces["state"], `state:${name}`, value, false);
@@ -4413,6 +4444,9 @@ xover.Store = function (xml) {
             on_complete.apply(self, _this_arguments);
         };
         __document.status = "ready";
+        if (!store.state.restoring) {
+            store.save();
+        }
         //[__document.stylesheets["loading.xslt"]].removeAll();
     }
 
@@ -4783,6 +4817,16 @@ if (window.addEventListener) {
     window.attachEvent("onstorage", xover.storage.syncSession);
 };
 
+xover.listener.on('beforeRemove', function ({ target }) {
+    if (target.classList && target.classList.contains("loading") || ["alert", "alertdialog"].includes(String(target.role).toLowerCase())) {
+        let store = target.store;
+        if (store && (store.state.submitting || store.state.busy)) {
+            event.preventDefault();
+            [store.stylesheets['loading.xslt']].removeAll();
+        };
+    }
+})
+
 xover.listener.on('remove', function ({ target }) {
     let source = target.source;
     source && source.remove();
@@ -4878,23 +4922,25 @@ document.onkeyup = function (e) {
 };
 
 // TODO: Modificar listeners para que funcion con el método de XOVER
-xover.dom.beforeunload = async function (e) {
-    //xover.state.save();
-    let stores = await xover.database.stores;
-    for (let hashtag in xover.stores) {
-        console.log("Saving " + hashtag)
-        stores.put((xover.stores[hashtag].initiator || xover.stores[hashtag]), hashtag)
-        //xover.session.setKey(hashtag, (xover.stores[hashtag].initiator || xover.stores[hashtag]));
-    }
-    history.replaceState(history.state || {}, {}, (window.top || window).location.hash || '/');
-    console.log("checking if we should display confirmation dialog");
-    var shouldCancel = false;
-    if (shouldCancel) {
-        console.log("displaying confirmation dialog");
-        e.preventDefault();
-        e.returnValue = false;
-    }
-}
+xover.listener.on('beforeunload', async function (e) {
+    //let stores = await xover.database.stores;
+    //for (let hashtag in xover.stores) {
+    //    console.log("Saving " + hashtag)
+    //    stores.put((xover.stores[hashtag].initiator || xover.stores[hashtag]), hashtag)
+    //    //xover.session.setKey(hashtag, (xover.stores[hashtag].initiator || xover.stores[hashtag]));
+    //}
+    ////history.replaceState(history.state || {}, {}, (window.top || window).location.hash || '/');
+    //event.returnValue = `Are you sure you want to leave?`;
+
+    //console.log("checking if we should display confirmation dialog");
+    //var shouldCancel = false;
+    //if (shouldCancel) {
+    //    console.log("displaying confirmation dialog");
+    //    e.preventDefault();
+    //    e.returnValue = false;
+    //}
+});
+
 var eventName = xover.browser.isIOS() ? "pagehide" : "beforeunload";
 
 window.addEventListener(eventName, xover.dom.beforeunload);
@@ -5978,6 +6024,9 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.remove = function () {
+                let beforeRemove = new xover.listener.Event('beforeRemove', { target: this });
+                window.top.dispatchEvent(beforeRemove);
+                if (beforeRemove.cancelBubble || beforeRemove.defaultPrevented) return;
                 let parentNode = this.parentNode;
                 let parentElement = this.parentElement;
                 var store = this.ownerDocument.store
@@ -6014,7 +6063,7 @@ xover.modernize = function (targetWindow) {
                     //    }, 50);
                     //});
                 }
-                window.top.dispatchEvent(new xover.listener.Event(`remove`, { target }));
+                window.top.dispatchEvent(new xover.listener.Event('remove', { target: this }));
             }
 
             Element.prototype.setAttributes = async function (attributes, refresh, delay) {
@@ -6164,10 +6213,10 @@ xover.modernize = function (targetWindow) {
                 let target = this;
                 let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
                 namespace_URI = namespace_URI || target.resolveNS(prefix) || xover.xml.namespaces[prefix];// || [attribute].includes("xmlns") && xover.xml.namespaces[attribute]
-                let old_value = target.getAttributeNS(namespace_URI, attribute);
-                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value;
+                let old_value = target.getAttribute(attribute);
+                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 let store = target.ownerDocument.store;
-                if (old_value !== value && store) {
+                if (old_value != value && store) { //!= is used instead of !== to ignore differences between undefined and null
                     if (xover.tracking.attributes.includes(attribute) || xover.tracking.prefixes.includes(prefix)) {
                         store.takeSnapshot();
                         if (!target.resolveNS("initial")) {
@@ -6189,12 +6238,12 @@ xover.modernize = function (targetWindow) {
                 } else {
                     refresh = false;
                 }
-                if (value === undefined) {
+                if (value === undefined || value === null) {
                     target.removeAttribute(attribute, refresh);
                 } else {
                     setAttributeNS_original.call(target, namespace_URI, attribute, value);
                 }
-                if (old_value !== value) {
+                if (old_value != value) { //Same as above
                     if (prefix) {
                         window.top.dispatchEvent(new xover.listener.Event(`${prefix}Changed`, { target, prefix: prefix, attribute: attribute_name, value: value, old: old_value }));
                         window.top.dispatchEvent(new xover.listener.Event(`${prefix}Changed::${attribute_name}`, { target, value: value, old: old_value }));
@@ -6202,7 +6251,8 @@ xover.modernize = function (targetWindow) {
                     window.top.dispatchEvent(new xover.listener.Event('attributeChanged', { target, attribute: attribute, value: value, old: old_value }));
                 }
                 if (refresh) {
-                    target.store.render(((event || {}).target || {}).stylesheet);
+                    store.save();
+                    store.render(((event || {}).target || {}).stylesheet);
                 }
             }
 
