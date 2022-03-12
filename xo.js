@@ -2447,7 +2447,7 @@ xover.NodeSet = function (nodeSet = []) {
             attribute = attribute.replace(/^@/, "");
             nodeSet.map((target) => {
                 if (target instanceof Element || target.nodeType == 1) {
-                    target.setAttribute(undefined, attribute, value, refresh);
+                    target.setAttribute(attribute, value, refresh);
                 }
             });
         },
