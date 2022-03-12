@@ -1777,7 +1777,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
         if (source instanceof HTMLElement && source.type === 'file') {
             file = source.files && source.files[0]
             file.id = source.id;
-            file.saveAs = source.saveAs;
+            file.saveAs = source.saveAs || file.id;
         } else if (source instanceof File) {
             file = source;
             file.id = file.id || source.id;
@@ -1786,7 +1786,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
             let record = await (await xover.database.files).get(source.value);
             file = record.file;
             file.id = record.id;
-            file.saveAs = record.saveAs;
+            file.saveAs = record.saveAs || file.id;
 
             if (!file) {
                 source.selectSingleNode('..').setAttribute(source.name, '');
@@ -1836,7 +1836,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
                         let file_name = response.headers.get("File-Name");
                         if (source && source instanceof Node) {
                             let temp_value = source.value;
-                            [source, ...xover.stores.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(attr => attr.selectSingleNode('..').setAttribute(attr.name, file_name));
+                            [source, ...xover.stores.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node.nodeType === 2 && node.selectSingleNode('..').setAttribute(node.name, file_name) || node.setAttribute("value", file_name));
                         }
                         var progress_bar = document.getElementById('_progress_bar_' + file.id);
                         if (progress_bar) {
