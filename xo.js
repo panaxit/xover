@@ -309,7 +309,6 @@ Object.defineProperty(xover.database, 'files', {
     }
 });
 
-
 Object.defineProperty(xover.database, 'stores', {
     get: async function () {
         let store = await xover.database.open('stores');
@@ -762,7 +761,6 @@ xover.messages = {};
 xover.server = new Proxy({}, {
     get: function (self, key) {
         let handler = (async (...args) => {
-
             if (!(xover.manifest.server && xover.manifest.server.endpoints && xover.manifest.server.endpoints[key])) {
                 throw (new Error(`Endpoint "${key}" not configured`));
             }
@@ -773,6 +771,8 @@ xover.server = new Proxy({}, {
                 settings = {}
             }
             let payload = args.pop() || settings["payload"];
+            let query = args.pop() || settings["query"] || {};
+
             var url, params;
             let return_value, request, response;
             url = new xover.URL(xover.manifest.server["endpoints"][key], undefined, settings);
@@ -783,7 +783,7 @@ xover.server = new Proxy({}, {
                     settings["query"] = payload;
                 }
             }
-            //[...new URLSearchParams(settings).entries()].map(([key, value]) => url.searchParams.set(key, value));
+            [...new URLSearchParams(query).entries()].map(([key, value]) => url.searchParams.set(key, value));
 
             let headers = new Headers(settings["headers"]);
             //headers.set("Accept", (headers.get("Accept") || "text/xml"))
@@ -1818,7 +1818,7 @@ xover.dom.getGeneratedPageURL = function (config) {
 }
 
 Object.defineProperty(xover.server, 'uploadFile', {
-    value: async function (source) {
+    value: async function (source, saveAs) {
         if (!(xover.manifest.server["endpoints"] && xover.manifest.server["endpoints"]["uploadFile"])) {
             throw (new Error("Endpoint for uploadFile is not defined in the manifest"));
         }
@@ -1826,11 +1826,11 @@ Object.defineProperty(xover.server, 'uploadFile', {
         if (source instanceof HTMLElement && source.type === 'file') {
             file = source.files && source.files[0]
             file.id = source.id;
-            file.saveAs = source.saveAs || file.id;
+            file.saveAs = saveAs || source.saveAs || file.id;
         } else if (source instanceof File) {
             file = source;
             file.id = file.id || source.id;
-            file.saveAs = file.saveAs || file.name;
+            file.saveAs = saveAs || file.saveAs || file.name;
         } else if (source instanceof Node && source.nodeType === 2) {
             let record = await (await xover.database.files).get(source.value);
             if (!(record && record.file)) {
@@ -1839,7 +1839,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
             }
             file = record.file;
             file.id = record.id;
-            file.saveAs = record.saveAs || file.id;
+            file.saveAs = saveAs || record.saveAs || file.id;
         }
         if (file) {
             //var progress_bar = document.getElementById('_progress_bar_' + control.id);
@@ -1885,7 +1885,15 @@ Object.defineProperty(xover.server, 'uploadFile', {
                         if (!file_name) throw (new Error("Cound't get file name"));
                         if (source && source instanceof Node) {
                             let temp_value = source.value;
-                            [source, ...xover.stores.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node.nodeType === 2 && node.selectSingleNode('..').setAttribute(node.name, file_name) || node.setAttribute("value", file_name));
+                            //if (temp_value.match(/^blob:http:/)) {
+                                if (source instanceof HTMLElement) {
+                                    if (!source.getAttribute("xo-attribute")) {
+                                        source.setAttribute("xo-attribute", "file");
+                                    } 
+                                    source = source.scope;
+                                }
+                            //}
+                            [source, ...xover.stores.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node instanceof Attr && node.parentNode.setAttribute(node.name, file_name) || node.setAttribute("value", file_name));
                         }
                         var progress_bar = document.getElementById('_progress_bar_' + file.id);
                         if (progress_bar) {
@@ -5046,7 +5054,7 @@ xover.listener.on('changed::state:busy', function ({ target, value }) {
 xover.listener.on('remove::state:busy', function ({ target, value }) {
     let store = target.store;
     if (store instanceof xover.Store && store.isActive) {
-            [...document.querySelectorAll(`[xo-store='${store.tag}'][xo-stylesheet='loading.xslt']`)].removeAll();
+        [...document.querySelectorAll(`[xo-store='${store.tag}'][xo-stylesheet='loading.xslt']`)].removeAll();
     }
 });
 
@@ -6401,7 +6409,10 @@ xover.modernize = function (targetWindow) {
             }
 
             Attr.prototype.set = function (value) {
-                return this.value = value
+                if (this.value != value) {
+                    this.parentNode.store.render();
+                }
+                let return_value = this.value = value;
             }
 
             if (!Attr.prototype.hasOwnProperty('parentNode')) {
