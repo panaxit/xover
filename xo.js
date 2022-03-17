@@ -2324,7 +2324,7 @@ Object.defineProperty(xover.stores, 'active', {
 
         if (input) {
             var hashtag = input.tag;// || xover.data.hashTagName(input);
-            if (hashtag == xover.stores.active.tag) {
+            if (hashtag === xover.stores.active.tag) {
                 var current_position = xover.data.getScrollPosition();
                 xover.data.updateScrollPosition(input, current_position);
             }
@@ -2334,12 +2334,8 @@ Object.defineProperty(xover.stores, 'active', {
             if (!xover.stores[hashtag].isActive) {
                 //xover.dom.history.push((window.top || window).location.hash);
                 xover.state.active = hashtag;
-            } else {
-                await xover.stores[hashtag].render(/*true*/);
-                //[input.stylesheets["loading.xslt"]].removeAll();
             }
-            //input.isActive = true;
-            //xover.dom.refresh({ forced: true });
+            /*await */xover.stores[hashtag].render();
         }
     }
 });
