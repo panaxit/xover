@@ -4033,7 +4033,7 @@ xover.Store = function (xml) {
             if (old_value == value) return;
             target[name] = value;
             if (!__document.documentElement) return;
-            __document.documentElement.setAttributeNS(xover.xml.namespaces["state"], `state:${name}`, value, false);
+            __document.documentElement.setAttributeNS(xover.xml.namespaces["state"], `state:${name}`, value);
         }
     })
 
@@ -6056,6 +6056,7 @@ xover.modernize = function (targetWindow) {
                     }
                 });
             }
+
             if (!Element.prototype.hasOwnProperty('source')) {
                 Object.defineProperty(Element.prototype, 'source', Object.getOwnPropertyDescriptor(Element.prototype, 'scope'));
             }
@@ -7029,7 +7030,7 @@ xover.modernize = function (targetWindow) {
                                     throw (new Error(`Couldn't render store ${store.tag}`));
                                 }
                             }
-                            stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && (`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
+                            stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
                             if (stylesheet_target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
                                 action = 'replace';
                             } else if (!action && stylesheet_target.matches(`[xo-store='${tag}']:not([xo-stylesheet])`)) {
