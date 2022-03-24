@@ -211,7 +211,8 @@ xover.stores = new Proxy({}, {
             }
             return self[key];
         } else if (key[0] == '#' && key in xover.sources) {
-            return xover.sources[key];
+            let source = xover.sources[key]
+            return source.tag in self && xover.stores[source.tag] || source;
         } else if (key[0] == '#' && xover.stores.defaults[key]) {
             let _store = xover.stores.defaults[key] && new xover.Store(xover.stores.defaults[key], { tag: key });
             if (_store) {
@@ -1886,12 +1887,12 @@ Object.defineProperty(xover.server, 'uploadFile', {
                         if (source && source instanceof Node) {
                             let temp_value = source.value;
                             //if (temp_value.match(/^blob:http:/)) {
-                                if (source instanceof HTMLElement) {
-                                    if (!source.getAttribute("xo-attribute")) {
-                                        source.setAttribute("xo-attribute", "file");
-                                    } 
-                                    source = source.scope;
+                            if (source instanceof HTMLElement) {
+                                if (!source.getAttribute("xo-attribute")) {
+                                    source.setAttribute("xo-attribute", "file");
                                 }
+                                source = source.scope;
+                            }
                             //}
                             [source, ...xover.stores.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node instanceof Attr && node.parentNode.setAttribute(node.name, file_name) || node.setAttribute("value", file_name));
                         }
@@ -3441,6 +3442,26 @@ iframe {
     width: 100vw;
     resize: both;
 }
+
+dialog {
+  max-width: 50ch;
+}
+dialog > * {
+  margin: 0 0 0.5rem 0;
+}
+
+dialog::-webkit-backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+form {
+  display: grid;
+  gap: 1em;
+}
 </style>`);
 
 xover.library.defaults["error.xslt"] = xover.xml.createDocument(`
@@ -4044,6 +4065,9 @@ xover.Store = function (xml) {
         get: function () {
             _tag = _tag || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
             return '#' + _tag.split(/^#/).pop();
+        }, 
+        set: function (input) {
+            return _tag = input;
         }
     })
 
@@ -4636,25 +4660,25 @@ xover.json.toXML = function (json) {
         throw (new Error("Not a valid json"));
     }
     let raw_xson = xover.xml.createDocument(
-        xover.string.replace(    
-            xover.string.replace(        
+        xover.string.replace(
+            xover.string.replace(
                 xover.string.replace(
                     xover.string.replace(
                         xover.string.replace(
                             xover.string.replace(
-                                xover.string.replace(            
-                                 xover.string.replace(
-                                     xover.string.replace(
-                                         xover.string.replace(xover.string.replace(xover.string.replace(xover.string.replace(json, '\\t', '<t/>', 1), '\\n', '<r/>', 1), '\\r', '<r/>', 1), ',', '<c/>', 1)
-									 , '&', '&amp;')                     
-								 , '\\(.)', '<e>$1</e>', 1)           
-							 , '[', '<l>')          
-						 , ']', '</l>')         
-					 , '{', '<o>')        
-				 , '}', '</o>')       
-			 , '\\s', '<s/>', 1)       
-		 , '"([^"]+?)"\\:', '<a>$1</a>', 1)      
-	 , '<l>([^<]+)</l>', '<l>$1</l>', 1)
+                                xover.string.replace(
+                                    xover.string.replace(
+                                        xover.string.replace(
+                                            xover.string.replace(xover.string.replace(xover.string.replace(xover.string.replace(json, '\\t', '<t/>', 1), '\\n', '<r/>', 1), '\\r', '<r/>', 1), ',', '<c/>', 1)
+                                            , '&', '&amp;')
+                                        , '\\(.)', '<e>$1</e>', 1)
+                                    , '[', '<l>')
+                                , ']', '</l>')
+                            , '{', '<o>')
+                        , '}', '</o>')
+                    , '\\s', '<s/>', 1)
+                , '"([^"]+?)"\\:', '<a>$1</a>', 1)
+            , '<l>([^<]+)</l>', '<l>$1</l>', 1)
     );
 
     let reformated_xson = raw_xson.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns="" version="1.0" id="raw_json_compatibility"><xsl:variable name="node_name">olsc</xsl:variable><xsl:variable name="translate-o">{[ ,</xsl:variable><xsl:variable name="translate-c">}] </xsl:variable><xsl:template match="/"><xsl:apply-templates></xsl:apply-templates></xsl:template><xsl:template match="*" mode="value"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="o|l|c" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="translate(name(),$node_name,$translate-o)"></xsl:value-of><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:value-of select="translate(name(),$node_name,$translate-c)"></xsl:value-of><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="s" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="' '"></xsl:value-of><xsl:if test="$is_string"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="r|f" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text></xsl:text><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="e" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text>\</xsl:text><xsl:value-of select="text()"></xsl:value-of><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="text()" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="$is_string and not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="text()[substring(.,1,1)='&quot;']" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="true()"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="l|o"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates select="a|o"></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="a"><xsl:variable name="following" select="(following-sibling::text()|following-sibling::*[not(self::f or self::r or self::c or self::s)])[1]"></xsl:variable><xsl:copy><xsl:element name="n"><xsl:value-of select="text()"></xsl:value-of></xsl:element><xsl:choose><xsl:when test="$following/self::o or $following/self::l"><xsl:apply-templates select="$following"></xsl:apply-templates></xsl:when><xsl:otherwise><xsl:element name="v"><xsl:apply-templates select="$following" mode="value"></xsl:apply-templates></xsl:element></xsl:otherwise></xsl:choose></xsl:copy></xsl:template></xsl:stylesheet>`));
@@ -4917,10 +4941,6 @@ document.onkeydown = function (event) {
         }
         console.log("xover.listener.keypress.streak_count: " + xover.listener.keypress.streak_count)
     }
-    if (event.keyCode == 27) {
-        xover.data.removeMessage();
-        return;
-    }
     xover.listener.keypress(event);
     if (xover.listener.keypress.altKey || xover.listener.keypress.shiftKey || xover.listener.keypress.ctrlKey) {
         if (this.keyInterval != undefined) {
@@ -5069,11 +5089,13 @@ xover.listener.on('click', function (event) {
     if (!hashtag.match(/^#/)) {
         return;
     }
+    custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash])
     if (hashtag !== undefined && hashtag != (window.top || window).location.hash) {
-        custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash])
         window.top.dispatchEvent(custom_event);
     }
-    return event.preventDefault();
+    if (custom_event.defaultPrevented) {
+        return event.preventDefault();
+    }
 });
 
 xover.listener.on(["change", "click"], function (event) {
@@ -6933,7 +6955,7 @@ xover.modernize = function (targetWindow) {
                                     } else {
                                         try {
                                             //console.clear() //console.log(script.textContent)
-                                            eval(script.textContent);
+                                            (function () { eval.apply(this, arguments) }(script.textContent));
                                         } catch (message) {
                                             console.error(message)
                                         }
@@ -7082,7 +7104,7 @@ xover.modernize = function (targetWindow) {
                                         } else {
                                             try {
                                                 //console.clear() //console.log(script.textContent)
-                                                eval(script.textContent);
+                                                (function () { eval.apply(this, arguments) }(script.textContent));
                                             } catch (message) {
                                                 console.error(message)
                                             }
