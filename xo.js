@@ -275,6 +275,7 @@ xover.database = new Proxy({
     config: {
         'files': { keyPath: "uid" }
         , 'stores': { autoIncrement: true }
+        , 'sources': { autoIncrement: true }
     }
 }, {
     get: function (self, key) {
@@ -322,6 +323,30 @@ Object.defineProperty(xover.database, 'stores', {
         let _put = store.put;
         store.put = function (store, tag = store.tag) {
             _put(new File([store.document], store.tag, {
+                type: "application/xml",
+            }), tag);
+        }
+        let _get = store.get;
+        store.get = async function (store_id) {
+            let document = await _get(store_id);
+            return xover.Store(xover.xml.createDocument(await document.text()));
+        }
+        return store;
+    }
+});
+
+Object.defineProperty(xover.database, 'sources', {
+    get: async function () {
+        let store = await xover.database.open('sources');
+        let _add = store.add;
+        store.add = function (source, tag = source.href) {
+            _add(new File([source], source.href, {
+                type: "application/xml",
+            }), tag);
+        }
+        let _put = store.put;
+        store.put = function (source, tag = source.href) {
+            _put(new File([store.document], source.href, {
                 type: "application/xml",
             }), tag);
         }
@@ -688,9 +713,9 @@ xover.Manifest = function (manifest = {}) {
     let base_manifest = {
         "server": { "database_id": undefined, "endpoints": {} },
         "sources": {},
-        "transforms": [],
+        "stylesheets": [],
         "namespaces": {},
-        "modules": {}
+        "settings": {}
     }
     var _manifest = Object.assign(base_manifest, manifest);
 
@@ -721,10 +746,10 @@ xover.Manifest = function (manifest = {}) {
         writable: false, enumerable: false, configurable: false
     });
 
-    //Object.defineProperty(_manifest, 'getConfig', {
-    //    value: (xover.manifest.getConfig || function (entity_name, config_name) {
-    //        return (_manifest.modules[entity_name]
-    //            || _manifest.modules[entity_name.toLowerCase()]
+    //Object.defineProperty(_manifest, 'getSettings', {
+    //    value: (xover.manifest.getSettings || function (entity_name, config_name) {
+    //        return (_manifest.settings[entity_name]
+    //            || _manifest.settings[entity_name.toLowerCase()]
     //            || {})[config_name]
     //    }),
     //    writable: true, enumerable: false, configurable: false
@@ -735,11 +760,11 @@ xover.Manifest = function (manifest = {}) {
     //    value: function (entity_name, property_name, value) {
     //        if (arguments[0].constructor === {}.constructor) {
     //            const { entity_name, ...rest } = arguments[0];
-    //            _manifest.modules[(entity_name || xover.data.hashTagName())] = (_manifest.modules[(entity_name || xover.data.hashTagName)] || {})
-    //            xover.json.merge(_manifest.modules[(entity_name || xover.data.hashTagName())], rest);
+    //            _manifest.settings[(entity_name || xover.data.hashTagName())] = (_manifest.settings[(entity_name || xover.data.hashTagName)] || {})
+    //            xover.json.merge(_manifest.settings[(entity_name || xover.data.hashTagName())], rest);
     //        } else {
-    //            _manifest.modules[(entity_name || xover.data.hashTagName())] = (_manifest.modules[(entity_name || xover.data.hashTagName())] || {});
-    //            _manifest.modules[(entity_name || xover.data.hashTagName())][property_name] = value
+    //            _manifest.settings[(entity_name || xover.data.hashTagName())] = (_manifest.settings[(entity_name || xover.data.hashTagName())] || {});
+    //            _manifest.settings[(entity_name || xover.data.hashTagName())][property_name] = value
     //        }
     //    },
     //    writable: true, enumerable: false, configurable: false
@@ -750,10 +775,10 @@ xover.Manifest = function (manifest = {}) {
     return _manifest;
 }
 
-Object.defineProperty(xover.Manifest.prototype, 'getConfig', {
+Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) {
         let tag_name = typeof (input) == 'string' && input || input.tag || "";
-        return [Object.entries(this.modules).find(([key, value]) => config_name in value && (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key)))].filter(value => value).map(([key, value]) => value[config_name]).flat(Infinity);
+        return Object.entries(this.settings).filter(([key, value]) => config_name in value && (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).filter(value => value).map(([key, value]) => value[config_name]).flat(Infinity);
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -1496,7 +1521,8 @@ xover.sources = new Proxy({}, {
             if (_manifest.hasOwnProperty(value)) {
                 key = value;
             }
-            value = _manifest[key];
+            let _config_value = _manifest[key];
+            value = xo.stores[_config_value.source || _config_value] || _manifest[key];
             delete _manifest[key]; //se borra para evitar referencias cíclicas
         } while (_manifest.hasOwnProperty(value))
         value = value || Object.entries(xover.manifest.sources || {}).find(([tag]) => key.match(new RegExp(`^${tag.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&')}$`)))[1]; //TODO: Agregar opción para tags con expresiones regulares
@@ -1567,7 +1593,6 @@ xover.xml.namespaces["xsi"] = "http://www.w3.org/2001/XMLSchema-instance"
 xover.xml.namespaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.xml.namespaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
 xover.xml.namespaces["session"] = "http://panax.io/session"
-xover.xml.namespaces["transforms"] = "http://panax.io/transforms"
 xover.xml.namespaces["xhtml"] = "http://www.w3.org/1999/xhtml"
 
 /* Binding */
@@ -3384,8 +3409,20 @@ xover.xml.createDocument = function (xml, options = {}) {
     }
 
     if (result.documentElement && !["http://www.w3.org/1999/xhtml", "http://www.w3.org/1999/XSL/Transform"].includes(result.documentElement.namespaceURI)) {
-        xover.manifest.getConfig(result, 'transforms').reverse().forEach(stylesheet => result.addStylesheet(stylesheet));
+        xover.manifest.getSettings(result, 'stylesheets').reverse().forEach(stylesheet => result.addStylesheet(stylesheet));
     }
+    (result.stylesheets || []).filter(stylesheet => stylesheet.role == 'init').forEach(stylesheet => {
+        let new_document = result.transform(stylesheet.document);
+        if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
+            new_document.stylesheets[stylesheet.href].replaceBy(result.createComment('Initialized by ' + stylesheet.href));
+            /*La transformación no debe regresar un html ni otro documento del estándar*/
+            result = new_document;
+        } else {
+            delete stylesheet["role"];
+            result.addStylesheet(stylesheet);
+            console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
+        }
+    });
     return result;
 }
 
@@ -3614,7 +3651,7 @@ xover.init = async function () {
         let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } });
         xover.manifest = new xover.Manifest(manifest.merge(xover.manifest));
         xover.modernize();
-        await Promise.all(xover.manifest.transforms.map(href => xover.library[href]));
+        await Promise.all(xover.manifest.stylesheets.map(href => xover.library[href]));
         await xover.stores.restore();
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
@@ -3625,44 +3662,6 @@ xover.init = async function () {
         this.init.initializing = undefined;
     });
     return this.init.initializing;
-}
-
-xover.data.getTransformations = function (xml_document) {
-    var xml_document = (xml_document || xover.stores.active || {});
-    if (typeof (xml_document.selectSingleNode) == 'undefined') return {};
-    if (!xml_document.selectSingleNode("*")) return {};
-    var library = {};
-    if (typeof (xml_document.setProperty) != "undefined") {
-        var current_namespaces = xover.xml.getNamespaces(xml_document.getProperty("SelectionNamespaces"));
-        if (!current_namespaces["x"]) {
-            current_namespaces["x"] = "http://panax.io/xover";
-            xml_document.setProperty("SelectionNamespaces", xover.json.join(current_namespaces, { "separator": " " }));
-        }
-    }
-    var transform_collection = xml_document.selectNodes('.//@*[local-name()="transforms" and contains(namespace-uri(), "http://panax.io/xover") or namespace-uri()="http://panax.io/transforms"]');
-    if (transform_collection.length) {
-        for (let s = 0; s < transform_collection.length; ++s) {
-            var transforms = transform_collection[s].value.split(/\s*;+\s*/)
-            for (let t = 0; t < transforms.length; ++t) {
-                if (!transforms[t]) {
-                    continue;
-                }
-                library[transforms[t]] = undefined; //xover.library[transforms[t]];
-            }
-        }
-    }
-    //else {
-    //    var file_name = ((window.location.pathname.match(/[^\/]+$/g) || []).join('').split(/\.[^\.]+$/).join('') || "default") + ".xslt";
-    //    library[file_name] = xover.library[file_name];
-    //}
-    var stylesheets = xml_document.selectNodes("processing-instruction('xml-stylesheet')");
-    for (let s = 0; s < stylesheets.length; ++s) {
-        stylesheet = JSON.parse('{' + (stylesheets[s].data.match(/(\w+)=(["'])([^\2]+?)\2/ig) || []).join(", ").replace(/(\w+)=(["'])([^\2]+?)\2/ig, '"$1":$2$3$2') + '}');
-        if ((stylesheet.type || '').indexOf('xsl') != -1) {
-            library[stylesheet.href] = undefined; //xover.library[stylesheet.href];
-        }
-    }
-    return library;
 }
 
 xover.xml.Empty = function () {
@@ -3852,20 +3851,21 @@ xover.xml.Library = function (object) {
     return _library;
 }
 
-xover.Store = function (xml) {
-    if (!(this instanceof xover.Store)) return new xover.Store(xml, arguments[1]);
-    var self = this;
-    var store = this;
-    var _this_arguments = arguments;
-    var __document = xover.xml.createDocument(xml);
-    var _undo = [];
-    var _redo = [];
-    var config = arguments[1] && arguments[1].constructor === {}.constructor && arguments[1];
-    var on_complete = !config && arguments[1] && isFunction(arguments[1]) && arguments[1] || config && config["onComplete"];
-    var _tag, _hash;
-    var _rendering = false;
-    var _initiator = config && config["initiator"] || undefined;
-    var _library = new Proxy({}, {
+xover.Store = function (xml, ...args) {
+    if (!(this instanceof xover.Store)) return new xover.Store(xml, args[1]);
+    let self = this;
+    let store = this;
+    let _this_arguments = args;
+    let __document = xover.xml.createDocument(xml);
+    let _undo = [];
+    let _redo = [];
+    let config = args[1] && args[1].constructor === {}.constructor && args[1];
+    let on_complete = !config && args[1] && isFunction(args[1]) && args[1] || config && config["onComplete"];
+    let _hash;
+    let _tag = this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
+    let _initiator = config && config["initiator"] || undefined;
+    let _store_stylesheets = [];
+    let _library = new Proxy({}, {
         get: function (target, name) {
             return target[name];
         },
@@ -4063,9 +4063,8 @@ xover.Store = function (xml) {
 
     Object.defineProperty(this, 'tag', {
         get: function () {
-            _tag = _tag || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
             return '#' + _tag.split(/^#/).pop();
-        }, 
+        },
         set: function (input) {
             return _tag = input;
         }
@@ -4192,14 +4191,13 @@ xover.Store = function (xml) {
             //}
             let new_bindings = 0;
             let bindings = [].concat(
-                //[(__document.selectSingleNode("ancestor-or-self::*[@transforms:bindings]/@transforms:bindings") || {}).value],
                 context.stylesheets.filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./) && stylesheet.action == 'replace').map(async function (stylesheet) {
                     if ((await stylesheet.document || window.document.createElement('p')).selectSingleNode('//xsl:copy[not(xsl:apply-templates) and not(comment()="ack:no-apply-templates")]')) {
                         console.warn('In a binding stylesheet a xsl:copy withow a xsl:apply-templates may cause an infinite loop. If missing xsl:apply-templates was intentional, please add an acknowledge comment <!--ack:no-apply-templates-->');
                     };
                     return stylesheet
                 })
-                //, (xover.manifest.getConfig(context, 'transforms') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
+                //, (xover.manifest.getSettings(context, 'stylesheets') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
                 , ["xover/databind.xslt"]);
             bindings = [...new Set(bindings)].filter(binding => binding);
             //let original = xover.xml.clone(context); //Se obtiene el original si se quieren comparar cambios
@@ -4376,7 +4374,9 @@ xover.Store = function (xml) {
                 //await self.library.load();
                 await self.triggerBindings();
 
-                await __document.render();
+                let doc = __document.cloneNode(true);
+                _store_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
+                await doc.render();
                 return Promise.resolve(self);
             }).then(async () => {
                 _render_manager = undefined;
@@ -4482,21 +4482,96 @@ xover.Store = function (xml) {
         writable: false, enumerable: false, configurable: false
     });
 
+    Object.defineProperty(this, 'addStylesheet', {
+        value: async function (definition, target, refresh) {
+            let style_definition, pi;
+            let document = (this.document || this);
+            if (definition instanceof ProcessingInstruction) {
+                style_definition = definition;
+            }
+            else if (definition.constructor === {}.constructor) {
+                definition = xover.json.merge({ type: 'text/xsl' }, definition);
+                style_definition = xover.json.toAttributes(definition);
+                pi = document.createProcessingInstruction('xml-stylesheet', style_definition);
+                //pi.document.then(document => document.parentNode = store);
+            } else {
+                throw (new Error("Not a valid stylesheet"));
+            }
+            Object.defineProperty(pi, 'parentNode', {
+                value: store,
+                writable: true, enumerable: false, configurable: true
+            });
+            if (!(_store_stylesheets.find(el => el.isEqualNode(pi)) || document.stylesheets.find(el => el.isEqualNode(pi)))) {
+                _store_stylesheets.push(pi);
+            }
+            return pi;
+        },
+        writable: false, enumerable: false, configurable: false
+    });
+
+    Object.defineProperty(this, 'stylesheets', {
+        get: function () {
+            let stylesheets_nodes = _store_stylesheets.concat(__document.stylesheets);
+            Object.defineProperty(stylesheets_nodes, 'getDocuments', {
+                value: function () {
+                    let docs = []
+                    for (let stylesheet of this) {
+                        stylesheet.document.store = store;
+                        docs.push(stylesheet.document)
+                    }
+                    return docs;
+                },
+                writable: false, enumerable: false, configurable: false
+            });
+
+            Object.defineProperty(stylesheets_nodes, 'toJSON', {
+                value: function () {
+                    let json = []
+                    for (let stylesheet of this) {
+                        json[stylesheet.href] = stylesheet
+                    }
+                    return json;
+                },
+                writable: false, enumerable: false, configurable: false
+            });
+
+            return new Proxy(stylesheets_nodes, {
+                get: function (target, prop) { //para búsquedas por href
+                    if (prop in target) {
+                        return target[prop];
+                    }
+                    return target.find(stylesheet => stylesheet.href == prop);
+                }
+            })
+            return stylesheets_nodes
+        }
+    });
+
+    Object.defineProperty(this, 'getStylesheet', {
+        value: function (href) {
+            return store.stylesheets.find(stylesheet => stylesheet.href === href)
+        },
+        writable: false, enumerable: false, configurable: false
+    });
+
     Object.defineProperty(this, 'initialize', {
         value: async function () {
             store.state.initializing = true;
-            //__document.documentElement && Object.entries(xover.manifest.modules || {}).filter(([key, value]) => !(key.match(/^#/)) && value["transforms"] && _manifest_filter_xpath(key)).reduce((stylesheet, [key, value]) => { return value["transforms"] }, []).map(stylesheet => __document.addStylesheet(stylesheet));
+            //__document.documentElement && Object.entries(xover.manifest.settings || {}).filter(([key, value]) => !(key.match(/^#/)) && value["stylesheets"] && _manifest_filter_xpath(key)).reduce((stylesheet, [key, value]) => { return value["stylesheets"] }, []).map(stylesheet => __document.addStylesheet(stylesheet));
 
-            xover.manifest.getConfig(this, 'transforms').reverse().filter(transform => !__document.selectSingleNode(`comment()[.="Initialized by ${transform.href}"]`)).map(transform => {
-                transform = __document.addStylesheet(transform);
-            });
-            let init_stylesheets = __document.stylesheets.filter(stylesheet => stylesheet.role == 'init');
-            await Promise.all(init_stylesheets.map(stylesheet => stylesheet.document));
-            //await this.library.load(init_stylesheets.reduce((hrefs, stylesheet) => { hrefs[stylesheet.href] = undefined; return hrefs }, {}));
-            init_stylesheets.map(stylesheet => {
-                store.stylesheets[stylesheet.href].replaceBy(__document.createComment('Initialized by ' + stylesheet.href));
+            _store_stylesheets = xover.manifest.getSettings(this, 'stylesheets').map(stylesheet => __document.createProcessingInstruction('xml-stylesheet', stylesheet));
+
+            await Promise.all(_store_stylesheets.filter(stylesheet => stylesheet.role == 'init').map(stylesheet => stylesheet.document));
+
+            _store_stylesheets.filter(stylesheet => stylesheet.role == 'init' && !__document.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(stylesheet => {
+                let _document_stylesheet = __document.stylesheet[stylesheet.href];
+                if (_document_stylesheet) {
+                    _document_stylesheet.replaceBy(__document.createComment('Initialized by ' + stylesheet.href));
+                }
+                
                 let new_document = __document.transform(stylesheet.document);
-                if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {/*La transformación no debe regresar un html ni otro documento del estándar*/
+                if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
+                    /*La transformación no debe regresar un html ni otro documento del estándar*/
                     this.document = new_document;
                 } else {
                     delete stylesheet["role"];
@@ -4532,7 +4607,7 @@ xover.Store = function (xml) {
         __document = xover.xml.createDocument(__document)
     }
 
-    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'documentElement', 'selectSingleNode', 'selectNodes', 'evaluate', 'toClipboard', 'addStylesheet', 'getStylesheet', 'stylesheets', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'toString', 'resolveNS', 'xml']) {
+    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'documentElement', 'selectSingleNode', 'selectNodes', 'evaluate', 'toClipboard', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'toString', 'resolveNS', 'xml']) {
         let prop_desc = Object.getPropertyDescriptor(__document, prop);
         if (!prop_desc) {
             continue
@@ -5407,6 +5482,7 @@ xover.dom.getScrollableElements = function (el) {
 
 xover.dom.updateScrollableElements = function (el) {
     var target = (el || (document.activeElement || {}).contentDocument || document);
+    //Object.keys(xover.dom.scrollableElements).filter(selector => document.querySelector(selector)).forEach(selector => xover.dom.scrollableElements[selector] = xover.dom.getScrollPosition(document.querySelector(selector))); //Updates all scrollable elements in sight even if they are not longer scrollable.
     let scrollable = xover.dom.getScrollableElements(target);
     scrollable.map(el => {
         let coordinates = xover.dom.getScrollPosition(el);
