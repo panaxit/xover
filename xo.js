@@ -2673,7 +2673,7 @@ xover.xml.createNamespaceDeclaration = function () {
 xover.Response = function (response, request) {
     if (!(this instanceof xover.Response)) return new xover.Response(response);
     let _original = response.clone();
-    let file_name = new URL(response.url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
+    let file_name = new URL(request.url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
     if (response.status == 404) {
         if (file_name in xover.library.defaults) {
             response = new Response(xover.library.defaults[file_name], { headers: { "Content-type": "text/xsl" } })
@@ -4775,7 +4775,14 @@ xover.post.to = async function (request, payload, settings = {}) {
     return xover.fetch(request, settings);
 }
 
-xover.json.toXML = function (json) {
+xover.xml.fromCSV = function (csv, settings = {}) {
+    let { dataset = "dataset", row = "row", cell = "cell" } = settings;
+    let xml = xover.xml.createDocument(`<${dataset}><${row}>` + csv.replace(new RegExp('(,|\n|^)("(?:(?:"")*[^"]*)*"|[^",\n]*|(?:\n|$))', 'g'), `</${row}>$1<${row}><${cell}>$2</${cell}>`).replace(new RegExp(`</${row}>,<${row}>`, 'ig'), '').replace(new RegExp(`<(${cell})>"([^"]*)"</\1>`, 'ig'), `<$1>$2</$1>`) + `</${row}></${dataset}>`);
+    xml.selectNodes('*/*[1]').removeAll();
+    return xml
+}
+
+xover.xml.fromJSON = function (json) {
     if (typeof (json) == "string") {
         json = json.replace(/\r\n/g, "")
     } else if (json.constructor == {}.constructor || json.constructor == [].constructor) {
