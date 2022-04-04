@@ -621,8 +621,8 @@ xover.listener.on('popstate', async function (event) {
     //    setTimeout(async () => {
     if (event.state) delete event.state.active;
     let hashtag = (xover.state.seed || '#')
-    if (xover.stores[hashtag]) {
-        let store = xover.stores[hashtag];
+    let store = xover.stores[hashtag];
+    if (store) {
         await store.render()//xover.state.active == xover.state.seed || xover.state.active == store.tag);
         if (store instanceof xover.Store && !store.isRendered) {
             xover.stores.active = store;
@@ -1497,7 +1497,8 @@ xover.sources = new Proxy({}, {
             if (match_key) {
                 return xover.sources[_manifest[match_key]];
             } else {
-                return new xover.Source(key);
+                xover.sources[key] = new xover.Source(key);
+                return xover.sources[key];
             }
             //do {
             //    new_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")))) || key;
@@ -1583,7 +1584,7 @@ xover.xml.namespaces["xhtml"] = "http://www.w3.org/1999/xhtml"
 
 /* Binding */
 xover.xml.namespaces["request"] = "http://panax.io/fetch/request"
-xover.xml.namespaces["source"] = "http://panax.io/fetch/request"
+xover.xml.namespaces["source"] = "http://panax.io/source"
 xover.xml.namespaces["binding"] = "http://panax.io/xover/binding"
 xover.xml.namespaces["changed"] = "http://panax.io/xover/binding/changed"
 xover.xml.namespaces["source_text"] = "http://panax.io/fetch/request/text"
@@ -2192,7 +2193,7 @@ Object.defineProperty(xover.library, "xover/databind.xslt", {
 <xsl:stylesheet
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
   xmlns:x="http://panax.io/xover"
-  xmlns:source="http://panax.io/fetch/request"
+  xmlns:source="http://panax.io/source"
   xmlns:prev="http://panax.io/xover/state/previous"
   xmlns:changed="http://panax.io/xover/binding/changed"
   xmlns:fetch="http://panax.io/fetch"
@@ -3638,9 +3639,9 @@ xover.library.defaults["message.xslt"] = xover.xml.createDocument(`
     </div>
   </xsl:template>
 </xsl:stylesheet>`);
-xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:x="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/fetch/request" x:id="shell" x:hash=""></shell:shell>');
+xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:x="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" x:id="shell" x:hash=""></shell:shell>');
 
-xover.stores.defaults["#shell"] = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:x="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/fetch/request" x:id="shell" x:hash=""></shell:shell>');
+xover.stores.defaults["#shell"] = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:x="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" x:id="shell" x:hash=""></shell:shell>');
 
 xover.stores.defaults["#settings"] = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="settings.xslt" role="settings" target="@#shell @#settings"?><shell:settings xmlns:shell="http://panax.io/shell"/>');
 xover.init = async function () {
@@ -3862,7 +3863,7 @@ xover.Store = function (xml, ...args) {
     let _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
     let _hash = config && config['hash'] || undefined;
     let _initiator = config && config["initiator"] || undefined;
-    let _store_stylesheets = [];
+    let _store_stylesheets;
     let _library = new Proxy({}, {
         get: function (target, name) {
             return target[name];
@@ -4323,7 +4324,7 @@ xover.Store = function (xml, ...args) {
                         var response_handler = (response) => {
                             //var response_is_message = !!response.documentElement.selectSingleNode('self::x:message');
                             //if (!response_is_message && !response.selectSingleNode(`//${root_node}`)) {
-                            //    let new_node = xover.xml.createDocument(`<${root_node} xmlns:source="http://panax.io/fetch/request"/>`);
+                            //    let new_node = xover.xml.createDocument(`<${root_node} xmlns:source="http://panax.io/source"/>`);
                             //    new_node.documentElement.appendChild(response.documentElement);
                             //    response.appendChild(new_node.documentElement);
                             //}
@@ -4383,7 +4384,7 @@ xover.Store = function (xml, ...args) {
             if (this.state.restoring) return;
             let tag = self.tag;
             //this.state.rendering = true;
-            if (!__document.documentElement || __document.selectSingleNode("//*[not(@x:id)]")) {
+            if (!__document.documentElement || __document.selectSingleNode("//*[not(@x:id)]") || !_store_stylesheets) {
                 await this.initialize();
             }
 
@@ -4516,7 +4517,7 @@ xover.Store = function (xml, ...args) {
             let style_definition, pi;
             let document = (this.document || this);
             if (definition instanceof ProcessingInstruction) {
-                style_definition = definition;
+                pi = definition;
             }
             else if (definition.constructor === {}.constructor) {
                 definition = xover.json.merge({ type: 'text/xsl' }, definition);
@@ -4526,6 +4527,7 @@ xover.Store = function (xml, ...args) {
             } else {
                 throw (new Error("Not a valid stylesheet"));
             }
+            pi.store = store;
             Object.defineProperty(pi, 'parentNode', {
                 value: store,
                 writable: true, enumerable: false, configurable: true
@@ -4601,9 +4603,9 @@ xover.Store = function (xml, ...args) {
         },
         writable: false, enumerable: false, configurable: false
     });
-
     Object.defineProperty(this, 'initialize', {
         value: async function () {
+            _store_stylesheets = _store_stylesheets || [];
             store.state.initializing = true;
             //__document.documentElement && Object.entries(xover.manifest.settings || {}).filter(([key, value]) => !(key.match(/^#/)) && value["stylesheets"] && _manifest_filter_xpath(key)).reduce((stylesheet, [key, value]) => { return value["stylesheets"] }, []).map(stylesheet => __document.addStylesheet(stylesheet));
 
@@ -4611,7 +4613,7 @@ xover.Store = function (xml, ...args) {
                 await __document.fetch();
             }
             this.reseed();
-            _store_stylesheets = xover.manifest.getSettings(this, 'stylesheets').map(stylesheet => __document.createProcessingInstruction('xml-stylesheet', stylesheet));
+            xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet));
 
             await Promise.all(_store_stylesheets.filter(stylesheet => stylesheet.role == 'init').map(stylesheet => stylesheet.document));
 
@@ -4632,6 +4634,7 @@ xover.Store = function (xml, ...args) {
                 }
             });
             store.state.initializing = undefined;
+            store.state.initialized = true;
             onComplete();
         },
         writable: false, enumerable: false, configurable: false
@@ -4777,7 +4780,7 @@ xover.post.to = async function (request, payload, settings = {}) {
 
 xover.xml.fromCSV = function (csv, settings = {}) {
     let { dataset = "dataset", row = "row", cell = "cell" } = settings;
-    let xml = xover.xml.createDocument(`<${dataset}><${row}>` + csv.replace(new RegExp('(,|\n|^)("(?:(?:"")*[^"]*)*"|[^",\n]*|(?:\n|$))', 'g'), `</${row}>$1<${row}><${cell}>$2</${cell}>`).replace(new RegExp(`</${row}>,<${row}>`, 'ig'), '').replace(new RegExp(`<(${cell})>"([^"]*)"</\1>`, 'ig'), `<$1>$2</$1>`) + `</${row}></${dataset}>`);
+    let xml = xover.xml.createDocument(`<${dataset}><${row}>` + csv.replace(new RegExp('(,|\n|^)("(?:(?:"")*[^"]*)*"|[^",\n]*|(?:\n|$))', 'g'), `</${row}>$1<${row}><${cell}>$2</${cell}>`).replace(new RegExp(`</${row}>,<${row}>`, 'ig'), '').replace(new RegExp(`<(${cell})>"([^"]*)"</\\1>`, 'ig'), `<$1>$2</$1>`) + `</${row}></${dataset}>`);
     xml.selectNodes('*/*[1]').removeAll();
     return xml
 }
@@ -6620,7 +6623,7 @@ xover.modernize = function (targetWindow) {
                 } else {
                     var xsltProcessor = new XSLTProcessor();
                     xsltProcessor.importStylesheet(xover.xml.createDocument(`
-                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:source="http://panax.io/fetch/request">
+                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:source="http://panax.io/source">
                   <xsl:output method="xml" indent="no" omit-xml-declaration="yes"/>
                   <xsl:template match="*" priority="-1">
                     <output>
