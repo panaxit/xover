@@ -258,7 +258,7 @@ xover.stores = new Proxy({}, {
         }
         return exists && !(key in self)
     }, has: function (self, key) {
-        return key in self || key.toLowerCase() in self || key in xover.session || key in ((xover.manifest.server || {}).endpoints || {});
+        return key in self || key.toLowerCase() in self || key in xover.session || key in (xover.manifest.server || {});
     }
 });
 
@@ -366,7 +366,7 @@ Object.defineProperties(xover.database, {
             return new Promise(async (resolve, reject) => {
                 let stores = Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(xover.database)).filter(([prop, func]) => func["get"] || func["enumerable"]));
                 //let database = await indexedDB.databases().then(databases => databases.find(db => db.name == 'xover.database'));
-                let connection = indexedDB.open('xover.database', Object.keys(stores).length);
+                let connection = indexedDB.open('xover.database', 3);
                 let handler = function (event) {
                     let store = event.target.result.transaction([key], method).objectStore(key);
                     store.add = function (...args) {
@@ -700,7 +700,7 @@ xover.mimeTypes["xslt"] = "text/xsl"
 
 xover.Manifest = function (manifest = {}) {
     let base_manifest = {
-        "server": { "database_id": undefined, "endpoints": {} },
+        "server": {},
         "sources": {},
         "stylesheets": [],
         "namespaces": {},
@@ -776,7 +776,7 @@ xover.messages = {};
 xover.server = new Proxy({}, {
     get: function (self, key) {
         let handler = (async (...args) => {
-            if (!(xover.manifest.server && xover.manifest.server.endpoints && xover.manifest.server.endpoints[key])) {
+            if (!(xover.manifest.server && xover.manifest.server[key])) {
                 throw (new Error(`Endpoint "${key}" not configured`));
             }
             args = args.filter(el => el);
@@ -790,7 +790,7 @@ xover.server = new Proxy({}, {
 
             var url, params;
             let return_value, request, response;
-            url = new xover.URL(xover.manifest.server["endpoints"][key], undefined, settings);
+            url = new xover.URL(xover.manifest.server[key], undefined, settings);
             if (payload) {
                 if (url.method === 'POST' || payload instanceof Document || !Object.entries(Object.fromEntries(new URLSearchParams(payload).entries())).length) {
                     settings["body"] = payload;
@@ -838,7 +838,7 @@ xover.server = new Proxy({}, {
             });
         })
 
-        if (self.hasOwnProperty(key)/* && xover.manifest.server && xover.manifest.server.endpoints && xover.manifest.server.endpoints[key]*/) {
+        if (self.hasOwnProperty(key)/* && xover.manifest.server && xover.manifest.server[key]*/) {
             Object.defineProperty(self[key], 'fetch', {
                 value: function (...args) {
                     let settings = args.pop() || {};
@@ -862,13 +862,13 @@ xover.server = new Proxy({}, {
                 writable: true, enumerable: false, configurable: false
             });
             return self[key];
-        } else if (!(xover.manifest.server && xover.manifest.server.endpoints && xover.manifest.server.endpoints[key])) {
+        } else if (!(xover.manifest.server && xover.manifest.server[key])) {
             throw (new Error(`Endpoint "${key}" not configured`));
         } else {
             return handler;
         }
     }, has: function (self, key) {
-        return key in self || key in ((xover.manifest.server || {}).endpoints || {});
+        return key in self || key in (xover.manifest.server || {});
     }
 })
 
@@ -983,7 +983,7 @@ Object.defineProperty(xover.session, 'checkStatus', {
     value: async function (settings) {
         if (!(navigator.onLine || 'status' in xover.server)) return xover.session.status;
         let server_status = {};
-        //if (!(((xover.manifest.server || {}).endpoints || {}).session)) {
+        //if (!((xover.manifest.server || {}).session)) {
         //    return Promise.reject(new Error("Session endpoint not configured."));
         //}
         if ('status' in xover.server) {
@@ -1489,7 +1489,8 @@ xover.sources = new Proxy({}, {
         if (key in self) {
             return self[key];
         } else if (key in _manifest) {
-            let source = _manifest[key] && xover.sources[_manifest[key]] || null;
+            let source;
+            source = _manifest[key] && xover.sources[_manifest[key]] || null;
             return source;
         } else {
             let tag_name = key;
@@ -1652,8 +1653,8 @@ Object.defineProperty(xover.session, 'updateSession', {
             xover.session[pair[0]] = pair[1];
         }
         /*Se deshabilita la actualización por default*/
-        if (sync && navigator.onLine && (xover.manifest.server || {}).endpoints["session"] && await xover.session.status == 'authorized') {
-            xover.post.to((xover.manifest.server || {}).endpoints["session"], session_variables).catch(() => {
+        if (sync && navigator.onLine && (xover.manifest.server || {})["session"] && await xover.session.status == 'authorized') {
+            xover.post.to((xover.manifest.server || {})["session"], session_variables).catch(() => {
                 console.log("Error al enviar sesión")
             })
         }
@@ -1832,7 +1833,7 @@ xover.dom.getGeneratedPageURL = function (config) {
 
 Object.defineProperty(xover.server, 'uploadFile', {
     value: async function (source, saveAs) {
-        if (!(xover.manifest.server["endpoints"] && xover.manifest.server["endpoints"]["uploadFile"])) {
+        if (!(xover.manifest.server["uploadFile"])) {
             throw (new Error("Endpoint for uploadFile is not defined in the manifest"));
         }
         let file;
@@ -1860,10 +1861,10 @@ Object.defineProperty(xover.server, 'uploadFile', {
             //
             //var that = this;
             //if (xover.dom.intervals[control.id]) delete xover.dom.intervals[control.id];
-            //if (xover.manifest.server["endpoints"] && xover.manifest.server["endpoints"]["uploadFileManager"]) {
+            //if (xover.manifest.server["uploadFileManager"]) {
             //    xover.dom.intervals[control.id] = setInterval(function () {
             //        var upload_check = new XMLHttpRequest();
-            //        upload_check.open('GET', xover.manifest.server["endpoints"]["uploadFileManager"] + '?UploadID=' + control.id);// + control.id);
+            //        upload_check.open('GET', xover.manifest.server["uploadFileManager"] + '?UploadID=' + control.id);// + control.id);
             //        upload_check.onreadystatechange = function (oEvent) {
             //            if (upload_check.readyState === 4) {
             //                var json_response = JSON.parse(upload_check.responseText);
@@ -1892,7 +1893,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
                     formData.append(file.name, file);
 
                     //var request = new XMLHttpRequest();
-                    let request = new xover.Request(xover.manifest.server["endpoints"]["uploadFile"] + `?UploadID=${file.id}&saveAs=${file.saveAs}&parentFolder=${(file.parentFolder || '').replace(/\//g, '\\')}`, { method: 'POST', body: formData });
+                    let request = new xover.Request(xover.manifest.server["uploadFile"] + `?UploadID=${file.id}&saveAs=${file.saveAs}&parentFolder=${(file.parentFolder || '').replace(/\//g, '\\')}`, { method: 'POST', body: formData });
                     fetch(request).then(async response => {
                         let file_name = response.headers.get("File-Name");
                         if (!file_name) throw (new Error("Cound't get file name"));
@@ -2142,7 +2143,7 @@ Object.defineProperty(xover.library, 'reload', {
         //    xover.storage.disable(file_name_or_array);
         //}
         xover.library.load(file_name_or_array).then(response => {
-            if (((xover.manifest.server || {}).endpoints || {}).session) {
+            if ((xover.manifest.server || {}).session) {
                 xover.session.checkStatus().then(() => xover.dom.refresh());
             }
         });
@@ -4020,7 +4021,7 @@ xover.Store = function (xml, ...args) {
         });
     }
 
-    //for (let endpoint in xover.manifest.server.endpoints) {
+    //for (let endpoint in xover.manifest.server) {
     //    Object.defineProperty(store, endpoint, {
     //        value: async function (...arguments) {
     //            let args = arguments;
@@ -4206,7 +4207,7 @@ xover.Store = function (xml, ...args) {
             if (!(context.isActive)) {
                 return;
             }
-            if (!(!(((xover.manifest.server || {}).endpoints || {}).login && !(xover.session.getKey('status') == 'authorized')) && context && typeof (context.selectSingleNode) != 'undefined' && (context.selectSingleNode('.//@source:*|.//request:*|.//source:*') || context.stylesheets.filter(stylesheet => stylesheet.role == 'binding' || (stylesheet.target || '').match(/^self::./)).length))) {
+            if (!(!((xover.manifest.server || {}).login && !(xover.session.getKey('status') == 'authorized')) && context && typeof (context.selectSingleNode) != 'undefined' && (context.selectSingleNode('.//@source:*|.//request:*|.//source:*') || context.stylesheets.filter(stylesheet => stylesheet.role == 'binding' || (stylesheet.target || '').match(/^self::./)).length))) {
                 return; //*** Revisar si en vez de salir, revisar todo el documento
             }
             //if (!context.selectSingleNode('//@source:*') || context.selectSingleNode('.//@request:*[local-name()!="init"]')) {
@@ -4272,7 +4273,7 @@ xover.Store = function (xml, ...args) {
             ////        original.selectSingleNode(`//*[@x:id="${attribute.ownerElement.getAttribute("x:id")}"]`).setAttributeNS(null, attribute.name, attribute.value, false);
             ////    });
             ////})
-            //if (!((xover.manifest.server || {}).endpoints || {}).request) {
+            //if (!(xover.manifest.server || {}).request) {
             //    return
             //}
 
@@ -4284,7 +4285,7 @@ xover.Store = function (xml, ...args) {
             requests = requests.filter(req => !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag].hasOwnProperty(req.nodeType == 1 ? req.getAttribute("command") : req.value)));
             if (requests.length) {
                 for (let node of requests) {
-                    if (!(node.prefix in ((xover.manifest.server || {}).endpoints || {}))) {
+                    if (!(node.prefix in (xover.manifest.server || {}))) {
                         console.warn(`Endpoint ${node.prefix} is not configured`)
                         continue;
                     }
@@ -4614,8 +4615,11 @@ xover.Store = function (xml, ...args) {
             }
             this.reseed();
             xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet));
-
+            if (!(_store_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
+                store.addStylesheet({ href: store.tag.substring(1) + '.xslt', target: "@#shell main" })
+            }
             await Promise.all(_store_stylesheets.filter(stylesheet => stylesheet.role == 'init').map(stylesheet => stylesheet.document));
+
 
             _store_stylesheets.filter(stylesheet => stylesheet.role == 'init' && !__document.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(stylesheet => {
                 let _document_stylesheet = __document.stylesheets[stylesheet.href];
@@ -6543,7 +6547,7 @@ xover.modernize = function (targetWindow) {
                 xover.listener.dispatchEvent(beforeRemove, attribute_node);
                 if (beforeRemove.cancelBubble || beforeRemove.defaultPrevented) return;
                 if (this.ownerDocument.selectSingleNode && this.ownerDocument.store) {
-                    //if (attribute != 'state:refresh' && ((xover.manifest.server || {}).endpoints || {}).login && !(xover.session.status == 'authorized')) {
+                    //if (attribute != 'state:refresh' && (xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
                     //    return;
                     //}
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
@@ -6675,7 +6679,7 @@ xover.modernize = function (targetWindow) {
             var insertBefore = Element.prototype.insertBefore
             Element.prototype.insertBefore = function (new_node) {
                 if ((this.ownerDocument || this) instanceof XMLDocument) {
-                    //if (((xover.manifest.server || {}).endpoints || {}).login && !(xover.session.status == 'authorized')) {
+                    //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
                     //    return;
                     //}
                     insertBefore.apply(this, arguments);
@@ -6698,7 +6702,7 @@ xover.modernize = function (targetWindow) {
                 new_node = (new_node.documentElement || new_node);
                 if ((this.ownerDocument || this) instanceof XMLDocument) {
                     let store = this.store;
-                    //if (((xover.manifest.server || {}).endpoints || {}).login && !(xover.session.status == 'authorized')) {
+                    //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
                     //    return;
                     //}
                     ////var refresh = (refresh ?? !!xover.stores.getActive()[this.ownerDocument.store.tag]);
