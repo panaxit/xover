@@ -5503,7 +5503,7 @@ xover.dom.getScrollPosition = function (el) {
     {
         x: (scrollParent.pageXOffset !== undefined ? scrollParent.pageXOffset : scrollParent.scrollLeft),
         y: (scrollParent.pageYOffset !== undefined ? scrollParent.pageYOffset : scrollParent.scrollTop),
-        target: scrollParent
+        target: scrollParent.selector
     }
     return coordinates;
 }
@@ -5545,7 +5545,7 @@ xover.dom.getScrollableElements = function (el) {
 
 xover.dom.updateScrollableElements = function (el) {
     var target = (el || (document.activeElement || {}).contentDocument || document);
-    //Object.keys(xover.dom.scrollableElements).filter(selector => document.querySelector(selector)).forEach(selector => xover.dom.scrollableElements[selector] = xover.dom.getScrollPosition(document.querySelector(selector))); //Updates all scrollable elements in sight even if they are not longer scrollable.
+    Object.keys(xover.dom.scrollableElements).filter(selector => document.querySelector(selector)).forEach(selector => xover.dom.scrollableElements[selector] = xover.dom.getScrollPosition(document.querySelector(selector))); //Updates all scrollable elements in sight even if they are not longer scrollable.
     let scrollable = xover.dom.getScrollableElements(target);
     scrollable.map(el => {
         let coordinates = xover.dom.getScrollPosition(el);
