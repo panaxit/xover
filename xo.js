@@ -6205,16 +6205,22 @@ xover.modernize = function (targetWindow) {
                         if (!store) {
                             return null;
                         } else {
-                            let node = store.find(this.getAttribute("xo-source")) || store.find(this.id) || store.find([this.closest("[xo-scope]")].map(el => el && el.getAttribute("xo-scope") || null)[0]);
-                            //return attribute || node || store;
-                            //if (!node) {
-                            //    throw ("Node doesn't exist anymore!")
-                            //}
-                            if (node && this.getAttribute("xo-attribute")) {
-                                if (node.getAttribute(this.getAttribute("xo-attribute")) === null) {
-                                    node.setAttribute(this.getAttribute("xo-attribute"), "");
+                            let dom_scope = store.find(this.id) && this || this.closest("[xo-scope],[xo-source]");
+                            let attribute = this.closest("[xo-attribute]");
+                            if (!dom_scope) {
+                                return null;
+                            } else if (dom_scope.contains(attribute)) {
+                                attribute = attribute.getAttribute("xo-attribute");
+                            } else {
+                                attribute = null;
+                            }
+                            let node = store.find(this.id) || store.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
+
+                            if (node && attribute) {
+                                if (node.getAttribute(attribute) === null) {
+                                    node.setAttribute(attribute, "");
                                 }
-                                return node.selectSingleNode(`@${this.getAttribute("xo-attribute")}`);
+                                return node.selectSingleNode(`@${attribute}`);
                             }
                             return node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
                         }
