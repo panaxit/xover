@@ -61,10 +61,11 @@ xover.cryptography.encodeMD5 = function (str) {
      * Append padding bits and the length, as described in the MD5 standard.
      */
     function str2blks_MD5(str) {
+        let i;
         nblk = ((str.length + 8) >> 6) + 1;
         blks = new Array(nblk * 16);
-        for (let i = 0; i < nblk * 16; i++) blks[i] = 0;
-        for (let i = 0; i < str.length; i++)
+        for (i = 0; i < nblk * 16; i++) blks[i] = 0;
+        for (i = 0; i < str.length; i++)
             blks[i >> 2] |= str.charCodeAt(i) << ((i % 4) * 8);
         blks[i >> 2] |= 0x80 << ((i % 4) * 8);
         blks[nblk * 16 - 2] = str.length * 8;
@@ -1018,7 +1019,7 @@ Object.defineProperty(xover.session, 'login', {
             return false;
         }
     }
-    , writable: false, enumerable: false, configurable: false
+    , writable: true, enumerable: false, configurable: true
 });
 
 Object.defineProperty(xover.session, 'logout', {
@@ -1341,10 +1342,10 @@ xover.Source = function (source, tag) {
     let _isActive = undefined;
     let self = this;
     let __document = xover.xml.createDocument();
-    __document.url = __document.url || new xover.URL(source);
-    __document.parentNode = this;
-    Object.defineProperty(this, 'source', {
-        value: source,
+    //__document.url = __document.url || new xover.URL(source);
+    //__document.parentNode = this;
+    Object.defineProperty(__document, 'source', {
+        value: this,
         writable: false, enumerable: false, configurable: false
     });
 
@@ -1438,42 +1439,32 @@ xover.Source = function (source, tag) {
                 }
             }
         });
-    } else if (isObject(source) && source["url"]) {
-        Object.defineProperty(this, 'fetch', {
-            value: async function () {
-                try {
-                    let document = await xover.fetch.xml(url, source);
-                    document instanceof Document && source["stylesheets"] && source["stylesheets"].reverse().map(stylesheet => {
-                        document.addStylesheet(stylesheet);
-                    });
-                    document = new xover.Store(document, { tag: tag });
-                    await document.render(/*true*/);
-                    if (!document.isRendered) {
-                        xover.stores.active = document;
-                    }
-                    return document;
-                } catch (e) { }
-            },
-            writable: false, enumerable: false, configurable: false
-        });
-    } else if (isObject(source) && !(source instanceof URL)) {
+    } else {
         Object.defineProperty(this, 'fetch', {
             value: async function () {
                 let promises = []
-                Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
-                    let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
-                    settings["tag"] = settings["tag"] || tag;
-                    promises.push(new Promise(async (resolve, reject) => {
-                        let document = await xover.server[endpoint].apply(this, [parameters, settings, payload]);
-                        await document.render(/*true*/);
-                        if (document instanceof XMLDocument && !document.isRendered) {
-                            xover.stores.active = document;
-                        }
-                        resolve(document);
-                    }));
-                })
-                await Promise.all(promises);
-                return xover.stores[tag];
+                if (isObject(source)) {
+                    Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
+                        let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
+                        //settings["tag"] = settings["tag"] || tag;
+                        promises.push(new Promise(async (resolve, reject) => {
+                            let document = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
+                            await document.render(/*true*/);
+                            if (document instanceof XMLDocument && !document.isRendered) {
+                                xover.stores.active = document;
+                            }
+                            resolve(document);
+                        }));
+                    })
+                    await Promise.all(promises);
+                    return xover.stores[tag];
+                } else {
+                    try {
+                        let document = await xover.fetch.xml(source);
+                        return document;
+                    } catch (e) {
+                    }
+                }
             },
             writable: false, enumerable: false, configurable: false
         });
@@ -1490,7 +1481,12 @@ xover.sources = new Proxy({}, {
             return self[key];
         } else if (key in _manifest) {
             let source;
-            source = _manifest[key] && xover.sources[_manifest[key]] || null;
+            let manifest_value = _manifest[key];
+            if (manifest_value.constructor === {}.constructor) {
+                source = new xover.Source(manifest_value).document;
+            } else {
+                source = manifest_value && xover.sources[manifest_value] || null;
+            }
             return source;
         } else {
             let tag_name = key;
@@ -2738,10 +2734,14 @@ xover.Response = function (response, request) {
                     await response.text().then(text => body = text);
                     responseText = body;
                 } else if (contentType.toLowerCase().indexOf("json") != -1) {
-                    await response.json().then(json => body = json);
+                    body = await response.json();
                     responseText = JSON.stringify(body);
                 } else {
-                    await response.text().then(text => body = text);
+                    body = await response.text();
+                    if (body.substr(0, 2) === '��') { //Removes BOM mark
+                        body = body.replace(/\x00/ig, '');
+                        body = body.substr(2);
+                    }
                     responseText = body;
                 }
             }
@@ -2907,7 +2907,7 @@ xover.Request = function (request, settings = {}) {
         let fileExtension = url.pathname.substring(url.pathname.lastIndexOf('.') + 1);
         headers = new Headers(settings["headers"]);
         headers.set("Accept", (headers.get("Accept") || xover.mimeTypes[fileExtension] || '*/*'));
-        settings["method"] = url.method;
+        settings["method"] = url.method || request.method;
         settings = xover.json.merge(settings, {
             headers: headers
         });
@@ -6017,11 +6017,17 @@ xover.modernize = function (targetWindow) {
             }
 
             XMLDocument.prototype.fetch = async function () {
-                if (!this.url) {
-                    throw (new Error("URL attribute is not defined"))
+                if (!this.hasOwnProperty("source")) {
+                    throw (new Error("Document is not associated to a Source and can't be fetched"));
                 }
-                let document = await xover.fetch.xml(this.url, { rejectCodes: 400 });
-                return this.replaceBy(document);
+                let new_document;
+                new_document = await this.source.fetch();
+                if (new_document) {
+                    new_document = this.replaceBy(new_document);
+                } else {
+                    new_document = this;
+                }
+                return new_document;
             }
 
             if (!XMLDocument.prototype.hasOwnProperty('type')) {
@@ -6609,8 +6615,11 @@ xover.modernize = function (targetWindow) {
             XMLDocument.prototype.replaceBy = function (new_document) {
                 if (new_document !== this) {
                     [...this.childNodes].removeAll(false);
-                    this.append(...new_document.childNodes)
+                    if (new_document.childNodes) {
+                        this.append(...new_document.childNodes)
+                    }
                 }
+                return this;
             }
 
             Attr.prototype.remove = function (refresh) {
