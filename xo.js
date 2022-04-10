@@ -2516,7 +2516,14 @@ xover.NodeSet = function (nodeSet = []) {
         },
         writable: false, enumerable: false, configurable: false
     });
-    Object.defineProperty(nodeSet, 'set', Object.getOwnPropertyDescriptor(nodeSet, 'setAttribute'));
+    Object.defineProperty(nodeSet, 'set', {
+        value: async function (...args) {
+            nodeSet.forEach((target) => {
+                target.set.apply(target, args);
+            });
+        },
+        writable: false, enumerable: false, configurable: false
+    });
     Object.defineProperty(nodeSet, 'setAttributeNS', {
         value: async function (attribute, value, refresh) {
             attribute = attribute.replace(/^@/, "");
@@ -5323,7 +5330,7 @@ xover.string.getFileParts = function (file_name = '') {
 
 xover.json.isValid = function (input) {
     try {
-        return [{}.constructor,[].constructor].includes(JSON.parse(JSON.stringify(input)).constructor)
+        return [{}.constructor, [].constructor].includes(JSON.parse(JSON.stringify(input)).constructor)
     } catch (e) {
         return false;
     }
@@ -6549,7 +6556,7 @@ xover.modernize = function (targetWindow) {
             var original_getAttributeNode = Element.prototype.getAttributeNode;
             Element.prototype.getAttributeNode = function (attribute) {
                 attribute = attribute.replace(/^@/, "");
-                if (!this.hasAttribute(attribute)) {
+                if (!this.hasAttribute(attribute) && !["http://www.w3.org/2000/svg"].includes(this.namespaceURI)) {
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
                     let namespace = this.resolveNS(prefix) || xover.xml.namespaces[prefix];
                     setAttributeNS_original.call(this, namespace, attribute, "");
@@ -6619,10 +6626,12 @@ xover.modernize = function (targetWindow) {
             }
 
             Attr.prototype.set = function (value) {
+                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 if (this.value != value) {
                     this.parentNode.store.render();
                 }
-                let return_value = this.value = value;
+                this.value = value;
+                return this;
             }
 
             if (!Attr.prototype.hasOwnProperty('parentNode')) {
