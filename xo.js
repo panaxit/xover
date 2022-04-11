@@ -367,7 +367,7 @@ Object.defineProperties(xover.database, {
             return new Promise(async (resolve, reject) => {
                 let stores = Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(xover.database)).filter(([prop, func]) => func["get"] || func["enumerable"]));
                 //let database = await indexedDB.databases().then(databases => databases.find(db => db.name == 'xover.database'));
-                let connection = indexedDB.open('xover.database', 3);
+                let connection = indexedDB.open('xover.database', 4);
                 let handler = function (event) {
                     let store = event.target.result.transaction([key], method).objectStore(key);
                     store.add = function (...args) {
@@ -2523,11 +2523,11 @@ xover.NodeSet = function (nodeSet = []) {
         writable: false, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'setAttributeNS', {
-        value: async function (attribute, value, refresh) {
+        value: async function (namespaceURI, attribute, value, refresh) {
             attribute = attribute.replace(/^@/, "");
             nodeSet.map((target) => {
                 if (target instanceof Element || target.nodeType == 1) {
-                    target.setAttributeNS(undefined, attribute, value, refresh);
+                    target.setAttributeNS(namespaceURI, attribute, value, refresh);
                 }
             });
         },
@@ -3880,7 +3880,7 @@ xover.Store = function (xml, ...args) {
     let _redo = [];
     let config = args[0] && args[0].constructor === {}.constructor && args[0];
     let on_complete = !config && args[0] && isFunction(args[0]) && args[0] || config && config["onComplete"];
-    let _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
+    let _tag;
     let _hash = config && config['hash'] || undefined;
     let _initiator = config && config["initiator"] || undefined;
     let _store_stylesheets;
@@ -4534,6 +4534,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'addStylesheet', {
         value: async function (definition, target, refresh) {
+            _store_stylesheets = _store_stylesheets || [];
             let style_definition, pi;
             let document = (this.document || this);
             if (definition instanceof ProcessingInstruction) {
@@ -4623,6 +4624,13 @@ xover.Store = function (xml, ...args) {
         },
         writable: false, enumerable: false, configurable: false
     });
+    Object.defineProperty(this, 'fetch', {
+        value: async function () {
+            await __document.fetch();
+            this.reseed();
+        },
+        writable: false, enumerable: false, configurable: false
+    });
     Object.defineProperty(this, 'initialize', {
         value: async function () {
             _store_stylesheets = _store_stylesheets || [];
@@ -4701,6 +4709,7 @@ xover.Store = function (xml, ...args) {
 
     }
     this.document = __document;
+    _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }));
     return this;
 }
@@ -6852,7 +6861,7 @@ xover.modernize = function (targetWindow) {
                 //if (navigator.userAgent.indexOf("Safari") == -1) {
                 //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                 //}
-                this.$$(`descendant-or-self::*[not(@xo:id)]`).setAttributeNS('xo:id', (function () { return `${this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
+                this.$$(`descendant-or-self::*[not(@xo:id)]`).setAttributeNS(xover.xml.namespaces["xo"], 'xo:id', (function () { return `${this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
                 return this;
             }
 
