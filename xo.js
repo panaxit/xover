@@ -1442,29 +1442,26 @@ xover.Source = function (source, tag) {
     } else {
         Object.defineProperty(this, 'fetch', {
             value: async function () {
-                let promises = []
-                if (isObject(source)) {
-                    Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
-                        let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
-                        //settings["tag"] = settings["tag"] || tag;
-                        promises.push(new Promise(async (resolve, reject) => {
-                            let document = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
-                            await document.render(/*true*/);
-                            if (document instanceof XMLDocument && !document.isRendered) {
-                                xover.stores.active = document;
+                return new Promise(async (resolve, reject) => {
+                    if (isObject(source)) {
+                        Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
+                            let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
+                            try {
+                                let document = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
+                                resolve(document)
+                            } catch (e) {
+                                reject(e)
                             }
-                            resolve(document);
-                        }));
-                    })
-                    await Promise.all(promises);
-                    return xover.stores[tag];
-                } else {
-                    try {
-                        let document = await xover.fetch.xml(source);
-                        return document;
-                    } catch (e) {
+                        })
+                    } else {
+                        try {
+                            let document = await xover.fetch.xml(source);
+                            resolve(document)
+                        } catch (e) {
+                            reject(e)
+                        }
                     }
-                }
+                });
             },
             writable: false, enumerable: false, configurable: false
         });
@@ -1483,7 +1480,8 @@ xover.sources = new Proxy({}, {
             let source;
             let manifest_value = _manifest[key];
             if (manifest_value.constructor === {}.constructor) {
-                source = new xover.Source(manifest_value).document;
+                xover.sources[key] = new xover.Source(manifest_value).document;
+                source = xover.sources[key];
             } else {
                 source = manifest_value && xover.sources[manifest_value] || null;
             }
@@ -1494,7 +1492,7 @@ xover.sources = new Proxy({}, {
             if (match_key) {
                 return xover.sources[_manifest[match_key]];
             } else {
-                xover.sources[key] = new xover.Source(key);
+                xover.sources[key] = new xover.Source(key).document;
                 return xover.sources[key];
             }
             //do {
