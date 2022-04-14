@@ -212,10 +212,10 @@ xover.stores = new Proxy({}, {
             //    //    self[key] = new xover.Store(restored_document, { tag: key });
             //    //}
             //    return self[key];
-        } else if (key[0] == '#' && key in xover.sources) {
+        } else if (key[0] == '#' /*&& key in xover.sources*/ ) {
             xover.stores[key] = new xover.Store(xover.sources[key], { tag: key });
             return xover.stores[key];
-        } else if (key[0] == '#' && key in xover.stores.defaults) {
+        } /*else if (key[0] == '#' && key in xover.stores.defaults) {
             let _store = key in xover.stores.defaults && new xover.Store(xover.stores.defaults[key], { tag: key });
             if (_store) {
                 self[key] = _store;
@@ -225,7 +225,7 @@ xover.stores = new Proxy({}, {
             return xover.stores[key.toLowerCase()];
         } else {
             return;
-        }
+        }*/
     },
     set: function (self, key, value) {
         let refresh;
@@ -337,9 +337,9 @@ Object.defineProperty(xover.database, 'sources', {
             let record = await _get(record_key);
             let content = record && await record.text() || undefined;
             let document = content && xover.xml.createDocument(content) || undefined;
-            if (document) {
-                document.href = new xover.URL(file_name);
-            }
+            //if (document) {
+            //    document.href = new xover.URL(file_name);
+            //}
             return document;
         }
         return store;
@@ -1444,7 +1444,11 @@ xover.Source = function (source, tag) {
         Object.defineProperty(this, 'fetch', {
             value: async function () {
                 let promises = []
-                if (isObject(source)) {
+                let sources = await xover.database.sources;
+                let document = await sources.get(tag);
+                if (document) {
+                    return document;
+                } else if (isObject(source)) {
                     Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
                         let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
                         //settings["tag"] = settings["tag"] || tag;
@@ -1458,10 +1462,18 @@ xover.Source = function (source, tag) {
                         }));
                     })
                     await Promise.all(promises);
+                    if (tag) {
+                        xover.database.write('sources', tag, promises.pop());
+                    }
                     return xover.stores[tag];
                 } else {
                     try {
                         let document = await xover.fetch.xml(source);
+                        if (tag) {
+                            //if (return_value instanceof XMLDocument && !return_value.selectSingleNode("xsl:*")) {
+                            xover.database.write('sources', tag, document);
+                            //}
+                        }
                         return document;
                     } catch (e) {
                     }
@@ -1480,37 +1492,20 @@ xover.sources = new Proxy({}, {
         let value = undefined;
         if (key in self) {
             return self[key];
-        } else if (key in _manifest) {
-            let source;
-            let manifest_value = _manifest[key];
-            if (manifest_value.constructor === {}.constructor) {
-                source = new xover.Source(manifest_value).document;
-            } else {
-                source = manifest_value && xover.sources[manifest_value] || null;
-            }
-            return source;
         } else {
-            let tag_name = key;
-            let match_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i"))));
-            if (match_key) {
-                return xover.sources[_manifest[match_key]];
-            } else {
-                xover.sources[key] = new xover.Source(key);
-                return xover.sources[key];
-            }
-            //do {
-            //    new_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")))) || key;
-            //    value = _manifest[new_key];
-            //    if (value in _manifest) {
-            //        new_key = _manifest[new_key];
-            //    }
-            //    new_key && delete _manifest[new_key];
-            //} while (new_key !== last_key)
-            //return new xover.Source(value, key)
+            last_key = key;
+            do {
+                let tag_name = key;
+                new_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")))) || key;
+                value = _manifest[new_key];
+                if (value in _manifest) {
+                    new_key = _manifest[new_key];
+                }
+                new_key && delete _manifest[new_key];
+            } while (new_key !== last_key)
+            xover.sources[key] = new xover.Source(value, key).document;
+            return xover.sources[key];
         }
-        //if (!value) {
-        //    return null;
-        //}
     },
     set: function (self, key, input) {
         self[key] = input;
@@ -3038,8 +3033,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     settings["headers"] = (settings["headers"] || {});
     settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "text/xml, text/xsl")
 
-    let source = await xover.database.sources;
-    let response = await source.get(url) || await xover.fetch(url, settings, on_success);
+    let response = await xover.fetch(url, settings, on_success);
     let return_value = response.document || response;
     //if (!return_value.documentElement && response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
     //    return_value = xover.xml.fromJSON(return_value.documentElement);
@@ -3055,9 +3049,6 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     if (imports.length) {
         await Promise.all(imports.map(href => xover.library[href]));
         //await xover.library.load(imports);
-    }
-    if (return_value instanceof XMLDocument && !return_value.selectSingleNode("xsl:*")) {
-        xover.database.write('sources', url, return_value);
     }
     return return_value;
 }
@@ -3901,7 +3892,7 @@ xover.Store = function (xml, ...args) {
             value: async function () {
                 let href = __document.href || __document.url && __document.url.href;
                 xover.session.setKey(store.tag, { href: href });
-                xover.database.write('sources', href, __document);
+                xover.database.write('sources', __document.tag, __document);
             },
             writable: false, enumerable: false, configurable: false
         })
@@ -4669,7 +4660,8 @@ xover.Store = function (xml, ...args) {
             });
             store.state.initializing = undefined;
             store.state.initialized = true;
-            onComplete();
+            store.save();
+            //onComplete();
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -4683,9 +4675,6 @@ xover.Store = function (xml, ...args) {
             on_complete.apply(self, _this_arguments);
         };
         __document.status = "ready";
-        if (!store.state.restoring) {
-            store.save();
-        }
         //[__document.stylesheets["loading.xslt"]].removeAll();
     }
 
@@ -4737,7 +4726,7 @@ Object.defineProperty(xover.Store.prototype, 'fetch', {
 
 Object.defineProperty(xover.Store.prototype, 'isActive', {
     get: function () {
-        return (this.document === xover.stores.active || xover.state.activeTags().includes(this.tag) || this.isRendered || !window.document.querySelector("[xo-store]"));
+        return (this === xover.stores.active || xover.state.activeTags().includes(this.tag) || this.isRendered || !window.document.querySelector("[xo-store]"));
     },
     set: function (input) {
         if (input) {
