@@ -212,7 +212,7 @@ xover.stores = new Proxy({}, {
             //    //    self[key] = new xover.Store(restored_document, { tag: key });
             //    //}
             //    return self[key];
-        } else if (key[0] == '#' /*&& key in xover.sources*/ ) {
+        } else if (key[0] == '#' /*&& key in xover.sources*/) {
             xover.stores[key] = new xover.Store(xover.sources[key], { tag: key });
             return xover.stores[key];
         } /*else if (key[0] == '#' && key in xover.stores.defaults) {
@@ -316,30 +316,27 @@ Object.defineProperty(xover.database, 'sources', {
     get: async function () {
         let store = await xover.database.open('sources');
         let _add = store.add;
-        store.add = function (source, file_name = '') {
-            let record_key = file_name.href || file_name.hasOwnProperty(toString) && file_name.toString() || file_name;
+        store.add = function (source, name = '') {
+            let record_key = name;
             let file = new File([source], record_key, {
                 type: "application/xml",
             });
             _add(file, record_key);
         }
         let _put = store.put;
-        store.put = function (source, file_name = '') {
-            let record_key = file_name.href || file_name.hasOwnProperty(toString) && file_name.toString() || file_name;
+        store.put = function (source, name = '') {
+            let record_key = name;
             let file = new File([source], record_key, {
                 type: "application/xml",
             });
             _put(file, record_key);
         }
         let _get = store.get;
-        store.get = async function (file_name = '') {
-            let record_key = file_name.href || file_name.hasOwnProperty(toString) && file_name.toString() || file_name;
+        store.get = async function (name = '') {
+            let record_key = name;
             let record = await _get(record_key);
             let content = record && await record.text() || undefined;
             let document = content && xover.xml.createDocument(content) || undefined;
-            //if (document) {
-            //    document.href = new xover.URL(file_name);
-            //}
             return document;
         }
         return store;
@@ -3890,18 +3887,20 @@ xover.Store = function (xml, ...args) {
     if (!this.hasOwnProperty('save')) {
         Object.defineProperty(this, 'save', {
             value: async function () {
-                let href = __document.href || __document.url && __document.url.href;
-                xover.session.setKey(store.tag, { href: href });
-                xover.database.write('sources', __document.tag, __document);
+                let tag = __document.tag;
+                if (tag) {
+                    xover.session.setKey(store.tag, { source: tag });
+                    xover.database.write('sources', tag, __document);
+                }
             },
             writable: false, enumerable: false, configurable: false
         })
     }
 
-    if (!this.hasOwnProperty('href')) {
-        Object.defineProperty(this, 'href', {
+    if (!this.hasOwnProperty('source')) {
+        Object.defineProperty(this, 'source', {
             get: function () {
-                return __document.href
+                return __document
             }
         });
     }
