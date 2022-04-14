@@ -701,7 +701,7 @@ xover.Manifest = function (manifest = {}) {
         "server": {},
         "sources": {},
         "stylesheets": [],
-        "namespaces": {},
+        "spaces": {},
         "settings": {}
     }
     var _manifest = Object.assign(base_manifest, manifest);
@@ -1551,43 +1551,46 @@ xover.tracking = {};
 xover.tracking.attributes = [];
 xover.tracking.prefixes = [];
 xover.xml = {};
-xover.xml.namespaces = {};
-xover.xml.namespaces["debug"] = "http://panax.io/debug"
-xover.xml.namespaces["js"] = "http://panax.io/xover/javascript"
-xover.xml.namespaces["session"] = "http://panax.io/session"
-xover.xml.namespaces["shell"] = "http://panax.io/shell"
-xover.xml.namespaces["state"] = "http://panax.io/state"
-xover.xml.namespaces["context"] = "http://panax.io/context"
-xover.xml.namespaces["temp"] = "http://panax.io/temp"
-xover.xml.namespaces["xmlns"] = "http://www.w3.org/2000/xmlns/"
-xover.xml.namespaces["x"] = "http://panax.io/xover"
-xover.xml.namespaces["xo"] = "http://panax.io/xover"
-xover.xml.namespaces["xson"] = "http://panax.io/xson"
-xover.xml.namespaces["metadata"] = "http://panax.io/metadata"
-xover.xml.namespaces["xml"] = "http://www.w3.org/XML/1998/namespace"
-xover.xml.namespaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
-xover.xml.namespaces["xsi"] = "http://www.w3.org/2001/XMLSchema-instance"
-xover.xml.namespaces["mml"] = "http://www.w3.org/1998/Math/MathML"
-xover.xml.namespaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
-xover.xml.namespaces["session"] = "http://panax.io/session"
-xover.xml.namespaces["xhtml"] = "http://www.w3.org/1999/xhtml"
+
+xover.spaces = {};
+xover.xml.namespaces = xover.spaces;
+
+xover.spaces["debug"] = "http://panax.io/debug"
+xover.spaces["js"] = "http://panax.io/xover/javascript"
+xover.spaces["session"] = "http://panax.io/session"
+xover.spaces["shell"] = "http://panax.io/shell"
+xover.spaces["state"] = "http://panax.io/state"
+xover.spaces["context"] = "http://panax.io/context"
+xover.spaces["temp"] = "http://panax.io/temp"
+xover.spaces["xmlns"] = "http://www.w3.org/2000/xmlns/"
+xover.spaces["x"] = "http://panax.io/xover"
+xover.spaces["xo"] = "http://panax.io/xover"
+xover.spaces["xson"] = "http://panax.io/xson"
+xover.spaces["metadata"] = "http://panax.io/metadata"
+xover.spaces["xml"] = "http://www.w3.org/XML/1998/namespace"
+xover.spaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
+xover.spaces["xsi"] = "http://www.w3.org/2001/XMLSchema-instance"
+xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
+xover.spaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
+xover.spaces["session"] = "http://panax.io/session"
+xover.spaces["xhtml"] = "http://www.w3.org/1999/xhtml"
 
 /* Binding */
-xover.xml.namespaces["request"] = "http://panax.io/fetch/request"
-xover.xml.namespaces["source"] = "http://panax.io/source"
-xover.xml.namespaces["binding"] = "http://panax.io/xover/binding"
-xover.xml.namespaces["changed"] = "http://panax.io/xover/binding/changed"
-xover.xml.namespaces["source_text"] = "http://panax.io/source/request/text"
-xover.xml.namespaces["source_prefix"] = "http://panax.io/source/request/prefix"
-xover.xml.namespaces["source_value"] = "http://panax.io/source/request/value"
-xover.xml.namespaces["source_filters"] = "http://panax.io/source/request/filters"
-xover.xml.namespaces["source_fields"] = "http://panax.io/source/request/fields"
+xover.spaces["request"] = "http://panax.io/fetch/request"
+xover.spaces["source"] = "http://panax.io/source"
+xover.spaces["binding"] = "http://panax.io/xover/binding"
+xover.spaces["changed"] = "http://panax.io/xover/binding/changed"
+xover.spaces["source_text"] = "http://panax.io/source/request/text"
+xover.spaces["source_prefix"] = "http://panax.io/source/request/prefix"
+xover.spaces["source_value"] = "http://panax.io/source/request/value"
+xover.spaces["source_filters"] = "http://panax.io/source/request/filters"
+xover.spaces["source_fields"] = "http://panax.io/source/request/fields"
 /* Values */
-xover.xml.namespaces["confirmed"] = "http://panax.io/xover/state/confirmed"
-xover.xml.namespaces["suggested"] = "http://panax.io/xover/state/suggested"
-xover.xml.namespaces["initial"] = "http://panax.io/xover/state/initial"
-xover.xml.namespaces["prev"] = "http://panax.io/xover/state/previous"
-xover.xml.namespaces["fixed"] = "http://panax.io/xover/state/fixed"
+xover.spaces["confirmed"] = "http://panax.io/xover/state/confirmed"
+xover.spaces["suggested"] = "http://panax.io/xover/state/suggested"
+xover.spaces["initial"] = "http://panax.io/xover/state/initial"
+xover.spaces["prev"] = "http://panax.io/xover/state/previous"
+xover.spaces["fixed"] = "http://panax.io/xover/state/fixed"
 
 xover.dom.alert = async function (message) {
     let xMessage = xover.data.createMessage(message)
@@ -1986,7 +1989,7 @@ xover.data.updateScrollPosition = function (document, coordinates) {
                 target.source.setAttributeNS(null, `state:${key}-position`, value);
                 //var attributeRef = target.selectSingleNode(`//@state:${key}-position`);
                 //if (attributeRef) {
-                //    attributeRef.ownerElement.setAttributeNS(xover.xml.namespaces["state"], `state:${key}-position`, value, false);
+                //    attributeRef.ownerElement.setAttributeNS(xover.spaces["state"], `state:${key}-position`, value, false);
                 //}
             }
         })
@@ -2077,7 +2080,7 @@ Object.defineProperty(xover.library, 'load', {
                     .then(response => [response.body, response.request])
                     .then(async ([data, request]) => {
                         let url = request.url.toString().replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '')
-                        xover.xml.namespaces.merge(xover.xml.getNamespaces(data));
+                        xover.spaces.merge(xover.xml.getNamespaces(data));
                         data.documentElement && data.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
                             let href = node.getAttribute("href");
                             if (!href.match(/^\//)) {
@@ -2446,11 +2449,11 @@ Object.defineProperty(xover.stores, 'restore', {
         //    console.log('Restoring document ' + hashtag);
         //    if (!(restored_document instanceof xover.Store)) {
         //        if (restored_document.documentElement) {
-        //            restored_document.documentElement.setAttributeNS(xover.xml.namespaces["state"], "state:restoring", true, false);
+        //            restored_document.documentElement.setAttributeNS(xover.spaces["state"], "state:restoring", true, false);
         //        }
         //        restored_document = new xover.Store(restored_document, { tag: hashtag });
         //        if (restored_document.documentElement) {
-        //            restored_document.documentElement.setAttributeNS(xover.xml.namespaces["state"], "state:restoring", undefined, false);
+        //            restored_document.documentElement.setAttributeNS(xover.spaces["state"], "state:restoring", undefined, false);
         //        }
         //    }
         //    ////if (!((restored_document.documentElement || {}).namespaceURI && restored_document.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
@@ -3073,7 +3076,7 @@ xover.xml.fromString = function (xmlString) {
 
 xover.xml.normalizeNamespaces = function (xml) {
     if (!xml || xml instanceof HTMLDocument || xml instanceof HTMLElement) return xml;
-    //setAttributeNS_original.call(xml.documentElement, xover.xml.namespaces["xmlns"], "xmlns:xsi", xover.xml.namespaces["xsi"]);
+    //setAttributeNS_original.call(xml.documentElement, xover.spaces["xmlns"], "xmlns:xsi", xover.spaces["xsi"]);
     //return xml;
     var xsl_transform = xover.library["xover/normalize_namespaces.xslt"];
     if (navigator.userAgent.indexOf("Firefox") != -1) {
@@ -3331,12 +3334,12 @@ xover.xml.transform = function (xml, xsl, target) {
         [...result.querySelectorAll('parsererror div')].map(message => {
             if (String(message.textContent).match(/prefix|prefijo/)) {
                 var prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
-                if (!xover.xml.namespaces[prefix]) {
+                if (!xover.spaces[prefix]) {
                     var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
                     xml.documentElement.appendChild(message.documentElement);
                     return xml;
                 }
-                (xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.xml.namespaces[prefix]);
+                (xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
                 result = xml.transform(xsl, target);
                 return result;
             } else if (String(message.textContent).match(/Extra content at the end of the document/)) {
@@ -3378,13 +3381,13 @@ xover.xml.createDocument = function (xml, options = {}) {
                 [...result.querySelectorAll('parsererror div')].map(message => {
                     if (String(message.textContent).match(/prefix|prefijo/)) {
                         var prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
-                        if (!xover.xml.namespaces[prefix]) {
+                        if (!xover.spaces[prefix]) {
                             var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
                             //xml.documentElement.appendChild(message.documentElement);
                             return message;
                         }
-                        //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.xml.namespaces[prefix]);
-                        sXML = sXML.replace(new RegExp(`\\b${prefix}:`), `xmlns:${prefix}="${xover.xml.namespaces[prefix]}" $&`)
+                        //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
+                        sXML = sXML.replace(new RegExp(`\\b${prefix}:`), `xmlns:${prefix}="${xover.spaces[prefix]}" $&`)
                         result = xover.xml.createDocument(sXML);
                         return result;
                     } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
@@ -3660,6 +3663,7 @@ xover.init = async function () {
         if (history.state) delete history.state.active;
         let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } });
         xover.manifest = new xover.Manifest(manifest.merge(xover.manifest));
+        Object.assign(xover.spaces, xover.manifest.spaces);
         xover.modernize();
         await Promise.all(xover.manifest.stylesheets.map(href => xover.library[href]));
         await xover.stores.restore();
@@ -4068,7 +4072,7 @@ xover.Store = function (xml, ...args) {
             if (old_value == value) return;
             target[name] = value;
             if (!__document.documentElement) return;
-            __document.documentElement.setAttributeNS(xover.xml.namespaces["state"], `state:${name}`, value);
+            __document.documentElement.setAttributeNS(xover.spaces["state"], `state:${name}`, value);
         }
     })
 
@@ -4099,7 +4103,7 @@ xover.Store = function (xml, ...args) {
         },
         set: function (input) {
             //if (__document.documentElement) {
-            //    __document.documentElement.setAttributeNS(xover.xml.namespaces["x"], "xo:hash", input);
+            //    __document.documentElement.setAttributeNS(xover.spaces["x"], "xo:hash", input);
             //}
             _hash = input;
             xover.state.hash = _hash;
@@ -4179,8 +4183,8 @@ xover.Store = function (xml, ...args) {
             //    __document = xover.xml.createDocument(input)
             //}
             //if (__document.documentElement) {
-            //    __document.documentElement.setAttributeNS(xover.xml.namespaces["x"], "xo:tag", (this.tag.replace(/^#/, '') || ""));
-            //    //__document.documentElement.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+            //    __document.documentElement.setAttributeNS(xover.spaces["x"], "xo:tag", (this.tag.replace(/^#/, '') || ""));
+            //    //__document.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
             //}
             //xover.stores[this.tag] = self;
             __document.replaceBy(input)
@@ -4238,7 +4242,7 @@ xover.Store = function (xml, ...args) {
             bindings = [...new Set(bindings)].filter(binding => binding);
             //let original = xover.xml.clone(context); //Se obtiene el original si se quieren comparar cambios
             if (!__document.documentElement.resolveNS("changed")) {
-                __document.documentElement.setAttributeNS(xover.xml.namespaces["xmlns"], "xmlns:changed", xover.xml.namespaces["changed"])
+                __document.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:changed", xover.spaces["changed"])
             }
             let cloned_document = __document.cloneNode(true);
             cloned_document.store = context;
@@ -5774,7 +5778,7 @@ xover.modernize = function (targetWindow) {
                     let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
 
                     return function (prefix) {
-                        return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.xml.namespaces[prefix];
+                        return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix];
                     };
                 }(contextNode))
 
@@ -5793,11 +5797,11 @@ xover.modernize = function (targetWindow) {
                         prefixes = [...new Set(prefixes)]; //remueve duplicados
                         let target = xNode;
                         let all_namespaces = xover.xml.normalizeNamespaces(target).getNamespaces();
-                        let new_namespaces = prefixes.filter(prefix => (all_namespaces[prefix] || xover.xml.namespaces[prefix]))
+                        let new_namespaces = prefixes.filter(prefix => (all_namespaces[prefix] || xover.spaces[prefix]))
 
                         if (new_namespaces.length) {
                             new_namespaces.map(prefix => {
-                                (target.documentElement || target).setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, (all_namespaces[prefix] || xover.xml.namespaces[prefix]));
+                                (target.documentElement || target).setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, (all_namespaces[prefix] || xover.spaces[prefix]));
                             });
                             xNode.selectNodes(cXPathString);
                         } else {
@@ -6059,7 +6063,7 @@ xover.modernize = function (targetWindow) {
                 Object.defineProperty(XMLDocument.prototype, 'type', {
                     get: function () {
                         let self = this;
-                        return (Object.entries(xover.xml.namespaces).find(([key, namespace]) => self.documentElement && namespace == self.documentElement.namespaceURI) || [])[0] || (this.documentElement || {}).prefix || "xml";
+                        return (Object.entries(xover.spaces).find(([key, namespace]) => self.documentElement && namespace == self.documentElement.namespaceURI) || [])[0] || (this.documentElement || {}).prefix || "xml";
                     }
                 })
             }
@@ -6324,7 +6328,7 @@ xover.modernize = function (targetWindow) {
                     //store = (store || xover.stores[xover.data.hashTagName(this.ownerDocument)])
                     if (store) {
                         if (parentElement) {
-                            //parentNode.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                            //parentNode.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                             ////parentNode = (parentNode.ownerDocument.store.find(parentNode) || parentNode); //Se quita para que la operación de borrado sólo ocurra en el documento actual
                             store.render();
                         } /*else { //Removed because replaceBy removes everything and then inserts new_elements
@@ -6334,7 +6338,7 @@ xover.modernize = function (targetWindow) {
                     //}
                     //parentNode.setAttributeNS(null, "state:refresh", "true");
                     //parentNode.ownerDocument.store = (parentNode.ownerDocument.store || xover.stores[xover.data.hashTagName(parentNode.ownerDocument)]);
-                    //parentNode.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                    //parentNode.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                     //return new Promise(resolve => {
                     //    setTimeout(() => {
                     //        xover.stores.active.render();
@@ -6373,9 +6377,9 @@ xover.modernize = function (targetWindow) {
                         if (this.textContent != value) {
                             original_textContent.set.call(this, value);
                             if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
-                                this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                                this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                             } else if (this.ownerDocument && this.ownerDocument.selectSingleNode && this.ownerDocument.store) {
-                                //this.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                                //this.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                                 this.ownerDocument.store.render();
                             }
                             return original_textContent.set.call(this, value);
@@ -6398,9 +6402,9 @@ xover.modernize = function (targetWindow) {
                             this.replaceBy(this.ownerDocument.createProcessingInstruction('xml-stylesheet', value));
                             original_textContent.set.call(this, value);
                             if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
-                                this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                                this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                             } else if (this.ownerDocument && this.ownerDocument.selectSingleNode && this.ownerDocument.store) {
-                                //this.setAttributeNS(xover.xml.namespaces["state"], "state:refresh", "true");
+                                //this.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                                 this.ownerDocument.store.render();
                             }
                             return original_textContent.set.call(this, value);
@@ -6493,7 +6497,7 @@ xover.modernize = function (targetWindow) {
                 let target = this;
                 let attribute_node = target.getAttributeNode(attribute);
                 let { prefix, name: attribute_name } = attribute_node && { prefix: attribute_node.prefix, name: attribute_node.localName } || xover.xml.getAttributeParts(attribute);
-                namespace_URI = namespace_URI || attribute_node && attribute_node.namespaceURI || target.resolveNS(prefix) || xover.xml.namespaces[prefix];// || [attribute].includes("xmlns") && xover.xml.namespaces[attribute]
+                namespace_URI = namespace_URI || attribute_node && attribute_node.namespaceURI || target.resolveNS(prefix) || xover.spaces[prefix];// || [attribute].includes("xmlns") && xover.spaces[attribute]
                 let old_value = attribute_node && attribute_node.value || null;
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 let store = target.ownerDocument.store;
@@ -6501,19 +6505,19 @@ xover.modernize = function (targetWindow) {
                     if (xover.tracking.attributes.includes(attribute) || xover.tracking.prefixes.includes(prefix)) {
                         store.takeSnapshot();
                         if (!target.resolveNS("initial")) {
-                            setAttributeNS_original.call(target.ownerDocument.documentElement, xover.xml.namespaces["xmlns"], "xmlns:initial", xover.xml.namespaces["initial"]);
+                            setAttributeNS_original.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:initial", xover.spaces["initial"]);
                         }
                         if (target.getAttribute(`initial:${attribute_name}`) == null) {
-                            setAttributeNS_original.call(target, xover.xml.namespaces["initial"], "initial:" + attribute_name, old_value || "");
+                            setAttributeNS_original.call(target, xover.spaces["initial"], "initial:" + attribute_name, old_value || "");
                         }
 
                         if (!target.resolveNS("prev")) {
-                            setAttributeNS_original.call(target.ownerDocument.documentElement, xover.xml.namespaces["xmlns"], "xmlns:prev", xover.xml.namespaces["prev"]);
+                            setAttributeNS_original.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:prev", xover.spaces["prev"]);
                         }
-                        setAttributeNS_original.call(target, xover.xml.namespaces["prev"], "prev:" + attribute_name, (old_value || ""));
+                        setAttributeNS_original.call(target, xover.spaces["prev"], "prev:" + attribute_name, (old_value || ""));
                     }
                     if (!target.resolveNS("state")) {
-                        setAttributeNS_original.call(target.ownerDocument.documentElement, xover.xml.namespaces["xmlns"], "xmlns:state", xover.xml.namespaces["state"]);
+                        setAttributeNS_original.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
                     }
 
                 } else {
@@ -6556,7 +6560,7 @@ xover.modernize = function (targetWindow) {
                 attribute = attribute.replace(/^@/, "");
                 if (!this.hasAttribute(attribute) && !["http://www.w3.org/2000/svg"].includes(this.namespaceURI)) {
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                    let namespace = this.resolveNS(prefix) || xover.xml.namespaces[prefix];
+                    let namespace = this.resolveNS(prefix) || xover.spaces[prefix];
                     setAttributeNS_original.call(this, namespace, attribute, "");
                 }
                 return original_getAttributeNode.call(this, attribute);
@@ -6763,7 +6767,7 @@ xover.modernize = function (targetWindow) {
                     //    return;
                     //}
                     ////var refresh = (refresh ?? !!xover.stores.getActive()[this.ownerDocument.store.tag]);
-                    //this.ownerDocument.documentElement.setAttributeNS(xover.xml.namespaces["state"], 'state:refresh', 'true', refresh);
+                    //this.ownerDocument.documentElement.setAttributeNS(xover.spaces["state"], 'state:refresh', 'true', refresh);
                     let result = replaceChild_original.apply(this, [new_node, target]);
                     if (this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                         /*Update of session variables*/
@@ -6852,7 +6856,7 @@ xover.modernize = function (targetWindow) {
                 //if (navigator.userAgent.indexOf("Safari") == -1) {
                 //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                 //}
-                this.$$(`descendant-or-self::*[not(@xo:id)]`).setAttributeNS(xover.xml.namespaces["xo"], 'xo:id', (function () { return `${this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
+                this.$$(`descendant-or-self::*[not(@xo:id)]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
                 return this;
             }
 
@@ -7091,12 +7095,12 @@ xover.modernize = function (targetWindow) {
                             [...result.querySelectorAll('parsererror div')].map(message => {
                                 if (String(message.textContent).match(/prefix|prefijo/)) {
                                     var prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
-                                    if (!xover.xml.namespaces[prefix]) {
+                                    if (!xover.spaces[prefix]) {
                                         var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
                                         xml.documentElement.appendChild(message.documentElement);
                                         return xml;
                                     }
-                                    (xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.xml.namespaces[prefix]);
+                                    (xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
                                     result = xml.transform(xsl);
                                     return result;
                                 } else if (String(message.textContent).match(/Extra content at the end of the document/)) {
@@ -7468,7 +7472,7 @@ xover.modernize = function (targetWindow) {
                     new_node = new_node.reseed();
                     var refresh = Array.prototype.coalesce(refresh, true);
                     //if (refresh && !(self.namespaceURI && self.namespaceURI.indexOf('www.w3.org') != -1)) {
-                    //    self.ownerDocument.documentElement.setAttributeNS(xover.xml.namespaces["state"], 'state:refresh', 'true');
+                    //    self.ownerDocument.documentElement.setAttributeNS(xover.spaces["state"], 'state:refresh', 'true');
                     //}
                     appendChild_original.apply(self, [new_node]);
                     //xover.delay(50).then(() => {
