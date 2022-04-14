@@ -776,10 +776,10 @@ xover.manifest = new xover.Manifest();
 xover.messages = {};
 xover.server = new Proxy({}, {
     get: function (self, key) {
+        if (!(xover.manifest.server && xover.manifest.server[key])) {
+            throw (new Error(`Endpoint "${key}" not configured`));
+        }
         let handler = (async (...args) => {
-            if (!(xover.manifest.server && xover.manifest.server[key])) {
-                throw (new Error(`Endpoint "${key}" not configured`));
-            }
             args = args.filter(el => el);
             let settings = args.pop() || {};
             if (settings.constructor != {}.constructor) {
@@ -1124,7 +1124,8 @@ xover.state = new Proxy(Object.assign({}, history.state), {
     set: function (self, key, value) {
         try {
             self[key] = value;
-            history.replaceState(Object.assign({}, history.state), ((event || {}).target || {}).textContent, location.pathname + location.hash);
+            let hash = [xo.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
+            history.replaceState(Object.assign({}, history.state), ((event || {}).target || {}).textContent, location.pathname + hash);
         } catch (e) {
             console.error(e);
         }
@@ -1584,11 +1585,11 @@ xover.xml.namespaces["request"] = "http://panax.io/fetch/request"
 xover.xml.namespaces["source"] = "http://panax.io/source"
 xover.xml.namespaces["binding"] = "http://panax.io/xover/binding"
 xover.xml.namespaces["changed"] = "http://panax.io/xover/binding/changed"
-xover.xml.namespaces["source_text"] = "http://panax.io/fetch/request/text"
-xover.xml.namespaces["source_prefix"] = "http://panax.io/fetch/request/prefix"
-xover.xml.namespaces["source_value"] = "http://panax.io/fetch/request/value"
-xover.xml.namespaces["source_filters"] = "http://panax.io/fetch/request/filters"
-xover.xml.namespaces["source_fields"] = "http://panax.io/fetch/request/fields"
+xover.xml.namespaces["source_text"] = "http://panax.io/source/request/text"
+xover.xml.namespaces["source_prefix"] = "http://panax.io/source/request/prefix"
+xover.xml.namespaces["source_value"] = "http://panax.io/source/request/value"
+xover.xml.namespaces["source_filters"] = "http://panax.io/source/request/filters"
+xover.xml.namespaces["source_fields"] = "http://panax.io/source/request/fields"
 /* Values */
 xover.xml.namespaces["confirmed"] = "http://panax.io/xover/state/confirmed"
 xover.xml.namespaces["suggested"] = "http://panax.io/xover/state/suggested"
@@ -4298,7 +4299,7 @@ xover.Store = function (xml, ...args) {
             //    return
             //}
 
-            var requests = context.selectNodes(`//*[contains(namespace-uri(),'http://panax.io/fetch/') and not(@state:disabled="true") and not(*)]`)//context.selectNodes('.//source:*[not(@state:disabled="true") and not(*)]|.//request:*[not(@state:disabled="true") and not(*)]');
+            var requests = context.selectNodes(`//*[contains(namespace-uri(),'http://panax.io/source') and not(@state:disabled="true") and not(*)]`)//context.selectNodes('.//source:*[not(@state:disabled="true") and not(*)]|.//request:*[not(@state:disabled="true") and not(*)]');
             if (new_bindings) {
                 context.takeSnapshot();
             }
@@ -4389,7 +4390,7 @@ xover.Store = function (xml, ...args) {
                                 //});
                             });
                         };
-                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server.request({ command: request, predicate: parameters }, {
+                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix]({ command: request, predicate: parameters }, {
                             method: 'GET'
                             , headers: headers
                         }).then(response_handler).catch(response_handler));
@@ -5169,7 +5170,7 @@ document.onkeyup = function (e) {
 
 // TODO: Modificar listeners para que funcion con el método de XOVER
 xover.listener.on('beforeunload', async function (e) {
-    //let stores = await xover.database.stores;
+    //let stores = await xover.database.sources;
     //for (let hashtag in xover.stores) {
     //    console.log("Saving " + hashtag)
     //    stores.put((xover.stores[hashtag].initiator || xover.stores[hashtag]), hashtag)
