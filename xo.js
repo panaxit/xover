@@ -3670,7 +3670,7 @@ xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" 
 xover.init = async function () {
     this.init.initializing = this.init.initializing || new Promise(async (resolve) => {
         if (history.state) delete history.state.active;
-        let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '.manifest'), { headers: { Accept: "*/*" } });
+        let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '') + '.manifest', { headers: { Accept: "*/*" } });
         let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } });
         manifest.merge(local_manifest);
         xover.manifest = new xover.Manifest(manifest.merge(xover.manifest));
