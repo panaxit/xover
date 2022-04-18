@@ -1528,18 +1528,18 @@ xover.Source = function (source, tag) {
                         //settings["tag"] = settings["tag"] || tag;
                         promises.push(new Promise(async (resolve, reject) => {
                             let document = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
-                            await document.render(/*true*/);
-                            if (document instanceof XMLDocument && !document.isRendered) {
-                                xover.stores.active = document;
-                            }
+                            //await document.render(/*true*/);
+                            //if (document instanceof XMLDocument && !document.isRendered) {
+                            //    xover.stores.active = document;
+                            //}
                             resolve(document);
                         }));
                     })
-                    await Promise.all(promises);
+                    let documents = await Promise.all(promises).then(document => document);
                     if (tag) {
-                        xover.database.write('sources', tag, promises.pop());
+                        xover.database.write('sources', tag, documents[0]);
                     }
-                    return xover.stores[tag];
+                    return documents[0];
                 } else if (typeof (document) == 'string') {
                     document = await xover.fetch.xml(document) || document;
 
