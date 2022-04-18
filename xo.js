@@ -3670,7 +3670,9 @@ xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" 
 xover.init = async function () {
     this.init.initializing = this.init.initializing || new Promise(async (resolve) => {
         if (history.state) delete history.state.active;
+        let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '.manifest'), { headers: { Accept: "*/*" } });
         let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } });
+        manifest.merge(local_manifest);
         xover.manifest = new xover.Manifest(manifest.merge(xover.manifest));
         Object.assign(xover.spaces, xover.manifest.spaces);
         xover.modernize();
@@ -4545,7 +4547,7 @@ xover.Store = function (xml, ...args) {
     });
 
     Object.defineProperty(this, 'addStylesheet', {
-        value: async function (definition, target, refresh) {
+        value: async function (definition, refresh = false) {
             let style_definition, pi;
             let document = (this.document || this);
             if (definition instanceof ProcessingInstruction) {
@@ -4567,7 +4569,9 @@ xover.Store = function (xml, ...args) {
             if (!(_store_stylesheets.find(el => el.isEqualNode(pi)) || document.stylesheets.find(el => el.isEqualNode(pi)))) {
                 _store_stylesheets.push(pi);
             }
-            store.render();
+            if (refresh) {
+                store.render();
+            }
             return pi;
         },
         writable: false, enumerable: false, configurable: false
@@ -4704,7 +4708,7 @@ xover.Store = function (xml, ...args) {
     }
     this.document = __document;
     _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
-    xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet));
+    xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet, false));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }));
     return this;
 }
