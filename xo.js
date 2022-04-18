@@ -215,8 +215,8 @@ xover.stores = new Proxy({}, {
         } else if (key[0] == '#' /*&& key in xover.sources*/) {
             xover.stores[key] = new xover.Store(xover.sources[key], { tag: key });
             return xover.stores[key];
-        } /*else if (key[0] == '#' && key in xover.stores.defaults) {
-            let _store = key in xover.stores.defaults && new xover.Store(xover.stores.defaults[key], { tag: key });
+        } /*else if (key[0] == '#' && key in xover.sources.defaults) {
+            let _store = key in xover.sources.defaults && new xover.Store(xover.sources.defaults[key], { tag: key });
             if (_store) {
                 self[key] = _store;
             }
@@ -261,11 +261,6 @@ xover.stores = new Proxy({}, {
     }, has: function (self, key) {
         return key in self || key.toLowerCase() in self || key in xover.session || key in (xover.manifest.server || {});
     }
-});
-
-Object.defineProperty(xover.stores, 'defaults', {
-    value: {},
-    writable: false, enumerable: false, configurable: false
 });
 
 xover.data.binding = {};
@@ -1236,9 +1231,10 @@ Object.defineProperty(xover.state, 'active', {
             if (active_store) {
                 this.hash = active_store.hash;
             }
-            //active_store.render();
+            xover.stores.active.render()
         } else if (input in xover.stores) {
             this.seed = input
+            xover.stores.active.render()
         } else {
             throw (new Error(`Store ${input} doesn't exist`));
         }
@@ -1335,6 +1331,74 @@ Object.defineProperty(xover.state, 'restore', {
     , enumerable: false, configurable: false
 });
 
+xover.xml = {};
+
+xover.xml.createDocument = function (xml, options = {}) {
+    var result = undefined;
+    if (xml instanceof XMLDocument) {
+        result = xml.cloneNode(true);
+    } else {
+        var sXML = (xml && xml.document || xml || '').toString();
+        if (sXML.indexOf('<<<<<<< ') != -1) {
+            throw (new Error("Possible unresolved GIT conflict on file."));
+        }
+        result = new DOMParser();
+        if (!sXML) {
+            result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
+        } else {
+            if (xml.namespaceURI && xml.namespaceURI.indexOf("http://www.w3.org") == 0) {
+                result = result.parseFromString(sXML, "text/html");
+            } else {
+                result = result.parseFromString(sXML.replace(/[\u0000-\u001F]/g, (char) => ['\r', '\n', '\t'].includes(char) && char || ''), "text/xml");
+            }
+            if (sXML && result.getElementsByTagName && (result.getElementsByTagName('parsererror').length || 0) > 0) {
+                [...result.querySelectorAll('parsererror div')].map(message => {
+                    if (String(message.textContent).match(/prefix|prefijo/)) {
+                        var prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
+                        if (!xover.xml.namespaces[prefix]) {
+                            var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
+                            //xml.documentElement.appendChild(message.documentElement);
+                            return message;
+                        }
+                        //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.xml.namespaces[prefix]);
+                        sXML = sXML.replace(new RegExp(`\\b${prefix}:`), `xmlns:${prefix}="${xover.xml.namespaces[prefix]}" $&`)
+                        result = xover.xml.createDocument(sXML);
+                        return result;
+                    } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
+                        message.closest("html").remove();
+                        //result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
+                    } else if (message.closest("html")) {
+                        if (options["silent"] !== true) {
+                            xover.dom.createDialog(message.closest("html"));
+                        }
+                        throw (new Error(message.textContent));
+                    } else {
+                        var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
+                        return message;
+                    }
+                });
+            }
+        }
+    }
+
+    if (result.documentElement && !["http://www.w3.org/1999/xhtml", "http://www.w3.org/1999/XSL/Transform"].includes(result.documentElement.namespaceURI)) {
+        xover.manifest.getSettings(result, 'stylesheets').reverse().forEach(stylesheet => result.addStylesheet(stylesheet));
+    }
+    (result.stylesheets || []).filter(stylesheet => stylesheet.role == 'init').forEach(stylesheet => {
+        let new_document = result.transform(stylesheet.document);
+        if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
+            new_document.stylesheets[stylesheet.href].replaceBy(result.createComment('Initialized by ' + stylesheet.href));
+            /*La transformación no debe regresar un html ni otro documento del estándar*/
+            result = new_document;
+        } else {
+            delete stylesheet["role"];
+            result.addStylesheet(stylesheet);
+            console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
+        }
+    });
+    return result;
+}
+
 xover.Source = function (source, tag) {
     if (!(this instanceof xover.Source)) return new xover.Source(source, tag);
     let _isActive = undefined;
@@ -1346,6 +1410,17 @@ xover.Source = function (source, tag) {
         value: this,
         writable: false, enumerable: false, configurable: false
     });
+
+    let _async_save;
+    Object.defineProperty(this, 'save', {
+        value: async function () {
+            _async_save = _async_save || xover.delay(1).then(async () => {
+                xover.database.write('sources', tag, __document);
+                _async_save = undefined;
+            });
+        },
+        writable: false, enumerable: false, configurable: false
+    })
 
     Object.defineProperty(this, 'tag', {
         value: tag,
@@ -1396,7 +1471,7 @@ xover.Source = function (source, tag) {
             try {
                 let store = await this.fetch();
                 if (store instanceof xover.Store && 'render' in store) {
-                    return store.render(/*true*/);
+                    return store.render();
                 }
                 return store;
             } catch (e) {
@@ -1440,14 +1515,16 @@ xover.Source = function (source, tag) {
     } else {
         Object.defineProperty(this, 'fetch', {
             value: async function () {
-                let promises = []
-                let sources = await xover.database.sources;
-                let document = await sources.get(tag);
-                if (document) {
-                    return document;
-                } else if (isObject(source)) {
-                    Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
-                        let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
+                let document = source; //Object.keys(xover.sources).includes(source) && xover.sources[source] || document;
+
+                if (!(document instanceof Document)) {
+                    let sources = await xover.database.sources;
+                    document = await sources.get(tag) || document;
+                }
+                if (document && document.constructor === {}.constructor) {
+                    let promises = [];
+                    Object.keys(document).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
+                        let [parameters, settings = {}, payload] = document[endpoint].constructor === [].constructor && document[endpoint] || [document[endpoint]];
                         //settings["tag"] = settings["tag"] || tag;
                         promises.push(new Promise(async (resolve, reject) => {
                             let document = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
@@ -1463,17 +1540,21 @@ xover.Source = function (source, tag) {
                         xover.database.write('sources', tag, promises.pop());
                     }
                     return xover.stores[tag];
-                } else {
-                    try {
-                        let document = await xover.fetch.xml(source);
-                        if (tag) {
-                            //if (return_value instanceof XMLDocument && !return_value.selectSingleNode("xsl:*")) {
-                            xover.database.write('sources', tag, document);
-                            //}
-                        }
-                        return document;
-                    } catch (e) {
-                    }
+                } else if (typeof (document) == 'string') {
+                    document = await xover.fetch.xml(document) || document;
+
+                }
+                if (!document) {
+                    document = xover.sources.defaults[tag];
+                }
+                if (document instanceof Document) {
+                    //if (!document.documentElement && document !== __document) {
+                    //    document = await document.fetch();
+                    //}
+                    //if (document.source.tag === tag) {
+                    //    xover.database.write('sources', tag, document);
+                    //}
+                    return document;
                 }
             },
             writable: false, enumerable: false, configurable: false
@@ -1484,23 +1565,23 @@ xover.Source = function (source, tag) {
 
 xover.sources = new Proxy({}, {
     get: function (self, key) {
-        //let _manifest = (xover.manifest.sources || {}).cloneObject();
-        let _manifest = xover.manifest.sources;
+        let _manifest = Object.assign({}, xover.manifest.sources);
         let value = undefined;
         if (key in self) {
             return self[key];
         } else {
-            last_key = key;
+            let tag_name = key;
+            let match_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")))) || key;
+            let source;
             do {
-                let tag_name = key;
-                new_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")))) || key;
-                value = _manifest[new_key];
-                if (value in _manifest) {
-                    new_key = _manifest[new_key];
+                source = _manifest[match_key];
+                if (!source) return new xover.Source(source, match_key).document;
+                delete _manifest[match_key];
+                if (source in _manifest) {
+                    match_key = source
                 }
-                new_key && delete _manifest[new_key];
-            } while (new_key !== last_key)
-            xover.sources[key] = new xover.Source(value, key).document;
+            } while (match_key in _manifest);
+            xover.sources[key] = (key === match_key && new xover.Source(source, key)).document || xover.sources[match_key];
             return xover.sources[key];
         }
     },
@@ -1509,9 +1590,21 @@ xover.sources = new Proxy({}, {
         return self[key];
     },
     has: function (self, key) {
+        if (!key) return false;
         return source_defined = key in self || !!Object.entries(xover.manifest.sources || {}).find(([tag]) => key.match(new RegExp(`^${tag.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&')}$`)))
     }
 })
+
+Object.defineProperty(xover.sources, 'defaults', {
+    value: {},
+    writable: false, enumerable: false, configurable: false
+});
+
+xover.sources.defaults["#login"] = xover.xml.createDocument(`<?xml-stylesheet type="text/xsl" href="login.xslt" role="login" target="body"?><xo:login xmlns:xo="http://panax.io/xover"/> `);
+
+xover.sources.defaults["#shell"] = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:xo="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" xo:id="shell" xo:hash=""></shell:shell>');
+
+xover.sources.defaults["#settings"] = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="settings.xslt" role="settings" target="@#shell @#settings"?><shell:settings xmlns:shell="http://panax.io/shell"/>');
 
 xover.ProcessingInstruction = function (stylesheet) {
     if (!(this instanceof xover.ProcessingInstruction)) return new xover.ProcessingInstruction(stylesheet);
@@ -1550,8 +1643,6 @@ xover.storage = {};
 xover.tracking = {};
 xover.tracking.attributes = [];
 xover.tracking.prefixes = [];
-xover.xml = {};
-
 xover.spaces = {};
 xover.xml.namespaces = xover.spaces;
 
@@ -2442,24 +2533,11 @@ Object.defineProperty(xover.stores, 'restore', {
     value: async function (name_list = []) {
         name_list = name_list instanceof Array && name_list || [name_list];
         let restoring = [];
-        var self = this;
-        //let sources = await xover.database.sources;
 
-        //Object.entries(sessionStorage).filter(([key]) => (!name_list.length && !xover.stores.hasOwnProperty(key) || name_list.includes(key)) && key.match(/^#/)).map(([hashtag, value]) => {
-        //    console.log('Restoring document ' + hashtag);
-        //    if (!(restored_document instanceof xover.Store)) {
-        //        if (restored_document.documentElement) {
-        //            restored_document.documentElement.setAttributeNS(xover.spaces["state"], "state:restoring", true, false);
-        //        }
-        //        restored_document = new xover.Store(restored_document, { tag: hashtag });
-        //        if (restored_document.documentElement) {
-        //            restored_document.documentElement.setAttributeNS(xover.spaces["state"], "state:restoring", undefined, false);
-        //        }
-        //    }
-        //    ////if (!((restored_document.documentElement || {}).namespaceURI && restored_document.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
-        //    ////    self[hashtag] = restored_document;
-        //    ////}
-        //})
+        Object.entries(sessionStorage).filter(([key]) => (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
+            console.log('Restoring document ' + tag);
+            xover.stores[tag] = new xover.Store(xover.sources[JSON.parse(value)["source"]], { tag: tag });
+        })
         return restoring;
     },
     writable: false, enumerable: false, configurable: false
@@ -2678,9 +2756,9 @@ xover.Response = function (response, request) {
     if (response.status == 404) {
         if (file_name in xover.library.defaults) {
             response = new Response(xover.library.defaults[file_name], { headers: { "Content-type": "text/xsl" } })
-        } else if (request.settings.tag in xover.stores.defaults) {
-            response = new Response(xover.stores.defaults[request.settings.tag], { headers: { "Content-type": "text/xml" } })
-        }
+        }/* else if (request.settings.tag in xover.sources.defaults) {
+            response = new Response(xover.sources.defaults[request.settings.tag], { headers: { "Content-type": "text/xml" } })
+        }*/
     }
     let self = this;
     Object.defineProperty(self, 'originalResponse', {
@@ -3030,6 +3108,7 @@ xover.fetch.from = async function () {
 }
 
 xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_success) {
+    if (!url) return null;
     settings["headers"] = (settings["headers"] || {});
     settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "text/xml, text/xsl")
 
@@ -3359,72 +3438,6 @@ xover.xml.transform = function (xml, xsl, target) {
     return result
 }
 
-xover.xml.createDocument = function (xml, options = {}) {
-    var result = undefined;
-    if (xml instanceof XMLDocument) {
-        result = xml.cloneNode(true);
-    } else {
-        var sXML = (xml && xml.document || xml || '').toString();
-        if (sXML.indexOf('<<<<<<< ') != -1) {
-            throw (new Error("Possible unresolved GIT conflict on file."));
-        }
-        result = new DOMParser();
-        if (!sXML) {
-            result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
-        } else {
-            if (xml.namespaceURI && xml.namespaceURI.indexOf("http://www.w3.org") == 0) {
-                result = result.parseFromString(sXML, "text/html");
-            } else {
-                result = result.parseFromString(sXML.replace(/[\u0000-\u001F]/g, (char) => ['\r', '\n', '\t'].includes(char) && char || ''), "text/xml");
-            }
-            if (sXML && result.getElementsByTagName && (result.getElementsByTagName('parsererror').length || 0) > 0) {
-                [...result.querySelectorAll('parsererror div')].map(message => {
-                    if (String(message.textContent).match(/prefix|prefijo/)) {
-                        var prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
-                        if (!xover.spaces[prefix]) {
-                            var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
-                            //xml.documentElement.appendChild(message.documentElement);
-                            return message;
-                        }
-                        //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
-                        sXML = sXML.replace(new RegExp(`\\b${prefix}:`), `xmlns:${prefix}="${xover.spaces[prefix]}" $&`)
-                        result = xover.xml.createDocument(sXML);
-                        return result;
-                    } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
-                        message.closest("html").remove();
-                        //result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
-                    } else if (message.closest("html")) {
-                        if (options["silent"] !== true) {
-                            xover.dom.createDialog(message.closest("html"));
-                        }
-                        throw (new Error(message.textContent));
-                    } else {
-                        var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
-                        return message;
-                    }
-                });
-            }
-        }
-    }
-
-    if (result.documentElement && !["http://www.w3.org/1999/xhtml", "http://www.w3.org/1999/XSL/Transform"].includes(result.documentElement.namespaceURI)) {
-        xover.manifest.getSettings(result, 'stylesheets').reverse().forEach(stylesheet => result.addStylesheet(stylesheet));
-    }
-    (result.stylesheets || []).filter(stylesheet => stylesheet.role == 'init').forEach(stylesheet => {
-        let new_document = result.transform(stylesheet.document);
-        if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
-            new_document.stylesheets[stylesheet.href].replaceBy(result.createComment('Initialized by ' + stylesheet.href));
-            /*La transformación no debe regresar un html ni otro documento del estándar*/
-            result = new_document;
-        } else {
-            delete stylesheet["role"];
-            result.addStylesheet(stylesheet);
-            console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
-        }
-    });
-    return result;
-}
-
 xover.xml.isValid = function (input) {
     return (input instanceof XMLDocument);
 }
@@ -3614,8 +3627,6 @@ xover.library.defaults["loading.xslt"] = xover.xml.createDocument(`
     <xsl:template match="text()|processing-instruction()|comment()"/>                                   
 </xsl:stylesheet>`);
 
-xover.stores.defaults["#login"] = xover.xml.createDocument(`<?xml-stylesheet type="text/xsl" href="login.xslt" role="login" target="body"?><xo:login xmlns:xo="http://panax.io/xover"/> `);
-
 xover.library.defaults["message.xslt"] = xover.xml.createDocument(`
 <xsl:stylesheet version="1.0" 
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
@@ -3653,11 +3664,9 @@ xover.library.defaults["message.xslt"] = xover.xml.createDocument(`
     </div>
   </xsl:template>
 </xsl:stylesheet>`);
+
 xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:xo="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" xo:id="shell" xo:hash=""></shell:shell>');
 
-xover.stores.defaults["#shell"] = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:xo="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" xo:id="shell" xo:hash=""></shell:shell>');
-
-xover.stores.defaults["#settings"] = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="settings.xslt" role="settings" target="@#shell @#settings"?><shell:settings xmlns:shell="http://panax.io/shell"/>');
 xover.init = async function () {
     this.init.initializing = this.init.initializing || new Promise(async (resolve) => {
         if (history.state) delete history.state.active;
@@ -3870,7 +3879,7 @@ xover.Store = function (xml, ...args) {
     let self = this;
     let store = this;
     let _this_arguments = args;
-    let __document = xml.document || xml; //Before: xover.xml.createDocument(xml); //Now should remain reference for current 
+    let __document = xml; //Before: xover.xml.createDocument(xml); //Now should remain reference for current 
     let _undo = [];
     let _redo = [];
     let config = args[0] && args[0].constructor === {}.constructor && args[0];
@@ -3878,7 +3887,7 @@ xover.Store = function (xml, ...args) {
     let _tag;
     let _hash = config && config['hash'] || undefined;
     let _initiator = config && config["initiator"] || undefined;
-    let _store_stylesheets;
+    let _store_stylesheets = [];
     let _library = new Proxy({}, {
         get: function (target, name) {
             return target[name];
@@ -3891,10 +3900,10 @@ xover.Store = function (xml, ...args) {
     if (!this.hasOwnProperty('save')) {
         Object.defineProperty(this, 'save', {
             value: async function () {
-                let tag = __document.tag;
-                if (tag) {
-                    xover.session.setKey(store.tag, { source: tag });
-                    xover.database.write('sources', tag, __document);
+                let source = __document.source;
+                if (source) {
+                    xover.session.setKey(store.tag, { source: source.tag });
+                    source.save();
                 }
             },
             writable: false, enumerable: false, configurable: false
@@ -3904,7 +3913,7 @@ xover.Store = function (xml, ...args) {
     if (!this.hasOwnProperty('source')) {
         Object.defineProperty(this, 'source', {
             get: function () {
-                return __document
+                return __document.source
             }
         });
     }
@@ -4187,7 +4196,11 @@ xover.Store = function (xml, ...args) {
             //    //__document.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
             //}
             //xover.stores[this.tag] = self;
-            __document.replaceBy(input)
+            if (input instanceof Document) {
+                __document.replaceBy(input)
+            } else {
+                __document = input;
+            }
         }
     })
 
@@ -4398,14 +4411,17 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'render', {
         value: async function () {
-            if (this.state.restoring) return;
             let tag = self.tag;
-            //this.state.rendering = true;
-            if (!__document.documentElement || __document.selectSingleNode("//*[not(@xo:id)]") || !_store_stylesheets) {
-                await this.initialize();
-            }
 
             _render_manager = _render_manager || xover.delay(1).then(async () => {
+                if (!__document.documentElement) {
+                    await store.fetch();
+                }
+                if (!(_store_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
+                    store.addStylesheet({ href: store.tag.substring(1) + '.xslt', target: "@#shell main" })
+                }
+                await Promise.all(_store_stylesheets.filter(stylesheet => stylesheet.role == 'init').map(stylesheet => stylesheet.document));
+
                 let isActive = self.isActive
                 let active_tag = xover.state.active;
                 let active_store = xover.stores.active;
@@ -4415,11 +4431,11 @@ xover.Store = function (xml, ...args) {
                 if (!isActive) {
                     return Promise.reject(`Store ${tag} is not active`);
                 }
-                //await self.library.load();
                 await self.triggerBindings();
 
                 let doc = __document.cloneNode(true);
                 _store_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
+                doc.store = store;
                 await doc.render();
                 return Promise.resolve(self);
             }).then(async () => {
@@ -4463,7 +4479,6 @@ xover.Store = function (xml, ...args) {
                 return;
             }).finally(async () => {
                 _render_manager = undefined;
-                //this.state.rendering = false;
             });
             return _render_manager;
         },
@@ -4531,7 +4546,6 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'addStylesheet', {
         value: async function (definition, target, refresh) {
-            _store_stylesheets = _store_stylesheets || [];
             let style_definition, pi;
             let document = (this.document || this);
             if (definition instanceof ProcessingInstruction) {
@@ -4623,28 +4637,16 @@ xover.Store = function (xml, ...args) {
     });
     Object.defineProperty(this, 'fetch', {
         value: async function () {
-            await __document.fetch();
+            if (__document.fetch) {
+                await __document.fetch()
+            }
+            await this.initialize();
             this.reseed();
         },
         writable: false, enumerable: false, configurable: false
     });
     Object.defineProperty(this, 'initialize', {
         value: async function () {
-            _store_stylesheets = _store_stylesheets || [];
-            store.state.initializing = true;
-            //__document.documentElement && Object.entries(xover.manifest.settings || {}).filter(([key, value]) => !(key.match(/^#/)) && value["stylesheets"] && _manifest_filter_xpath(key)).reduce((stylesheet, [key, value]) => { return value["stylesheets"] }, []).map(stylesheet => __document.addStylesheet(stylesheet));
-
-            if (!__document.documentElement) {
-                await __document.fetch();
-            }
-            this.reseed();
-            xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet));
-            if (!(_store_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
-                store.addStylesheet({ href: store.tag.substring(1) + '.xslt', target: "@#shell main" })
-            }
-            await Promise.all(_store_stylesheets.filter(stylesheet => stylesheet.role == 'init').map(stylesheet => stylesheet.document));
-
-
             _store_stylesheets.filter(stylesheet => stylesheet.role == 'init' && !__document.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(stylesheet => {
                 let _document_stylesheet = __document.stylesheets[stylesheet.href];
                 if (_document_stylesheet) {
@@ -4661,10 +4663,7 @@ xover.Store = function (xml, ...args) {
                     console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
                 }
             });
-            store.state.initializing = undefined;
-            store.state.initialized = true;
             store.save();
-            //onComplete();
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -4705,6 +4704,7 @@ xover.Store = function (xml, ...args) {
     }
     this.document = __document;
     _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
+    xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }));
     return this;
 }
@@ -6196,7 +6196,7 @@ xover.modernize = function (targetWindow) {
                 }
                 if (!this.getStylesheet(definition.href)) {
                     var pi = document.createProcessingInstruction('xml-stylesheet', style_definition);
-                    if (store && (refresh || !store.state.initializing)) {
+                    if (store && (refresh/* || !store.state.initializing*/)) {
                         store.render();
                     }
                     document.insertBefore(pi, target || document.selectSingleNode(`(processing-instruction('xml-stylesheet')${definition.role == 'init' ? '' : definition.role == 'binding' ? `[not(contains(.,'role="init"') or contains(.,'role="binding"'))]` : '[1=0]'} | *[1])[1]`));
@@ -6501,6 +6501,7 @@ xover.modernize = function (targetWindow) {
                 let old_value = attribute_node && attribute_node.value || null;
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 let store = target.ownerDocument.store;
+                let source = target.ownerDocument.source;
                 if (old_value != value && store) { //!= is used instead of !== to ignore differences between undefined and null
                     if (xover.tracking.attributes.includes(attribute) || xover.tracking.prefixes.includes(prefix)) {
                         store.takeSnapshot();
@@ -6535,8 +6536,8 @@ xover.modernize = function (targetWindow) {
                     //}
                     xover.listener.dispatchEvent(new xover.listener.Event('changed', { target, attribute: attribute, value: value, old: old_value }), this.getAttributeNode(attribute) || this.ownerDocument.createAttribute(attribute)); //Separates by design all parts of attribute node as attributes
                 }
+                source && source.save();
                 if (refresh) {
-                    store.save();
                     store.render(((event || {}).target || {}).stylesheet);
                 }
             }
@@ -6615,6 +6616,8 @@ xover.modernize = function (targetWindow) {
                 } else {
                     originalRemoveAttribute.apply(this, arguments);
                 }
+                let source = this.ownerDocument.source;
+                source && source.save();
                 xover.listener.dispatchEvent(new xover.listener.Event('remove', { target: this }), attribute_node);
             }
 
@@ -6630,9 +6633,11 @@ xover.modernize = function (targetWindow) {
             Attr.prototype.set = function (value) {
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 if (this.value != value) {
-                    this.parentNode.store.render();
+                    this.ownerElement.store.render();
                 }
                 this.value = value;
+                let source = this.ownerDocument.source;
+                source && source.save();
                 return this;
             }
 
