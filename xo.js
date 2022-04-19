@@ -699,34 +699,34 @@ xover.Manifest = function (manifest = {}) {
         "spaces": {},
         "settings": {}
     }
-    var _manifest = Object.assign(base_manifest, manifest);
+    let _manifest = Object.assign(base_manifest, manifest);
 
-    Object.defineProperty(_manifest.sources, 'fetch', {
-        value: async function (key) {
-            let important_sources = Object.entries(_manifest.sources).filter(([_key, _value]) => _key.match(/!$/));
-            let tag = String(_manifest.sources[history.state.hash || (window.top || window).location.hash || "#"]).match(/^#/) && _manifest.sources[history.state.hash || (window.top || window).location.hash || "#"] || (window.top || window).location.hash || "#";
+    //Object.defineProperty(_manifest.sources, 'fetch', {
+    //    value: async function (key) {
+    //        let important_sources = Object.entries(_manifest.sources).filter(([_key, _value]) => _key.match(/!$/));
+    //        let tag = String(_manifest.sources[history.state.hash || (window.top || window).location.hash || "#"]).match(/^#/) && _manifest.sources[history.state.hash || (window.top || window).location.hash || "#"] || (window.top || window).location.hash || "#";
 
-            to_fetch = [...(key && _manifest.sources[key] && [[tag, _manifest.sources[key]]] || []), ...(!key && tag != '#' && !xover.stores[tag] && _manifest.sources[tag] && [[tag, _manifest.sources[tag]]] || [])];
+    //        to_fetch = [...(key && _manifest.sources[key] && [[tag, _manifest.sources[key]]] || []), ...(!key && tag != '#' && !xover.stores[tag] && _manifest.sources[tag] && [[tag, _manifest.sources[tag]]] || [])];
 
-            if (to_fetch.length) {
-                to_fetch.map(async ([_key, _value]) => {
-                    //if (_key == "#" && typeof (_value) == "string" && _manifest.sources[_value]) {
-                    //    var doc = _value.fetch({ as: _value });
-                    //    xover.stores.active = doc;
-                    //} else {
-                    var doc = await _value.fetch({ as: _key });
-                    if (doc) {
-                        xover.stores.active = doc;
-                    }
-                    //}
-                });
-            } else if (!key && xover.stores[tag]) {
-                xover.stores.active = xover.stores[tag];
-            }
-            //}
-        },
-        writable: false, enumerable: false, configurable: false
-    });
+    //        if (to_fetch.length) {
+    //            to_fetch.map(async ([_key, _value]) => {
+    //                //if (_key == "#" && typeof (_value) == "string" && _manifest.sources[_value]) {
+    //                //    var doc = _value.fetch({ as: _value });
+    //                //    xover.stores.active = doc;
+    //                //} else {
+    //                var doc = await _value.fetch({ as: _key });
+    //                if (doc) {
+    //                    xover.stores.active = doc;
+    //                }
+    //                //}
+    //            });
+    //        } else if (!key && xover.stores[tag]) {
+    //            xover.stores.active = xover.stores[tag];
+    //        }
+    //        //}
+    //    },
+    //    writable: false, enumerable: false, configurable: false
+    //});
 
     //Object.defineProperty(_manifest, 'getSettings', {
     //    value: (xover.manifest.getSettings || function (entity_name, config_name) {
@@ -2401,7 +2401,7 @@ Object.defineProperty(xover.library, "xover/databind.xslt", {
 
 Object.defineProperty(xover.stores, "#", {
     get: function () {
-        return xover.manifest.sources && this[xover.manifest.sources["#"]] || xover.stores['#shell'];
+        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"]})) || xover.stores['#shell']; //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
     }
 });
 
@@ -2471,7 +2471,7 @@ Object.defineProperty(xover.stores, 'find', {
         Object.entries(sessionStorage).filter(([key]) => key.match(/^#/) && !xover.stores.hasOwnProperty(key)).map(([hashtag, value]) => {
             let restored_document = xover.session.getKey(hashtag)
             if (restored_document) {
-                restored_document = new xover.Store(new xo.Source(restored_document), { tag: hashtag });
+                restored_document = new xover.Store(new xover.Source(restored_document), { tag: hashtag });
                 if (restored_document.find(ref)) {
                     return_array.push(xover.stores[hashtag].find(ref));
                 }
@@ -2534,7 +2534,7 @@ Object.defineProperty(xover.stores, 'restore', {
         name_list = name_list instanceof Array && name_list || [name_list];
         let restoring = [];
 
-        Object.entries(sessionStorage).filter(([key]) => (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
+        Object.entries(sessionStorage).filter(([key]) => key!='#' && (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
             console.log('Restoring document ' + tag);
             xover.stores[tag] = new xover.Store(xover.sources[JSON.parse(value)["source"]], { tag: tag });
         })
@@ -3672,8 +3672,8 @@ xover.init = async function () {
         if (history.state) delete history.state.active;
         let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '') + '.manifest', { headers: { Accept: "*/*" } });
         let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } });
-        manifest.merge(local_manifest);
-        xover.manifest = new xover.Manifest(manifest.merge(xover.manifest));
+        manifest = manifest.merge(local_manifest);
+        xover.manifest = new xover.Manifest(xover.manifest.merge(manifest));
         Object.assign(xover.spaces, xover.manifest.spaces);
         xover.modernize();
         await Promise.all(xover.manifest.stylesheets.map(href => xover.library[href]));
@@ -5732,7 +5732,7 @@ xover.modernize = function (targetWindow) {
                 value: function () {
                     let self = this;
                     for (let a = 0; a < arguments.length; a++) {
-                        var object = arguments[a]
+                        let object = arguments[a]
                         if (object && object.constructor == {}.constructor) {
                             for (let key in object) {
                                 if (object[key] && object[key].constructor == {}.constructor) {
