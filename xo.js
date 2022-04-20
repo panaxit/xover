@@ -577,7 +577,7 @@ xover.listener.on('error', async function ({ event }) {
             srcElement.src = new_url;
             record.uid = new_url;
             store.put(record);
-            srcElement.source.selectNodes(`.//@*[.='${old_url}']`).forEach(node => node.value = new_url);
+            srcElement.source && srcElement.source.selectNodes(`.//@*[.='${old_url}']`).forEach(node => node.value = new_url);
             store.delete(old_url);
         } else {
             if ([...document.querySelectorAll('script[src]')].find(node => node.getAttribute("src").indexOf('bootstrap') !== -1)) { //
@@ -1651,6 +1651,7 @@ xover.spaces["js"] = "http://panax.io/xover/javascript"
 xover.spaces["session"] = "http://panax.io/session"
 xover.spaces["shell"] = "http://panax.io/shell"
 xover.spaces["state"] = "http://panax.io/state"
+xover.spaces["search"] = "http://panax.io/search"
 xover.spaces["context"] = "http://panax.io/context"
 xover.spaces["temp"] = "http://panax.io/temp"
 xover.spaces["xmlns"] = "http://www.w3.org/2000/xmlns/"
@@ -2132,7 +2133,7 @@ content_type["xml"] = "text/xml";
 xover.library = new Proxy({}, {
     get: function (self, key) {
         if (!self[key]) {
-            self[key] = xover.fetch.xml(key).then(document => self[key] = document).catch(() => { self[key] = null; return null });
+            self[key] = xover.fetch.xml(key).then(document => document).catch(() => null);
         }
         return self[key];
     },
@@ -4651,13 +4652,13 @@ xover.Store = function (xml, ...args) {
     });
     Object.defineProperty(this, 'initialize', {
         value: async function () {
-            _store_stylesheets.filter(stylesheet => stylesheet.role == 'init' && !__document.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(stylesheet => {
+            _store_stylesheets.filter(stylesheet => stylesheet.role == 'init' && !__document.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(async stylesheet => {
                 let _document_stylesheet = __document.stylesheets[stylesheet.href];
                 if (_document_stylesheet) {
                     _document_stylesheet.replaceBy(__document.createComment('Initialized by ' + stylesheet.href));
                 }
 
-                let new_document = __document.transform(stylesheet.document);
+                let new_document = __document.transform(await stylesheet.document);
                 if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
                     /*La transformación no debe regresar un html ni otro documento del estándar*/
                     this.document = new_document;
