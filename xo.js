@@ -2402,7 +2402,7 @@ Object.defineProperty(xover.library, "xover/databind.xslt", {
 
 Object.defineProperty(xover.stores, "#", {
     get: function () {
-        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"]})) || xover.stores['#shell']; //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
+        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] })) || xover.stores['#shell']; //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
     }
 });
 
@@ -2535,7 +2535,7 @@ Object.defineProperty(xover.stores, 'restore', {
         name_list = name_list instanceof Array && name_list || [name_list];
         let restoring = [];
 
-        Object.entries(sessionStorage).filter(([key]) => key!='#' && (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
+        Object.entries(sessionStorage).filter(([key]) => key != '#' && (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
             console.log('Restoring document ' + tag);
             xover.stores[tag] = new xover.Store(xover.sources[JSON.parse(value)["source"]], { tag: tag });
         })
@@ -5076,8 +5076,10 @@ xover.listener.on('beforeRemoveHTMLElement', function ({ target }) {
 })
 
 xover.listener.on('remove', function ({ target }) {
-    let source = target.source;
-    source && source.remove();
+    let source = target.source; //TODO: Revisar que el comportamiento del borrado sea el deseado, pues en ocasiones se borra el elemento sin que la intención sea borrar el nodo
+    if (source instanceof Element) {
+        source && source.remove();
+    }
 })
 
 xover.listener.keypress = function (e = {}) {
@@ -6618,11 +6620,11 @@ xover.modernize = function (targetWindow) {
                     if (refresh) {
                         this.ownerDocument.store.render(refresh);
                     }
+                    let source = this.ownerDocument.source;
+                    source && source.save();
                 } else {
                     originalRemoveAttribute.apply(this, arguments);
                 }
-                let source = this.ownerDocument.source;
-                source && source.save();
                 xover.listener.dispatchEvent(new xover.listener.Event('remove', { target: this }), attribute_node);
             }
 
