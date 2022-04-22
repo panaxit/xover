@@ -794,9 +794,6 @@ xover.server = new Proxy({}, {
             [...new URLSearchParams(query).entries()].map(([key, value]) => url.searchParams.set(key, value));
 
             let headers = new Headers(settings["headers"]);
-            //headers.set("Accept", (headers.get("Accept") || "text/xml"))
-            headers.set("X-Debugging", (headers.get("X-Debugging") || xover.debug.enabled));
-            headers.set("X-Rebuild", (headers.get("X-Rebuild") || (xover.listener.keypress.altKey ? true : false)));
             settings["headers"] = headers;
             try {
                 [return_value, request, response] = await xover.fetch(url, settings).then(response => [response.body, response.request, response]);
@@ -2322,7 +2319,7 @@ Object.defineProperty(xover.library, "xover/databind.xslt", {
 
   <xsl:template match="source:*[key('sourcedefinition',concat(generate-id(..),'::',local-name(),'::'))]"/>
 
-  <xsl:template match="@source:*[.!='']" mode="sources">
+  <xsl:template match="@source:*" mode="sources">
     <xsl:param name="ref" select=".."/>
     <xsl:param name="mode">nodes</xsl:param>
     <xsl:variable name="attribute_name" select="local-name()"/>
@@ -2377,7 +2374,7 @@ Object.defineProperty(xover.library, "xover/databind.xslt", {
             <xsl:copy-of select="($current_datasource[@command=$curr_source])[1]"/>
           </xsl:when>
           <xsl:otherwise>
-            <xsl:element name="source:{local-name()}">
+            <xsl:element name="{name()}" namespace="{namespace-uri()}">
               <xsl:attribute name="xo:id">
                 <xsl:value-of select="concat('__request_',generate-id())"/>
               </xsl:attribute>
@@ -4345,17 +4342,7 @@ xover.Store = function (xml, ...args) {
                         let root_node = node.prefix.replace(/^request$/, "source") + ":" + attribute_base_name
                         let parameters = (node.getAttribute('source_filters:' + attribute_base_name) || predicate || "");
                         let headers = new Headers({
-                            "Cache-Response": (Array.prototype.coalesce(eval(node.getAttribute("cache" + ":" + (attribute_base_name))), eval(node.parentElement.getAttribute("cache" + ":" + (attribute_base_name))), false))
-                            , "Accept": content_type.xml
-                            , "cache-control": 'force-cache'
-                            , "pragram": 'force-cache'
-                            , "x-source-tag": tag
-                            , "x-original-request": command
-                            , "Root-Node": root_node
-                            , "X-Detect-Missing-Variables": "false"
-                            , "x-data-text": (node.getAttribute('source_text:' + attribute_base_name) || node.getAttribute('dataText') || "")
-                            , "x-data-value": (node.getAttribute('source_value:' + attribute_base_name) || node.getAttribute('dataValue') || "")//TODO: quitar dataText y dataValue (sin namespace)
-                            , "x-data-fields": (node.getAttribute('source_fields:' + attribute_base_name) || fields || "")
+                            "Accept": content_type.xml
                         })
                         var response_handler = (response) => {
                             //var response_is_message = !!response.documentElement.selectSingleNode('self::xo:message');
@@ -4403,7 +4390,7 @@ xover.Store = function (xml, ...args) {
                                 //});
                             });
                         };
-                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix]({ command: request, predicate: parameters }, {
+                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](request && JSON.parse(request) || undefined, {
                             method: 'GET'
                             , headers: headers
                         }).then(response_handler).catch(response_handler));
