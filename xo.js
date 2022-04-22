@@ -4344,7 +4344,7 @@ xover.Store = function (xml, ...args) {
                         let headers = new Headers({
                             "Accept": content_type.xml
                         })
-                        var response_handler = (response) => {
+                        let response_handler = (response) => {
                             //var response_is_message = !!response.documentElement.selectSingleNode('self::xo:message');
                             //if (!response_is_message && !response.selectSingleNode(`//${root_node}`)) {
                             //    let new_node = xover.xml.createDocument(`<${root_node} xmlns:source="http://panax.io/source"/>`);
@@ -4353,7 +4353,8 @@ xover.Store = function (xml, ...args) {
                             //}
                             ////response.documentElement.setAttributeNS(null, "command", original_request)
                             ////response = xover.xml.reseed(response);
-                            !(response instanceof xover.Store) && self.selectNodes(`//source:*[@command="${command}"]`).map((targetNode, index, array) => {
+                            /*!(response instanceof xover.Store) && node.selectNodes(`//source:*[@command="${command}"]`).map((targetNode, index, array) => {*/
+                                let targetNode = node
                                 let new_node = response.cloneNode(true).reseed();
                                 let fragment = document.createDocumentFragment();
                                 if (response.documentElement.tagName == targetNode.tagName || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI)) {
@@ -4366,10 +4367,10 @@ xover.Store = function (xml, ...args) {
                                 if (response.documentElement.selectSingleNode(`xo:r[@value="${prev_value}"]`)) {
                                     targetNode.parentElement.setAttributeNS(null, "value", prev_value)
                                 }
-                                if (array.length > xover.data.binding["max_subscribers"]) {
+                                /*if (array.length > xover.data.binding["max_subscribers"]) {
                                     targetNode.parentElement.appendChild(xover.data.createMessage("Load truncated").documentElement);
                                     console.warn("Too many requests may create a big document. Place binding in a common place.")
-                                } else if (fragment.childNodes.length) {
+                                } else */if (fragment.childNodes.length) {
                                     targetNode.append(fragment);
                                     //if (response_is_message) {
                                     //    targetNode.appendChild(response.documentElement);
@@ -4388,7 +4389,7 @@ xover.Store = function (xml, ...args) {
                                 //xover.delay(50).then(() => {
                                 //xover.stores[tag].render(/*true*/);
                                 //});
-                            });
+                            //});
                         };
                         xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](request && JSON.parse(request) || undefined, {
                             method: 'GET'
