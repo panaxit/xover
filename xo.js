@@ -1569,7 +1569,7 @@ xover.sources = new Proxy({}, {
         let value = undefined;
         if (key in self) {
             return self[key];
-        } else {
+        } else if (key[0] === '#') {
             let tag_name = key;
             let match_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")))) || key;
             let source;
@@ -1582,6 +1582,9 @@ xover.sources = new Proxy({}, {
                 }
             } while (match_key in _manifest);
             xover.sources[key] = (key === match_key && new xover.Source(source, key)).document || xover.sources[match_key];
+            return xover.sources[key];
+        } else {
+            xover.sources[key] = new xover.Source(key, key).document;
             return xover.sources[key];
         }
     },
@@ -1625,7 +1628,7 @@ xover.ProcessingInstruction = function (stylesheet) {
     if (!stylesheet.hasOwnProperty("document")) {
         Object.defineProperty(stylesheet, 'document', {
             get: function () {
-                this.ownerDocument.store = this.ownerDocument.store || (xover.stores.find(this.ownerDocument).shift() || document.createElement('p')).store //Se pone esta solución pero debería tomar automáticamente el store. Ver si se puede solucionar este problema de raíz.
+                //this.ownerDocument.store = this.ownerDocument.store || (xover.stores.find(this.ownerDocument).shift() || document.createElement('p')).store //Se pone esta solución pero debería tomar automáticamente el store. Ver si se puede solucionar este problema de raíz.
                 return this.ownerDocument.store && this.ownerDocument.store.library[this.href] || xover.library[this.href];// || xover.library.load(this.href);
             }
         });
@@ -1686,7 +1689,7 @@ xover.spaces["fixed"] = "http://panax.io/xover/state/fixed"
 
 xover.dom.alert = async function (message) {
     let xMessage = xover.data.createMessage(message)
-    xMessage.addStylesheet({ href: "message.xslt", role: "modal" })
+    await xMessage.addStylesheet({ href: "message.xslt", role: "modal" })
     dom = await xMessage.transform();
     document.body.appendChild(dom.documentElement)
     return dom.documentElement;
@@ -2133,7 +2136,7 @@ content_type["xml"] = "text/xml";
 xover.library = new Proxy({}, {
     get: function (self, key) {
         if (!self[key]) {
-            self[key] = xover.fetch.xml(key).then(document => document).catch(() => null);
+            return xover.sources[key]; //xover.fetch.xml(key).then(document => self[key] = document).catch(() => { self[key] = null; return null });
         }
         return self[key];
     },
@@ -2162,37 +2165,45 @@ Object.defineProperty(xover.library, 'load', {
         _file_name_or_array = [...new Set([_file_name_or_array].flat())];
         //_file_name_or_array = _file_name_or_array.filter((file_name) => !(xover.library.loading.includes(file_name) || file_name in this));
         _file_name_or_array.map((file_name) => xover.library.loading.push(file_name));
-        _file_name_or_array.map(file_name => {
+        let promises = _file_name_or_array.map(file_name => {
+            //let full_url = new URL(file_name, location.origin + location.pathname.replace(/[^/]+$/, ""));
+            //let url = full_url.href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '')
+            //let document = this[file_name];
+            //!document.documentElement && document.fetch() || document;
+            //library[file_name] = document;
+            //return library[file_name]
+
             let full_url = new URL(file_name, location.origin + location.pathname.replace(/[^/]+$/, ""));
             let url = full_url.href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '')
-            if (url in this && this[url]) {
-                library[url] = this[url];
-            } else {
-                this[url] = xover.fetch(full_url)
-                    .then(response => [response.body, response.request])
-                    .then(async ([data, request]) => {
-                        let url = request.url.toString().replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '')
-                        xover.spaces.merge(xover.xml.getNamespaces(data));
-                        data.documentElement && data.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
-                            let href = node.getAttribute("href");
-                            if (!href.match(/^\//)) {
-                                let new_href = new URL(href, data.url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
-                                node.setAttributeNS(null, "href", new_href);
-                            }
-                        });
-                        this[url] = xover.xml.createDocument(data);
-                        xover.library.loading = xover.library.loading.filter(item => item != url);
-                        library[url] = this[url];
-                        let imports = this[url].documentElement && this[url].documentElement.selectNodes("xsl:import|xsl:include").reduce((arr, item) => { arr.push(item.getAttribute("href")); return arr; }, []) || [];
-                        if (imports.length) {
-                            await xover.library.load(imports);
-                        }
-                    }).catch(error => {
-                        console.error(`Exception downloading ${url}: ${error}`);
-                    })
+            let document = xover.library[url];
+            library[url] = document;
+            if (!library[url].documentElement) {
+                return library[url].fetch()
+                //xover.fetch.xml(full_url)
+                //    .then(response => [response.body, response.request])
+                //    .then(async ([data, request]) => {
+                //        let url = request.url.toString().replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '')
+                //        xover.spaces.merge(xover.xml.getNamespaces(data));
+                //        data.documentElement && data.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
+                //            let href = node.getAttribute("href");
+                //            if (!href.match(/^\//)) {
+                //                let new_href = new URL(href, data.url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
+                //                node.setAttributeNS(null, "href", new_href);
+                //            }
+                //        });
+                //        this[url] = xover.xml.createDocument(data);
+                //        xover.library.loading = xover.library.loading.filter(item => item != url);
+                //        library[url] = this[url];
+                //        let imports = this[url].documentElement && this[url].documentElement.selectNodes("xsl:import|xsl:include").reduce((arr, item) => { arr.push(item.getAttribute("href")); return arr; }, []) || [];
+                //        if (imports.length) {
+                //            await xover.library.load(imports);
+                //        }
+                //    }).catch(error => {
+                //        console.error(`Exception downloading ${url}: ${error}`);
+                //    })
             }
         })
-        await Promise.all(_file_name_or_array.reduce((lib, stylesheet) => { lib.push(xover.library[stylesheet]); return lib }, []));
+        await Promise.all(promises);
         if (simple_output) {
             return Object.values(library).pop();
         } else {
@@ -3121,13 +3132,13 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
         let href = node.getAttribute("href");
         if (!href.match(/^\//)) {
-            let new_href = new URL(href, response.url || response.href).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
+            let new_href = new URL(href, response.url || response.href).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
             node.setAttributeNS(null, "href", new_href);
         }
     });
     let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").reduce((arr, item) => { arr.push(item.getAttribute("href")); return arr; }, []) || [];
     if (imports.length) {
-        await Promise.all(imports.map(href => xover.library[href]));
+        await Promise.all(imports.map(href => xover.library[href].fetch()));
         //await xover.library.load(imports);
     }
     return return_value;
@@ -3633,7 +3644,7 @@ xover.library.defaults["message.xslt"] = xover.xml.createDocument(`
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
   xmlns:xo="http://panax.io/xover"
   xmlns="http://www.w3.org/1999/xhtml"
-  exclude-result-prefixes="xsl x"
+  exclude-result-prefixes="xsl xo"
 >
   <xsl:output method="xml"
      omit-xml-declaration="yes"
@@ -3893,6 +3904,10 @@ xover.Store = function (xml, ...args) {
     let _store_stylesheets = [];
     let _library = new Proxy({}, {
         get: function (target, name) {
+            target[name] = target[name] || xover.library[name].cloneNode(true);
+            if (target[name] instanceof Document) {
+                target[name].store = store;
+            }
             return target[name];
         },
         set: function (target, name, value) {
@@ -3921,133 +3936,121 @@ xover.Store = function (xml, ...args) {
         });
     }
 
-    if (!_library.hasOwnProperty('clear')) {
-        Object.defineProperty(_library, 'clear', {
-            value: function (forced = true) {
-                Object.keys(this).map((key) => {
-                    _library[key] = undefined;
-                    if (forced) {
-                        xover.library[key] = undefined;
-                        //xover.library.load(key);
-                    }
-                });
-            },
-            writable: false, enumerable: false, configurable: false
-        })
-    }
-
-    if (!_library.hasOwnProperty('load')) {
-        Object.defineProperty(_library, 'load', {
-            value: async function (list) {
-                store.state.loading = true;
-                var dependencies_to_load = list || this.filter((key, value) => !value) || [];
-                if (Object.keys(dependencies_to_load).length) {
-                    await xover.library.load(Object.keys(dependencies_to_load));
+    Object.defineProperty(_library, 'clear', {
+        value: function (forced = true) {
+            Object.keys(this).map((key) => {
+                _library[key] = undefined;
+                if (forced) {
+                    xover.library[key] = undefined;
+                    //xover.library.load(key);
                 }
-                await Promise.all(Object.keys(this).reduce((lib, stylesheet) => { xover.library[stylesheet] instanceof Promise && lib.push(xover.library[stylesheet]); return lib }, []));
-                Object.keys(dependencies_to_load).map((key) => {
-                    if (key in xover.library && xover.library[key].cloneNode) {
-                        this[key] = xover.library[key].cloneNode(true);/*(this[key] || xover.fetch.xml(key).then(document => {
-                                this[key] = document && document.selectSingleNode && document.selectSingleNode('xsl:stylesheet') && document;
-                            }));*/
-                    }
-                    else {
-                        this[key] = xover.library[key];
-                    }
-                });
-                const loaded_library = await Promise.all(Object.values(this));
-                store.state.loading = undefined;
-                return loaded_library;
-            },
-            writable: false, enumerable: false, configurable: false
-        })
-    }
+            });
+        },
+        writable: false, enumerable: false, configurable: false
+    })
 
-    if (!_library.hasOwnProperty('reload')) {
-        Object.defineProperty(_library, 'reload', {
-            value: async function (list) {
-                _library.clear();
-                xover.library.reset(Object.keys(_library));
-                return _library.load();
-            },
-            writable: false, enumerable: false, configurable: false
-        })
+    Object.defineProperty(_library, 'load', {
+        value: async function (list) {
+            store.state.loading = true;
+            let stylesheets = await Promise.all(store.stylesheets.getDocuments().map(document => document.documentElement || document.fetch())).then(document => document);
 
-        Object.defineProperty(_library.reload, 'interval', {
-            value: function (seconds) {
-                var self = this;
-                //xover.session.live.running = live;
-                var refresh_rate;
-                this.paused = false;
-                var _seconds = (seconds || 3);
-                this.seconds = _seconds;
-                if (self.Interval) {
-                    window.clearInterval(self.Interval);
-                    self.Interval = undefined;
-                }
-                if (seconds == 0) {
+            //var dependencies_to_load = list || this.filter((key, value) => !value) || [];
+            //if (Object.keys(dependencies_to_load).length) {
+            //    dependencies_to_load = await xover.library.load(Object.keys(dependencies_to_load));
+            //}
+            //Object.keys(dependencies_to_load).map((key) => {
+            //    this[key] = xover.library[key].cloneNode(true);
+            //});
+            //const loaded_library = await Promise.all(Object.values(this));
+            //store.state.loading = undefined;
+            return stylesheets;
+        },
+        writable: false, enumerable: false, configurable: false
+    })
+
+    Object.defineProperty(_library, 'reload', {
+        value: async function (list) {
+            _library.clear();
+            xover.library.reset(Object.keys(_library));
+            return _library.load();
+        },
+        writable: false, enumerable: false, configurable: false
+    })
+
+    Object.defineProperty(_library.reload, 'interval', {
+        value: function (seconds) {
+            var self = this;
+            //xover.session.live.running = live;
+            var refresh_rate;
+            this.paused = false;
+            var _seconds = (seconds || 3);
+            this.seconds = _seconds;
+            if (self.Interval) {
+                window.clearInterval(self.Interval);
+                self.Interval = undefined;
+            }
+            if (seconds == 0) {
+                window.console.info('Auto refresh stopped.');
+                return;
+            } else {
+                window.console.info(`Start refresh of ${xover.stores.active.tag} for every ${this.seconds} seconds.`);
+            }
+
+            refresh_rate = this.seconds;
+            refresh_rate = (refresh_rate * 1000);
+            var refresh = async function () {
+                if (!this.seconds) {
+                    if (this.Interval) window.clearInterval(this.Interval);
                     window.console.info('Auto refresh stopped.');
                     return;
-                } else {
-                    window.console.info(`Start refresh of ${xover.stores.active.tag} for every ${this.seconds} seconds.`);
                 }
+                if (!this.paused) {
+                    window.console.info('Checking for changes in session...');
+                    this();
+                    store.render();
+                }
+            };
 
-                refresh_rate = this.seconds;
-                refresh_rate = (refresh_rate * 1000);
-                var refresh = async function () {
-                    if (!this.seconds) {
-                        if (this.Interval) window.clearInterval(this.Interval);
-                        window.console.info('Auto refresh stopped.');
-                        return;
-                    }
-                    if (!this.paused) {
-                        window.console.info('Checking for changes in session...');
-                        this();
-                        store.render();
-                    }
-                };
-
-                self.Interval = setInterval(function () {
-                    if (!self.interval.hasOwnProperty('stop')) {
-                        Object.defineProperty(self.interval, 'stop', {
-                            value: function () {
-                                self.seconds = undefined;
-                                if (self.Interval) {
-                                    window.clearInterval(self.Interval);
-                                    self.Interval = undefined;
-                                }
-                                delete self.interval["stop"];
-                                delete self.interval["pause"];
-                                delete self.interval["continue"];
-                                window.console.info('Auto refresh stopped.');
-                            },
-                            writable: false, enumerable: false, configurable: true
-                        });
-                    }
-                    if (!self.interval.hasOwnProperty('pause')) {
-                        Object.defineProperty(self.interval, 'pause', {
-                            value: function () {
-                                self.paused = true;
-                                if (!self.interval.hasOwnProperty('continue')) {
-                                    Object.defineProperty(self.interval, 'continue', {
-                                        value: function () {
-                                            self.paused = false;
-                                            delete self.interval["continue"];
-                                        },
-                                        writable: false, enumerable: false, configurable: true
-                                    });
-                                }
-                                window.console.info('Auto refresh paused.');
-                            },
-                            writable: false, enumerable: false, configurable: true
-                        });
-                    }
-                    refresh.apply(self)
-                }, refresh_rate);
-            },
-            writable: false, enumerable: false, configurable: false
-        });
-    }
+            self.Interval = setInterval(function () {
+                if (!self.interval.hasOwnProperty('stop')) {
+                    Object.defineProperty(self.interval, 'stop', {
+                        value: function () {
+                            self.seconds = undefined;
+                            if (self.Interval) {
+                                window.clearInterval(self.Interval);
+                                self.Interval = undefined;
+                            }
+                            delete self.interval["stop"];
+                            delete self.interval["pause"];
+                            delete self.interval["continue"];
+                            window.console.info('Auto refresh stopped.');
+                        },
+                        writable: false, enumerable: false, configurable: true
+                    });
+                }
+                if (!self.interval.hasOwnProperty('pause')) {
+                    Object.defineProperty(self.interval, 'pause', {
+                        value: function () {
+                            self.paused = true;
+                            if (!self.interval.hasOwnProperty('continue')) {
+                                Object.defineProperty(self.interval, 'continue', {
+                                    value: function () {
+                                        self.paused = false;
+                                        delete self.interval["continue"];
+                                    },
+                                    writable: false, enumerable: false, configurable: true
+                                });
+                            }
+                            window.console.info('Auto refresh paused.');
+                        },
+                        writable: false, enumerable: false, configurable: true
+                    });
+                }
+                refresh.apply(self)
+            }, refresh_rate);
+        },
+        writable: false, enumerable: false, configurable: false
+    });
 
     //for (let endpoint in xover.manifest.server) {
     //    Object.defineProperty(store, endpoint, {
@@ -4423,8 +4426,7 @@ xover.Store = function (xml, ...args) {
                 if (!(_store_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
                     store.addStylesheet({ href: store.tag.substring(1) + '.xslt', target: "@#shell main" })
                 }
-                await Promise.all(_store_stylesheets.filter(stylesheet => stylesheet.role == 'init').map(stylesheet => stylesheet.document));
-
+                await store.library.load();
                 let isActive = self.isActive
                 let active_tag = xover.state.active;
                 let active_store = xover.stores.active;
@@ -4573,7 +4575,8 @@ xover.Store = function (xml, ...args) {
             if (refresh) {
                 store.render();
             }
-            return pi;
+            let stylesheet = this.getStylesheet(definition.href);
+            return stylesheet.document.documentElement && stylesheet.document || stylesheet.document.fetch();
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -4585,8 +4588,7 @@ xover.Store = function (xml, ...args) {
                 value: function () {
                     let docs = []
                     for (let stylesheet of this) {
-                        stylesheet.document.store = store;
-                        docs.push(stylesheet.document)
+                        docs.push(stylesheet.document);
                     }
                     return docs;
                 },
@@ -4658,7 +4660,7 @@ xover.Store = function (xml, ...args) {
                     _document_stylesheet.replaceBy(__document.createComment('Initialized by ' + stylesheet.href));
                 }
 
-                let new_document = __document.transform(await stylesheet.document);
+                let new_document = __document.transform(await stylesheet.document.fetch());
                 if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
                     /*La transformación no debe regresar un html ni otro documento del estándar*/
                     this.document = new_document;
@@ -5213,7 +5215,8 @@ xover.listener.on('changed::state', async function ({ target, attribute: key }) 
     if (event.defaultPrevented || !(target && target.parentNode)) return;
     let stylesheets = target.parentNode.stylesheets
     if (!stylesheets) return;
-    let documents = await Promise.all(stylesheets.getDocuments()).then(document => document)
+    let documents = stylesheets.getDocuments();
+    documents = await Promise.all(documents.map(document => document.documentElement || document.fetch())).then(document => document);
     documents.filter(stylesheet => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
 });
 
@@ -6057,13 +6060,17 @@ xover.modernize = function (targetWindow) {
                     throw (new Error("Document is not associated to a Source and can't be fetched"));
                 }
                 let new_document;
-                new_document = await this.source.fetch();
-                if (new_document) {
-                    new_document = this.replaceBy(new_document);
-                } else {
-                    new_document = this;
-                }
-                return new_document;
+
+                return new Promise(resolve => {
+                    this.source.fetch().then(new_document => {
+                        if (new_document) {
+                            new_document = this.replaceBy(new_document);
+                        } else {
+                            new_document = this;
+                        }
+                        resolve(new_document);
+                    });
+                });
             }
 
             if (!XMLDocument.prototype.hasOwnProperty('type')) {
@@ -6092,8 +6099,7 @@ xover.modernize = function (targetWindow) {
                             value: function () {
                                 let docs = []
                                 for (let stylesheet of this) {
-                                    stylesheet.document.store = self.store;
-                                    docs.push(stylesheet.document)
+                                    docs.push(stylesheet.document);
                                 }
                                 return docs;
                             },
@@ -6207,8 +6213,9 @@ xover.modernize = function (targetWindow) {
                         store.render();
                     }
                     document.insertBefore(pi, target || document.selectSingleNode(`(processing-instruction('xml-stylesheet')${definition.role == 'init' ? '' : definition.role == 'binding' ? `[not(contains(.,'role="init"') or contains(.,'role="binding"'))]` : '[1=0]'} | *[1])[1]`));
-                    return pi;
                 }
+                let stylesheet = this.getStylesheet(definition.href);
+                return stylesheet.document.documentElement && document || stylesheet.document.fetch();
             }
 
             var toString_original = Node.prototype.toString;
@@ -6858,6 +6865,7 @@ xover.modernize = function (targetWindow) {
             let originalCloneNode = XMLDocument.prototype.cloneNode;
             XMLDocument.prototype.cloneNode = function (...args) {
                 let cloned_element = originalCloneNode.apply(this, args);
+                cloned_element.source = this.source;
                 cloned_element.store = this.store;
                 cloned_element.href = this.href;
                 cloned_element.url = this.url;
@@ -6993,7 +7001,6 @@ xover.modernize = function (targetWindow) {
                             xml = xml.cloneNode(true);
                             xml.appendChild(xml.createComment("empty"))
                         }
-                        xml.store = (this.ownerDocument || this).store;
 
                         if (document.implementation && document.implementation.createDocument) {
                             var xsltProcessor = new XSLTProcessor();
