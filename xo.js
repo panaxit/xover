@@ -3949,7 +3949,7 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(_library, 'load', {
         value: async function (list) {
             store.state.loading = true;
-            let stylesheets = await Promise.all(store.stylesheets.getDocuments().map(document => document.documentElement || document.fetch())).then(document => document);
+            let stylesheets = await Promise.all(store.stylesheets.getDocuments().map(document => document.documentElement && document || document.fetch())).then(document => document);
 
             //var dependencies_to_load = list || this.filter((key, value) => !value) || [];
             //if (Object.keys(dependencies_to_load).length) {
@@ -4354,41 +4354,41 @@ xover.Store = function (xml, ...args) {
                             ////response.documentElement.setAttributeNS(null, "command", original_request)
                             ////response = xover.xml.reseed(response);
                             /*!(response instanceof xover.Store) && node.selectNodes(`//source:*[@command="${command}"]`).map((targetNode, index, array) => {*/
-                                let targetNode = node
-                                let new_node = response.cloneNode(true).reseed();
-                                let fragment = document.createDocumentFragment();
-                                if (response.documentElement.tagName == targetNode.tagName || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI)) {
-                                    fragment.append(...new_node.documentElement.childNodes);
-                                } else {
-                                    fragment.append(...new_node.childNodes);
-                                }
+                            let targetNode = node
+                            let new_node = response.cloneNode(true).reseed();
+                            let fragment = document.createDocumentFragment();
+                            if (response.documentElement.tagName == targetNode.tagName || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI)) {
+                                fragment.append(...new_node.documentElement.childNodes);
+                            } else {
+                                fragment.append(...new_node.childNodes);
+                            }
 
-                                let prev_value = targetNode.parentNode.getAttribute("prev:value");
-                                if (response.documentElement.selectSingleNode(`xo:r[@value="${prev_value}"]`)) {
-                                    targetNode.parentElement.setAttributeNS(null, "value", prev_value)
-                                }
+                            let prev_value = targetNode.parentNode.getAttribute("prev:value");
+                            if (response.documentElement.selectSingleNode(`xo:r[@value="${prev_value}"]`)) {
+                                targetNode.parentElement.setAttributeNS(null, "value", prev_value)
+                            }
                                 /*if (array.length > xover.data.binding["max_subscribers"]) {
                                     targetNode.parentElement.appendChild(xover.data.createMessage("Load truncated").documentElement);
                                     console.warn("Too many requests may create a big document. Place binding in a common place.")
                                 } else */if (fragment.childNodes.length) {
-                                    targetNode.append(fragment);
-                                    //if (response_is_message) {
-                                    //    targetNode.appendChild(response.documentElement);
-                                    //} else {
-                                    //    let new_node = xover.xml.createDocument(response);
-                                    //    targetNode.selectNodes('@*').map(attr => {
-                                    //        new_node.documentElement.setAttributeNS(null, attr.name, attr.value, false)
-                                    //    });
-                                    //    targetNode.parentElement.replaceChild(new_node.documentElement, targetNode);
-                                    //}
-                                } else {
-                                    targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
-                                }
-                                delete xover.data.binding.requests[self.tag][command];
-                                context.render()
-                                //xover.delay(50).then(() => {
-                                //xover.stores[tag].render(/*true*/);
-                                //});
+                                targetNode.append(fragment);
+                                //if (response_is_message) {
+                                //    targetNode.appendChild(response.documentElement);
+                                //} else {
+                                //    let new_node = xover.xml.createDocument(response);
+                                //    targetNode.selectNodes('@*').map(attr => {
+                                //        new_node.documentElement.setAttributeNS(null, attr.name, attr.value, false)
+                                //    });
+                                //    targetNode.parentElement.replaceChild(new_node.documentElement, targetNode);
+                                //}
+                            } else {
+                                targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
+                            }
+                            delete xover.data.binding.requests[self.tag][command];
+                            context.render()
+                            //xover.delay(50).then(() => {
+                            //xover.stores[tag].render(/*true*/);
+                            //});
                             //});
                         };
                         xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](request && JSON.parse(request) || undefined, {
@@ -4633,6 +4633,7 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(this, 'fetch', {
         value: async function () {
             if (__document.fetch) {
+                __document.store = store;
                 await __document.fetch()
             }
             await this.initialize();
@@ -6048,13 +6049,18 @@ xover.modernize = function (targetWindow) {
                     throw (new Error("Document is not associated to a Source and can't be fetched"));
                 }
                 let new_document;
-
+                let store = this.store;
                 return new Promise(resolve => {
                     this.source.fetch().then(new_document => {
                         if (new_document) {
                             new_document = this.replaceBy(new_document);
                         } else {
                             new_document = this;
+                        }
+                        if (store) {
+                            store.isActive && store.render();
+                        } else {
+                            this.render();
                         }
                         resolve(new_document);
                     });
