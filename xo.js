@@ -3934,14 +3934,16 @@ xover.Store = function (xml, ...args) {
     }
 
     Object.defineProperty(_library, 'clear', {
-        value: function (forced = true) {
+        value: function (forced) {
             Object.keys(this).map((key) => {
-                _library[key] = undefined;
+                let item = _library[key]
+                item.documentElement && item.documentElement.remove();
                 if (forced) {
-                    xover.library[key] = undefined;
-                    //xover.library.load(key);
+                    let from_library = xover.library[key];
+                    from_library.documentElement && from_library.documentElement.remove();
                 }
             });
+            return _library;
         },
         writable: false, enumerable: false, configurable: false
     })
@@ -3968,8 +3970,8 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(_library, 'reload', {
         value: async function (list) {
             _library.clear();
-            xover.library.reset(Object.keys(_library));
-            return _library.load();
+            store.render();
+            return _library;
         },
         writable: false, enumerable: false, configurable: false
     })
