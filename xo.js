@@ -3622,7 +3622,7 @@ xover.library.defaults["loading.xslt"] = xover.xml.createDocument(`
             <div id="no-freeze-spinner">
               <div>
                 <i>
-                  <img src="./assets/favicon.png" class="ring_image" onerror="this.remove()"/>
+                  <img src="./assets/icon.png" class="ring_image" onerror="this.remove()"/>
                 </i>
                 <div>
                 </div>
@@ -4474,6 +4474,7 @@ xover.Store = function (xml, ...args) {
                 return;
             }).finally(async () => {
                 _render_manager = undefined;
+                xover.listener.dispatchEvent(new xover.listener.Event('rendered', { target: store }), this);
             });
             return _render_manager;
         },
@@ -7226,7 +7227,7 @@ xover.modernize = function (targetWindow) {
                         let action;
                         let stylesheet_target = 'body';
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
-                            let xsl = stylesheet instanceof XMLDocument && stylesheet || await stylesheet.document || stylesheet.href;
+                            let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             action = (stylesheet.action || !stylesheet.target && "append" || action);
                             if ((stylesheet.target || '').match(/^self::./)) {
                                 let i = 0;
