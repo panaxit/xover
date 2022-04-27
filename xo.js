@@ -4297,7 +4297,7 @@ xover.Store = function (xml, ...args) {
                 cloned_document.reseed();
             }
             //if (some_changed) { //se quita esta validación porque los bindings podrían estar modificando el documento sin marcar un cambio con changed:*
-            __document = cloned_document; // context.document = cloned_document; TODO: Revisar si es necesario hacer la asignación por medio de la propiedad .document
+            __document.replaceBy(cloned_document); // context.document = cloned_document; TODO: Revisar si es necesario hacer la asignación por medio de la propiedad .document
             ////}
 
             ///* Con este código se detectan cambios. Pero es muy costoso*/
