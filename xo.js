@@ -1553,6 +1553,7 @@ xover.Source = function (source, tag) {
                     //}
                     return document;
                 }
+                throw (new Error("No se pudo obtener la fuente de datos"))
             },
             writable: false, enumerable: false, configurable: false
         });
@@ -3567,6 +3568,7 @@ xover.library.defaults["empty.xslt"] = xover.xml.createDocument(`
             <h2 class="text-center">El documento está vacío.</h2>    
             <xsl:if test="$js:snapshots&gt;0">
             <br/><button type="button" class="btn btn-primary btn-lg text-center" onclick="this.store.undo()">Deshacer último cambio</button>
+            <br/><br/><button type="button" class="btn btn-primary btn-lg text-center" onclick="this.store.document.fetch()">Descargar desde la fuente</button>
             </xsl:if>
         </div>                                                                                          
     </div>                                                                                              
@@ -6263,7 +6265,11 @@ xover.modernize = function (targetWindow) {
                             let node = store.find(this.id) || store.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
 
                             if (node && attribute) {
-                                if (node.getAttribute(attribute) === null) {
+                                if (attribute === 'text()') {
+                                    [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
+                                    return [...node.childNodes].filter(el => el instanceof Text).pop();
+                                }
+                                else if (node.getAttribute(attribute) === null) {
                                     node.setAttribute(attribute, "");
                                 }
                                 return node.selectSingleNode(`@${attribute}`);
@@ -6647,6 +6653,17 @@ xover.modernize = function (targetWindow) {
                     this.ownerElement.store.render();
                 }
                 this.value = value;
+                let source = this.ownerDocument.source;
+                source && source.save();
+                return this;
+            }
+
+            Text.prototype.set = function (value) {
+                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                if (this.textContent != value) {
+                    this.parentNode.store.render();
+                }
+                this.textContent = value;
                 let source = this.ownerDocument.source;
                 source && source.save();
                 return this;
@@ -7425,13 +7442,15 @@ xover.modernize = function (targetWindow) {
                             }));
                             [...target.querySelectorAll('[xo-attribute],input[type="file"]')].map(el => el.addEventListener('change', async function () {
                                 let scope = this.source;
-                                let _attribute = scope instanceof Attr && scope.name || undefined;
+                                let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
                                 if (this.type && this.type.toLowerCase() === 'file') {
                                     if (!(this.files && this.files[0])) return;
                                     let store = await xover.database.files;
                                     store.add(this.files).forEach(record => {
                                         [...this.ownerDocument.querySelectorAll(`*[for="${this.id}"] img`)].forEach(img => img.src = record.uid);
-                                        if (_attribute) {
+                                        if (scope instanceof Text || _attribute === 'text') {
+                                            scope.set(record.uid);
+                                        } else if (scope instanceof Attr || _attribute) {
                                             let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
                                             scope = scope instanceof Attr ? scope.ownerElement : scope;
                                             let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
@@ -7440,7 +7459,7 @@ xover.modernize = function (targetWindow) {
                                             scope.set(`metadata:${attribute_name}`, metadata);
                                         }
                                     });
-                                } else if (scope instanceof Attr) {
+                                } else if (scope instanceof Attr || scope instanceof Text) {
                                     scope.set(this.value);
                                 } else if (scope instanceof Node) {
                                     scope.set(_attribute, this.value);
