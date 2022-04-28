@@ -6607,9 +6607,9 @@ xover.modernize = function (targetWindow) {
 
             Attr.prototype.set = function (value) {
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
-                if (this.value != value) {
-                    this.ownerElement.store.render();
-                }
+                //if (this.value != value) {
+                    this.ownerElement.store && this.ownerElement.store.render();
+                //}
                 this.value = value;
                 let source = this.ownerDocument.source;
                 source && source.save();
