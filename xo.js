@@ -701,57 +701,6 @@ xover.Manifest = function (manifest = {}) {
     }
     let _manifest = Object.assign(base_manifest, manifest);
 
-    //Object.defineProperty(_manifest.sources, 'fetch', {
-    //    value: async function (key) {
-    //        let important_sources = Object.entries(_manifest.sources).filter(([_key, _value]) => _key.match(/!$/));
-    //        let tag = String(_manifest.sources[history.state.hash || (window.top || window).location.hash || "#"]).match(/^#/) && _manifest.sources[history.state.hash || (window.top || window).location.hash || "#"] || (window.top || window).location.hash || "#";
-
-    //        to_fetch = [...(key && _manifest.sources[key] && [[tag, _manifest.sources[key]]] || []), ...(!key && tag != '#' && !xover.stores[tag] && _manifest.sources[tag] && [[tag, _manifest.sources[tag]]] || [])];
-
-    //        if (to_fetch.length) {
-    //            to_fetch.map(async ([_key, _value]) => {
-    //                //if (_key == "#" && typeof (_value) == "string" && _manifest.sources[_value]) {
-    //                //    var doc = _value.fetch({ as: _value });
-    //                //    xover.stores.active = doc;
-    //                //} else {
-    //                var doc = await _value.fetch({ as: _key });
-    //                if (doc) {
-    //                    xover.stores.active = doc;
-    //                }
-    //                //}
-    //            });
-    //        } else if (!key && xover.stores[tag]) {
-    //            xover.stores.active = xover.stores[tag];
-    //        }
-    //        //}
-    //    },
-    //    writable: false, enumerable: false, configurable: false
-    //});
-
-    //Object.defineProperty(_manifest, 'getSettings', {
-    //    value: (xover.manifest.getSettings || function (entity_name, config_name) {
-    //        return (_manifest.settings[entity_name]
-    //            || _manifest.settings[entity_name.toLowerCase()]
-    //            || {})[config_name]
-    //    }),
-    //    writable: true, enumerable: false, configurable: false
-    //});
-
-    //TODO: Revisar si esta sección se queda.
-    //Object.defineProperty(_manifest, 'setConfig', {
-    //    value: function (entity_name, property_name, value) {
-    //        if (arguments[0].constructor === {}.constructor) {
-    //            const { entity_name, ...rest } = arguments[0];
-    //            _manifest.settings[(entity_name || xover.data.hashTagName())] = (_manifest.settings[(entity_name || xover.data.hashTagName)] || {})
-    //            xover.json.merge(_manifest.settings[(entity_name || xover.data.hashTagName())], rest);
-    //        } else {
-    //            _manifest.settings[(entity_name || xover.data.hashTagName())] = (_manifest.settings[(entity_name || xover.data.hashTagName())] || {});
-    //            _manifest.settings[(entity_name || xover.data.hashTagName())][property_name] = value
-    //        }
-    //    },
-    //    writable: true, enumerable: false, configurable: false
-    //});
-
     Object.setPrototypeOf(_manifest, xover.Manifest.prototype);
 
     return _manifest;
@@ -828,7 +777,7 @@ xover.server = new Proxy({}, {
             });
         })
 
-        if (self.hasOwnProperty(key)/* && xover.manifest.server && xover.manifest.server[key]*/) {
+        if (self.hasOwnProperty(key)) {
             Object.defineProperty(self[key], 'fetch', {
                 value: function (...args) {
                     let settings = args.pop() || {};
@@ -2820,7 +2769,7 @@ xover.Response = function (response, request) {
                     responseText = text;
                 }).catch(error => Promise.reject(error));
             } else {
-                if (contentType.toLowerCase().indexOf("manifest") != -1) {
+                if (contentType.toLowerCase().indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) {
                     //await response.json().then(json => body = json);
                     await response.text().then(text => body = text);
                     responseText = body;
@@ -2850,7 +2799,7 @@ xover.Response = function (response, request) {
                         return _body_type;
                     } else if (response.headers.get('Content-Type').toLowerCase().indexOf("html") != -1) {
                         return "html";
-                    } else if ((response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1 || response.headers.get('Content-Type').toLowerCase().indexOf("manifest") != -1) && xover.json.isValid(xover.json.tryParse(responseText))) {
+                    } else if ((response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1 || response.headers.get('Content-Type').toLowerCase().indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) && xover.json.isValid(xover.json.tryParse(responseText))) {
                         return "json";
                     } else if ((response.headers.get('Content-Type').toLowerCase().indexOf("xml") != -1 || response.headers.get('Content-Type').toLowerCase().indexOf("xsl") != -1 || contentType.toLowerCase().indexOf("<?xml ") != -1) && xover.xml.isValid(xover.xml.tryParse(responseText))) {
                         return "xml"
@@ -2871,6 +2820,9 @@ xover.Response = function (response, request) {
                     //p.innerHTML = responseText;
                     //frag.append(...p.childNodes);
                     //body = frag;
+                    Object.defineProperty(response, 'json', {
+                        value: null
+                    });
                     Object.defineProperty(response, 'html', {
                         get: function () {
                             return body;
@@ -2879,6 +2831,9 @@ xover.Response = function (response, request) {
                     break;
                 case "xml":
                     body = xover.xml.createDocument(responseText);
+                    Object.defineProperty(response, 'json', {
+                        value: null
+                    });
                     Object.defineProperty(response, 'xml', {
                         get: function () {
                             return body;
@@ -2909,6 +2864,9 @@ xover.Response = function (response, request) {
                     break;
                 default:
                     body = responseText;
+                    Object.defineProperty(response, 'json', {
+                        value: null
+                    });
             }
 
             if (body instanceof Document) {
@@ -3682,7 +3640,7 @@ xover.init = async function () {
     this.init.initializing = this.init.initializing || new Promise(async (resolve) => {
         if (history.state) delete history.state.active;
         let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '') + '.manifest', { headers: { Accept: "*/*" } });
-        let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } });
+        let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } }) || await xover.fetch.json('manifest.json', { headers: { Accept: "*/*" } });
         manifest = manifest.merge(local_manifest);
         xover.manifest = new xover.Manifest(xover.manifest.merge(manifest));
         Object.assign(xover.spaces, xover.manifest.spaces);
