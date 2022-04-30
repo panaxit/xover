@@ -6020,11 +6020,11 @@ xover.modernize = function (targetWindow) {
                         } else {
                             new_document = this;
                         }
-                        if (store) {
-                            store.isActive && store.render();
-                        } else {
-                            this.render();
-                        }
+                        //if (store) {
+                        //    store.isActive && store.render();
+                        //} else {
+                        //    this.render();
+                        //}
                         resolve(new_document);
                     });
                 });
