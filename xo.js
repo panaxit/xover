@@ -4353,7 +4353,7 @@ xover.Store = function (xml, ...args) {
                             //});
                             //});
                         };
-                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](request && JSON.parse(request) || undefined, {
+                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](request && xover.json.tryParse(request) || undefined, {
                             method: 'GET'
                             , headers: headers
                         }).then(response_handler).catch(response_handler));
