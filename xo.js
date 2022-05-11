@@ -785,7 +785,7 @@ xover.server = new Proxy({}, {
                         settings["method"] = 'GET';
                     }
                     args.push(settings)
-                    return handler.apply(this, [settings]);
+                    return handler.apply(this, args);
                 },
                 writable: true, enumerable: false, configurable: false
             });
@@ -3571,9 +3571,11 @@ xover.library.defaults["login.xslt"] = xover.xml.createDocument(`
 
 xover.library.defaults["loading.xslt"] = xover.xml.createDocument(`
 <xsl:stylesheet version="1.0"                                                                           
-    xmlns:xsl="http://www.w3.org/1999/XSL/Transform"                                                    
+    xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+    xmlns:js="http://panax.io/xover/javascript"
     xmlns="http://www.w3.org/1999/xhtml">                                                               
-    <xsl:output method="xml" indent="no" />                                                             
+    <xsl:output method="xml" indent="no" />
+    <xsl:param name="js:icon"><![CDATA[[...document.querySelectorAll('link[type = "image/x-icon"]')].map(el => el && el.getAttribute("href"))[0]]]></xsl:param>
     <xsl:template match="node()">                                                                       
     <div class="loading" onclick="this.remove()">
       <div class="modal_content-loading">
@@ -3581,8 +3583,8 @@ xover.library.defaults["loading.xslt"] = xover.xml.createDocument(`
           <div class="no-freeze-spinner">
             <div id="no-freeze-spinner">
               <div>
-                <i>
-                  <img src="./assets/icon.png" class="ring_image" onerror="this.remove()"/>
+                <i class="icon">
+                  <img src="{$js:icon}" class="ring_image" onerror="this.remove()"/>
                 </i>
                 <div>
                 </div>
@@ -3872,6 +3874,7 @@ xover.Store = function (xml, ...args) {
         }
     });
 
+    let _async_save;
     if (!this.hasOwnProperty('save')) {
         Object.defineProperty(this, 'save', {
             value: async function () {
@@ -3879,6 +3882,11 @@ xover.Store = function (xml, ...args) {
                 if (source) {
                     xover.session.setKey(store.tag, { source: source.tag });
                     source.save();
+                } else {
+                    _async_save = _async_save || xover.delay(1).then(async () => {
+                        xover.database.write('sources', store.tag, __document);
+                        _async_save = undefined;
+                    });
                 }
             },
             writable: false, enumerable: false, configurable: false
@@ -4283,30 +4291,17 @@ xover.Store = function (xml, ...args) {
                         console.warn(`Endpoint ${node.prefix} is not configured`)
                         continue;
                     }
-                    let node_id = node.getAttributeNS("http://panax.io/xover", "id");
-                    let attribute = node.tagName;
-                    let attribute_base_name = (node.baseName || node.localName)
                     let command = node.getAttribute("command");
                     command = command.replace(/^[\s\n]+|[\s\n]+$/g, "");
-                    //var request_id = node.getAttributeNS("http://panax.io/xover", "id") + "::" + command.replace(/^\w+:/, '');
-                    //node.setAttributeNS(null, "requesting:" + attribute_base_name, 'true')
-                    //if (command && (node && !command.match("{{") /*&& !(xover.xhr.Requests[node.getAttributeNS("http://panax.io/xover", "id") + "::" + command])*/ && !node.selectSingleNode(attribute.name + '[@for="' + command + '"]'))) {
+                    let headers = new Headers({
+                        "Accept": content_type.xml
+                    })
+
+                    xover.data.binding.requests[tag] = (xover.data.binding.requests[tag] || {});
                     if (!(command || '').match("{{") && !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag][command])) {
                         console.log("Binding " + command);
 
-                        //let [request_with_fields, ...predicate] = command.split(/=>|&filters=/);
-                        //let [fields, request] = comnd.match('(?:(.*)~>)?(.+)');
-                        let [rest, predicate = ''] = command.split("=>");
-                        let [fields, request] = rest.indexOf("~>") != -1 && rest.split("~>") || ["*", rest];
-                        //let [, fields, request, predicate = ''] = command.match('(?:(.*)~>|^)?((?:(?<!=>).)+)(?:=>(.+))?$');
-                        xover.data.binding.requests[tag] = (xover.data.binding.requests[tag] || {});
-                        /*TODO: Mover esto a un listener o definir */
-                        let root_node = node.prefix.replace(/^request$/, "source") + ":" + attribute_base_name
-                        let parameters = (node.getAttribute('source_filters:' + attribute_base_name) || predicate || "");
-                        let headers = new Headers({
-                            "Accept": content_type.xml
-                        })
-                        let response_handler = (response) => {
+                        let response_handler = async (response) => {
                             //var response_is_message = !!response.documentElement.selectSingleNode('self::xo:message');
                             //if (!response_is_message && !response.selectSingleNode(`//${root_node}`)) {
                             //    let new_node = xover.xml.createDocument(`<${root_node} xmlns:source="http://panax.io/source"/>`);
@@ -4319,8 +4314,12 @@ xover.Store = function (xml, ...args) {
                             let targetNode = node
                             let new_node = response.cloneNode(true).reseed();
                             let fragment = document.createDocumentFragment();
-                            if (response.documentElement.tagName == targetNode.tagName || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI)) {
-                                fragment.append(...new_node.documentElement.childNodes);
+                            if (response.documentElement.tagName == targetNode.tagName || response.documentElement.$('self::xo:response') || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI)) {
+                                if (!new_node.documentElement.firstElementChild) {
+                                    fragment.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
+                                } else {
+                                    fragment.append(...new_node.documentElement.childNodes);
+                                }
                             } else {
                                 fragment.append(...new_node.childNodes);
                             }
@@ -4346,15 +4345,16 @@ xover.Store = function (xml, ...args) {
                             } else {
                                 targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
                             }
+                            await context.render()
                             delete xover.data.binding.requests[self.tag][command];
-                            context.render()
                             //xover.delay(50).then(() => {
                             //xover.stores[tag].render(/*true*/);
                             //});
                             //});
                         };
-                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](request && xover.json.tryParse(request) || undefined, {
-                            method: 'GET'
+                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](xover.json.tryParse(command), {
+                            source: node
+                            , method: 'GET'
                             , headers: headers
                         }).then(response_handler).catch(response_handler));
                     }
@@ -6608,7 +6608,7 @@ xover.modernize = function (targetWindow) {
             Attr.prototype.set = function (value) {
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 //if (this.value != value) {
-                    this.ownerElement.store && this.ownerElement.store.render();
+                this.ownerElement.store && this.ownerElement.store.render();
                 //}
                 this.value = value;
                 let source = this.ownerDocument.source;
@@ -6848,7 +6848,7 @@ xover.modernize = function (targetWindow) {
                 //if (navigator.userAgent.indexOf("Safari") == -1) {
                 //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                 //}
-                this.$$(`descendant-or-self::*[not(@xo:id)]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
+                this.$$(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
                 return this;
             }
 
