@@ -3905,10 +3905,12 @@ xover.Store = function (xml, ...args) {
         value: function (forced) {
             Object.keys(this).map((key) => {
                 let item = _library[key]
-                item.documentElement && item.documentElement.remove();
-                if (forced) {
-                    let from_library = xover.library[key];
-                    from_library.documentElement && from_library.documentElement.remove();
+                if (item.documentElement) {
+                    item.documentElement.remove();
+                    if (forced) {
+                        let from_library = xover.library[key];
+                        from_library.documentElement && from_library.documentElement.remove();
+                    }
                 }
             });
             return _library;
@@ -3937,7 +3939,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(_library, 'reload', {
         value: async function (list) {
-            _library.clear();
+            _library.clear(true);
             store.render();
             return _library;
         },
@@ -6020,10 +6022,12 @@ xover.modernize = function (targetWindow) {
                         } else {
                             new_document = this;
                         }
-                        //if (store) {
-                        //    store.isActive && store.render();
-                        //} else {
-                        //    this.render();
+                        //if (this.documentElement) {
+                        //    if (store) {
+                        //        store.isActive && store.render();
+                        //    } else {
+                        //        this.render();
+                        //    }
                         //}
                         resolve(new_document);
                     });
@@ -6228,7 +6232,7 @@ xover.modernize = function (targetWindow) {
                                     return [...node.childNodes].filter(el => el instanceof Text).pop();
                                 }
                                 else if (node.getAttribute(attribute) === null) {
-                                    node.setAttribute(attribute, "");
+                                    node.setAttribute(attribute, "", false);
                                 }
                                 return node.selectSingleNode(`@${attribute}`);
                             }
