@@ -3647,7 +3647,7 @@ xover.init = async function () {
         xover.manifest = new xover.Manifest(xover.manifest.merge(manifest));
         Object.assign(xover.spaces, xover.manifest.spaces);
         xover.modernize();
-        await Promise.all(xover.manifest.stylesheets.map(href => xover.library[href]));
+        await Promise.all(xover.manifest.stylesheets.map(href => xover.library[href]).map(source => source.fetch()));
         await xover.stores.restore();
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
@@ -4227,6 +4227,7 @@ xover.Store = function (xml, ...args) {
                 })
                 //, (xover.manifest.getSettings(context, 'stylesheets') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
                 , ["xover/databind.xslt"]);
+            bindings = await Promise.all(bindings).then(document => document)
             bindings = [...new Set(bindings)].filter(binding => binding);
             //let original = xover.xml.clone(context); //Se obtiene el original si se quieren comparar cambios
             if (!__document.documentElement.resolveNS("changed")) {
@@ -4237,9 +4238,9 @@ xover.Store = function (xml, ...args) {
             let some_changed = false;
             var changed = cloned_document.selectNodes("//@changed:*");
             var stylesheets = [];
-            do {
-                changed && changed.remove(false);
-                for (let binding of bindings) {
+            for (let binding of bindings) {
+                do {
+                    changed && changed.remove(false);
                     stylesheet = await binding;
                     if (!stylesheets.find(doc => doc.selectSingleNode(`//xsl:import[@href="${stylesheet.href || stylesheet}"]|//xsl:import[@href="${stylesheet.href || stylesheet}"]|//comment()[contains(.,'=== Imported from "${stylesheet.href || stylesheet}" ===')]`))) {
                         let xsl_doc = await stylesheet.document || context.library[stylesheet] || xover.library[stylesheet] || await xover.library.load(stylesheet);
@@ -4257,10 +4258,10 @@ xover.Store = function (xml, ...args) {
                         }
                         cloned_document.store = context;
                     }
-                }
-                changed = cloned_document.selectNodes("//@changed:*");
-                some_changed = (some_changed || !!changed.length);
-            } while (context && changed.length && ++new_bindings <= 15)
+                    changed = cloned_document.selectNodes("//@changed:*");
+                    some_changed = (some_changed || !!changed.length);
+                } while (context && changed.length && ++new_bindings <= 15)
+            }
             if (cloned_document.$(`//*[not(@xo:id)]`)) {
                 cloned_document.reseed();
             }
@@ -4327,6 +4328,7 @@ xover.Store = function (xml, ...args) {
                             }
 
                             let prev_value = targetNode.parentNode.getAttribute("prev:value");
+                            targetNode = context.find(targetNode) || targetNode;
                             if (response.documentElement.selectSingleNode(`xo:r[@value="${prev_value}"]`)) {
                                 targetNode.parentElement.setAttributeNS(null, "value", prev_value)
                             }
@@ -4664,6 +4666,7 @@ xover.Store = function (xml, ...args) {
 
     }
     this.document = __document;
+    this.reseed();
     _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
     xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet, false));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }));
