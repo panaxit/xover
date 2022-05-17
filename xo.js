@@ -1048,8 +1048,8 @@ xover.state = new Proxy(Object.assign({}, history.state), {
         let proxy = self;
         if (!history.state) {
             with ((window.top || window)) {
-                history.replaceState({}, {}, location.pathname + (location.hash || ''));
-                history.replaceState(proxy, {}, location.pathname + (location.hash || ''));
+                history.replaceState({}, {}, location.pathname + location.search + (location.hash || ''));
+                history.replaceState(proxy, {}, location.pathname + location.search + (location.hash || ''));
             }
             xover.session.setKey('lastPosition', self.position);
         }
@@ -1063,7 +1063,7 @@ xover.state = new Proxy(Object.assign({}, history.state), {
         try {
             self[key] = value;
             let hash = [xo.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
-            history.replaceState(Object.assign({}, history.state), ((event || {}).target || {}).textContent, location.pathname + hash);
+            history.replaceState(Object.assign({}, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
         } catch (e) {
             console.error(e);
         }
@@ -1075,12 +1075,13 @@ Object.defineProperty(xover.state, 'prev', {
     , set() { throw `State "prev" is readonly` }
     , enumerable: true
 });
+
 Object.defineProperty(xover.state, 'hash', {
     get() { return location.hash }
     , set(input) {
         input = input[input.length - 1] != '#' ? input : '';
         let new_state = Object.assign({}, this, { active: history.state.active });
-        history.replaceState(new_state, ((event || {}).target || {}).textContent, location.pathname + (input || ''));
+        history.replaceState(new_state, ((event || {}).target || {}).textContent, location.pathname + location.search + (input || ''));
     }
     , enumerable: false
 });
@@ -1090,6 +1091,7 @@ Object.defineProperty(xover.state, 'stores', {
     , set(input) { history.state['stores'] = input }
     , enumerable: true
 });
+
 Object.defineProperty(xover.state, 'activeCaret', {
     get() {
         let active = this.active;
@@ -1465,7 +1467,7 @@ xover.Source = function (source, tag) {
 
                 if (!(document instanceof Document)) {
                     let sources = await xover.database.sources;
-                    document = await sources.get(tag) || document;
+                    document = await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
                 }
                 if (document && document.constructor === {}.constructor) {
                     let promises = [];
@@ -1473,6 +1475,9 @@ xover.Source = function (source, tag) {
                         let [parameters, settings = {}, payload] = document[endpoint].constructor === [].constructor && document[endpoint] || [document[endpoint]];
                         //settings["tag"] = settings["tag"] || tag;
                         promises.push(new Promise(async (resolve, reject) => {
+                            if (tag === xo.state.active) {
+                                parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
+                            }
                             let document = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
                             //await document.render(/*true*/);
                             //if (document instanceof XMLDocument && !document.isRendered) {
