@@ -332,6 +332,9 @@ Object.defineProperty(xover.database, 'sources', {
             let record = await _get(record_key);
             let content = record && await record.text() || undefined;
             let document = content && xover.xml.createDocument(content) || undefined;
+            if (document instanceof Document && record) {
+                document.lastModifiedDate = record.lastModified;
+            }
             return document;
         }
         return store;
@@ -1464,10 +1467,17 @@ xover.Source = function (source, tag) {
         Object.defineProperty(this, 'fetch', {
             value: async function () {
                 let document = source; //Object.keys(xover.sources).includes(source) && xover.sources[source] || document;
-
+                let parameters, settings = {}, payload;
+                Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
+                    [parameters, settings = {}, payload] = document[endpoint].constructor === [].constructor && document[endpoint] || [document[endpoint]];
+                })
                 if (!(document instanceof Document)) {
                     let sources = await xover.database.sources;
-                    document = await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
+                    let stored_document = await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
+                   
+                    if (stored_document && !((Date.now() - stored_document.lastModifiedDate) / 1000 > settings["expiry"] )) {
+                        document = stored_document;
+                    }
                 }
                 if (document && document.constructor === {}.constructor) {
                     let promises = [];
@@ -1505,6 +1515,7 @@ xover.Source = function (source, tag) {
                     //if (document.source.tag === tag) {
                     //    xover.database.write('sources', tag, document);
                     //}
+                    document.source = this;
                     return document;
                 }
                 throw (new Error("No se pudo obtener la fuente de datos"))
@@ -2959,7 +2970,15 @@ xover.Request = function (request, settings = {}) {
             url = new xover.URL(request, undefined, settings);
         }
         let fileExtension = url.pathname.substring(url.pathname.lastIndexOf('.') + 1);
-        headers = new Headers(settings["headers"]);
+        headers = new Headers();
+        if (settings["headers"] instanceof Headers) {
+            for (let key of Object.keys(Object.fromEntries(settings["headers"].entries()))) {
+                headers.set(key, settings["headers"].get(key));
+            }
+        }
+        for (let key of Object.keys(settings["headers"] || {})) {
+            headers.set(key, settings["headers"][key]);
+        }
         headers.set("Accept", (headers.get("Accept") || xover.mimeTypes[fileExtension] || '*/*'));
         settings["method"] = url.method || request.method;
         settings = xover.json.merge(settings, {
