@@ -6690,6 +6690,11 @@ xover.modernize = function (targetWindow) {
                 if (new_document !== this) {
                     [...this.childNodes].removeAll(false);
                     if (new_document.childNodes) {
+                        for (node of new_document.childNodes) {
+                            if (node.nodeType === Node.DOCUMENT_TYPE_NODE) {
+                                this.appendChild(node)
+                            }
+                        }
                         this.append(...new_document.childNodes)
                     }
                 }
