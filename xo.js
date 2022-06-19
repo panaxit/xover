@@ -249,6 +249,8 @@ xover.stores = new Proxy({}, {
         let exists = key in self
         let same = self[xover.state.seed] === self[key]
         sessionStorage.removeItem(key);
+        xover.database.remove('sources', key);
+
         if (exists) {
             Reflect.deleteProperty(self, key);
             if (same && xover.state.position > 1) {
@@ -343,9 +345,15 @@ Object.defineProperty(xover.database, 'sources', {
 
 Object.defineProperties(xover.database, {
     read: {
-        value: async function (store_name, key, value) {
+        value: async function (store_name, key) {
             store = await this[store_name];
             return store.get(key);
+        }
+    },
+    remove: {
+        value: async function (store_name, key) {
+            store = await this[store_name];
+            return store.delete(key);
         }
     },
     write: {
@@ -1474,8 +1482,8 @@ xover.Source = function (source, tag) {
                 if (!(document instanceof Document)) {
                     let sources = await xover.database.sources;
                     let stored_document = await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
-                   
-                    if (stored_document && !((Date.now() - stored_document.lastModifiedDate) / 1000 > settings["expiry"] )) {
+
+                    if (stored_document && !((Date.now() - stored_document.lastModifiedDate) / 1000 > settings["expiry"])) {
                         document = stored_document;
                     }
                 }
@@ -4235,7 +4243,7 @@ xover.Store = function (xml, ...args) {
             if (!(context.isActive)) {
                 return;
             }
-            if (!(!((xover.manifest.server || {}).login && !(xover.session.getKey('status') == 'authorized')) && context && typeof (context.selectSingleNode) != 'undefined' && (context.selectSingleNode('.//@source:*|.//request:*|.//source:*') || context.stylesheets.filter(stylesheet => stylesheet.role == 'binding' || (stylesheet.target || '').match(/^self::./)).length))) {
+            if (!(!((xover.manifest.server || {}).login && !(xover.session.getKey('status') == 'authorized')) && context && typeof (context.selectSingleNode) != 'undefined' && (context.selectSingleNode('.//@source:*|.//request:*|.//source:*') || context.stylesheets.filter(stylesheet => stylesheet.role == 'binding' || stylesheet.target == "self")))) {
                 return; //*** Revisar si en vez de salir, revisar todo el documento
             }
             //if (!context.selectSingleNode('//@source:*') || context.selectSingleNode('.//@request:*[local-name()!="init"]')) {
@@ -4243,7 +4251,7 @@ xover.Store = function (xml, ...args) {
             //}
             let new_bindings = 0;
             let bindings = [].concat(
-                context.stylesheets.filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./) && stylesheet.action == 'replace').map(async function (stylesheet) {
+                context.stylesheets.filter(stylesheet => stylesheet.role == "binding" || stylesheet.target == "self" && stylesheet.action == 'replace').map(async function (stylesheet) {
                     if ((await stylesheet.document || window.document.createElement('p')).selectSingleNode('//xsl:copy[not(xsl:apply-templates) and not(comment()="ack:no-apply-templates")]')) {
                         console.warn('In a binding stylesheet a xsl:copy withow a xsl:apply-templates may cause an infinite loop. If missing xsl:apply-templates was intentional, please add an acknowledge comment <!--ack:no-apply-templates-->');
                     };
@@ -4270,13 +4278,13 @@ xover.Store = function (xml, ...args) {
                         let xsl_doc = await stylesheet.document || context.library[stylesheet] || xover.library[stylesheet] || await xover.library.load(stylesheet);
                         stylesheets.push(xsl_doc);
 
-                        if ((stylesheet.target || '').match(/^self::./)) {
+                        if (stylesheet.target == "self") {
                             let i = 0;
                             do {
                                 cloned_document.selectNodes("//@binding:changed").remove(false);
                                 ++i;
                                 cloned_document = cloned_document.transform(xsl_doc);
-                            } while (i < 15 && cloned_document.documentElement.selectSingleNode(stylesheet.target) && (!xsl_doc.documentElement.getAttribute('xmlns:binding') || cloned_document.selectSingleNode("//@binding:changed")))
+                            } while (i < 15 && cloned_document.selectSingleNode(stylesheet.assert || '*[1=0]') && (!xsl_doc.documentElement.getAttribute('xmlns:binding') || cloned_document.selectSingleNode("//@binding:changed")))
                         } else {
                             cloned_document = cloned_document.transform(xsl_doc.consolidate());
                         }
@@ -4556,6 +4564,26 @@ xover.Store = function (xml, ...args) {
             }
             let stylesheet = this.getStylesheet(definition.href);
             return stylesheet.document.documentElement && stylesheet.document || stylesheet.document.fetch();
+        },
+        writable: false, enumerable: false, configurable: false
+    });
+
+    Object.defineProperty(this, 'removeStylesheet', {
+        value: async function (definition_or_stylesheet) {
+            let style_definition, pi;
+            let document = (this.document || this);
+            if (definition_or_stylesheet instanceof ProcessingInstruction) {
+                pi = definition_or_stylesheet;
+            }
+            else if (definition_or_stylesheet.constructor === {}.constructor) {
+                pi = this.document.getStylesheet(definition_or_stylesheet.href);
+            } else {
+                throw (new Error("Not a valid stylesheet"));
+            }
+            _store_stylesheets = _store_stylesheets.filter(el => !el.isEqualNode(pi));
+            if (pi.ownerDocument.getStylesheet(pi)) {
+                pi.remove();
+            }
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -5127,7 +5155,8 @@ document.onkeydown = function (event) {
         if (!currentNode) return false;
         nextNode = currentNode.selectSingleNode('../preceding-sibling::*[not(@xo:deleting="true")][1]/*[local-name()="' + currentNode.nodeName + '"]')
         if (nextNode) {
-            document.getElementById(nextNode.getAttribute('xo:id')).focus();
+            let nextElement = document.getElementById(nextNode.getAttribute('xo:id'));
+            nextElement && nextElement.focus();
         }
         event.preventDefault();
     }
@@ -5747,6 +5776,7 @@ xover.modernize = function (targetWindow) {
                 if (!cXPathString) {
                     return null;
                 }
+                cXPathString = cXPathString.replace(/&quot;/gi, '"');
                 let namespace = this.resolveNS("");
                 if (!cXPathString.match(/[^\w\d\-\_]/g) && namespace) {
                     cXPathString = `*[namespace-uri()='${namespace}' and name()='${cXPathString}']`
@@ -6206,6 +6236,20 @@ xover.modernize = function (targetWindow) {
                 return stylesheet.document.documentElement && document || stylesheet.document.fetch();
             }
 
+            XMLDocument.prototype.removeStylesheet = function (definition_or_stylesheet) {
+                let style_definition, pi;
+                let document = this;
+                if (definition_or_stylesheet instanceof ProcessingInstruction) {
+                    pi = definition_or_stylesheet;
+                }
+                else if (definition_or_stylesheet.constructor === {}.constructor) {
+                    pi = this.getStylesheet(definition_or_stylesheet.href);
+                } else {
+                    throw (new Error("Not a valid stylesheet"));
+                }
+                this.selectNodes(`processing-instruction('xml-stylesheet')`).forEach(node => node.isEqualNode(pi) && el.remove());
+            }
+
             var toString_original = Node.prototype.toString;
             Node.prototype.toString = function () {
                 if (this instanceof HTMLElement) {
@@ -6540,7 +6584,7 @@ xover.modernize = function (targetWindow) {
                     //    window.top.dispatchEvent(new xover.listener.Event(`changed::${prefix}`, { target, prefix: prefix, attribute: attribute_name, value: value, old: old_value }, this.getAttributeNode(attribute)));
                     //    window.top.dispatchEvent(new xover.listener.Event(`changed::${prefix}:${attribute_name}`, { target, value: value, old: old_value }, this.getAttributeNode(attribute)));
                     //}
-                    xover.listener.dispatchEvent(new xover.listener.Event('changed', { target, attribute: attribute, value: value, old: old_value }), this.getAttributeNode(attribute) || this.ownerDocument.createAttribute(attribute)); //Separates by design all parts of attribute node as attributes
+                    xover.listener.dispatchEvent(new xover.listener.Event('changed', { target, attribute: attribute, value: value, old: old_value }), (value !== undefined && value !== null) && (this.getAttributeNode(attribute) || this.ownerDocument.createAttribute(attribute)));
                 }
                 source && source.save();
                 if (refresh) {
@@ -6583,6 +6627,16 @@ xover.modernize = function (targetWindow) {
                         }
                     }
                 });
+            }
+
+            Element.prototype.toggleAttribute = function (attribute, value, otherwise_value) {
+                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                if (this.getAttribute(attribute) == value) {
+                    this.setAttribute(attribute, otherwise_value)
+                } else {
+                    this.setAttribute(attribute, value)
+                }
+                return this;
             }
 
             Element.prototype.setAttribute = async function (attribute, value, refresh = true, delay) {
@@ -6647,6 +6701,21 @@ xover.modernize = function (targetWindow) {
                 return this;
             }
 
+            Attr.prototype.toggle = function (value) {
+                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                //if (this.value != value) {
+                this.ownerElement.store && this.ownerElement.store.render();
+                //}
+                if (this.value == value) {
+                    this.value = ''
+                } else {
+                    this.value = value
+                }
+                let source = this.ownerDocument.source;
+                source && source.save();
+                return this;
+            }
+
             Text.prototype.set = function (value) {
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 if (this.textContent != value) {
@@ -6671,6 +6740,7 @@ xover.modernize = function (targetWindow) {
                 original_ProcessingInstruction_remove.apply(this, arguments);
                 if (this.ownerDocument && this.ownerDocument.store) {
                     [document.querySelector(`[xo-store="${this.ownerDocument.store.tag}"][xo-stylesheet='${xover.json.fromAttributes(this.textContent)["href"]}']`)].map(el => el && el.remove());
+                    this.ownerDocument.store.removeStylesheet(this);
                     if (refresh) {
                         this.ownerDocument.store.render();
                     }
@@ -6686,9 +6756,11 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
-            XMLDocument.prototype.replaceBy = function (new_document) {
+            c = function (new_document) {
                 if (new_document !== this) {
-                    [...this.childNodes].removeAll(false);
+                    while (this.firstChild) {
+                        this.removeChild(this.lastChild);
+                    }
                     if (new_document.childNodes) {
                         for (node of new_document.childNodes) {
                             if (node.nodeType === Node.DOCUMENT_TYPE_NODE) {
@@ -7240,10 +7312,10 @@ xover.modernize = function (targetWindow) {
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             action = (stylesheet.action || !stylesheet.target && "append" || action);
-                            if ((stylesheet.target || '').match(/^self::./)) {
+                            if (stylesheet.assert && !data.selectSingleNode(stylesheet.assert)) continue;
+                            if (stylesheet.target == "self") {
                                 let i = 0;
                                 let dom = data;
-                                if (dom.documentElement && !dom.documentElement.selectSingleNode(stylesheet.target)) continue;
                                 do {
                                     data.selectNodes("//@binding:changed").remove(false);
                                     ++i;
@@ -7251,7 +7323,7 @@ xover.modernize = function (targetWindow) {
                                     //if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                                     data = dom;
                                     //}
-                                } while (i < 15 && dom.documentElement.selectSingleNode(stylesheet.target) && (!xsl.documentElement.resolveNS('binding') || dom.selectSingleNode("//@binding:changed")));
+                                } while (i < 15 && dom.selectSingleNode(stylesheet.assert || "*[1=0]") && (!xsl.documentElement.resolveNS('binding') || dom.selectSingleNode("//@binding:changed")));
                                 data.selectNodes("//@binding:changed").remove(false);
                                 continue;
                             }
@@ -7433,6 +7505,13 @@ xover.modernize = function (targetWindow) {
                             }
                             [...target.querySelectorAll('img')].map(el => el.addEventListener('error', function () {
                                 window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
+                            }));
+                            [...target.querySelectorAll('textarea')].map(el => el.addEventListener('mouseup', function () {
+                                let el = event.srcElement;
+                                if (el.scope) {
+                                    el.scope.set('@state:height', el.offsetHeight, false);
+                                    el.scope.set('@state:width', el.offsetWidth, false);
+                                }
                             }));
                             [...target.querySelectorAll('[xo-attribute],input[type="file"]')].map(el => el.addEventListener('change', async function () {
                                 let scope = this.source;
