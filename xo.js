@@ -6756,7 +6756,7 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
-            c = function (new_document) {
+            XMLDocument.prototype.replaceBy = function (new_document) {
                 if (new_document !== this) {
                     while (this.firstChild) {
                         this.removeChild(this.lastChild);
