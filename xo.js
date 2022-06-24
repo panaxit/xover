@@ -1293,7 +1293,7 @@ Object.defineProperty(xover.state, 'restore', {
 xover.xml = {};
 
 xover.xml.createDocument = function (xml, options = {}) {
-    var result = undefined;
+    let result = undefined;
     if (xml instanceof XMLDocument) {
         result = xml.cloneNode(true);
     } else {
@@ -1301,14 +1301,20 @@ xover.xml.createDocument = function (xml, options = {}) {
         if (sXML.indexOf('<<<<<<< ') != -1) {
             throw (new Error("Possible unresolved GIT conflict on file."));
         }
-        result = new DOMParser();
+        parser = new DOMParser();
         if (!sXML) {
             result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
         } else {
             if (xml.namespaceURI && xml.namespaceURI.indexOf("http://www.w3.org") == 0) {
-                result = result.parseFromString(sXML, "text/html");
+                result = parser.parseFromString(sXML, "text/html");
             } else {
-                result = result.parseFromString(sXML.replace(/[\u0000-\u001F]/g, (char) => ['\r', '\n', '\t'].includes(char) && char || ''), "text/xml");
+                let escaped_line_breaks
+                result = parser.parseFromString(sXML.replace(/[\u0000-\u001F]/g, (char) => ['\r', '\n', '\t'].includes(char) && char || '').replace(/\w+="[^"]+[\n\r]+[^"]+"/ig, (attr) => {
+                    escaped_line_breaks = true;
+                    attr = attr.replace(/\r\n/ig, "&#10;");
+                    attr = attr.replace(/\t/ig, "&#9;");
+                    return attr
+                }), "text/xml");
             }
             if (sXML && result.getElementsByTagName && (result.getElementsByTagName('parsererror').length || 0) > 0) {
                 [...result.querySelectorAll('parsererror div')].map(message => {
@@ -5140,16 +5146,17 @@ document.onkeydown = function (event) {
     } //if combined with alt/shift/ctrl keys 
     // in grids, this function will allow move up and down between elements
     var srcElement = event.srcElement;
-    if (event.keyCode == 40) {
+    if (event.keyCode == 40 && !(event.srcElement instanceof HTMLTextAreaElement)) {
         if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
         currentNode = srcElement.source;
         if (!currentNode) return false;
         nextNode = currentNode.selectSingleNode('../following-sibling::*[not(@xo:deleting="true")][1]/*[local-name()="' + currentNode.nodeName + '"]')
         if (nextNode) {
-            document.getElementById(nextNode.getAttribute('xo:id')).focus();
+            let nextElement = document.getElementById(nextNode.getAttribute('xo:id'));
+            nextElement && nextElement.focus();
         }
         event.preventDefault();
-    } else if (event.keyCode == 38) {
+    } else if (event.keyCode == 38 && !(event.srcElement instanceof HTMLTextAreaElement)) {
         if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
         currentNode = srcElement.source;
         if (!currentNode) return false;
@@ -6546,10 +6553,16 @@ xover.modernize = function (targetWindow) {
             Element.prototype.setAttributeNS = function (namespace_URI, attribute, value, refresh = false) {
                 let target = this;
                 let attribute_node = target.getAttributeNode(attribute);
+
                 let { prefix, name: attribute_name } = attribute_node && { prefix: attribute_node.prefix, name: attribute_node.localName } || xover.xml.getAttributeParts(attribute);
                 namespace_URI = namespace_URI || attribute_node && attribute_node.namespaceURI || target.resolveNS(prefix) || xover.spaces[prefix];// || [attribute].includes("xmlns") && xover.spaces[attribute]
                 let old_value = attribute_node && attribute_node.value || null;
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+
+                let before = new xover.listener.Event('beforeChange', { target, attribute: attribute, value: value, old: old_value });
+                xover.listener.dispatchEvent(before, (value !== undefined && value !== null) && (this.getAttributeNode(attribute) || this.ownerDocument.createAttribute(attribute)));
+                if (before.cancelBubble || before.defaultPrevented) return;
+
                 let store = target.ownerDocument.store;
                 let source = target.ownerDocument.source;
                 if (old_value != value && store) { //!= is used instead of !== to ignore differences between undefined and null
@@ -6584,7 +6597,7 @@ xover.modernize = function (targetWindow) {
                     //    window.top.dispatchEvent(new xover.listener.Event(`changed::${prefix}`, { target, prefix: prefix, attribute: attribute_name, value: value, old: old_value }, this.getAttributeNode(attribute)));
                     //    window.top.dispatchEvent(new xover.listener.Event(`changed::${prefix}:${attribute_name}`, { target, value: value, old: old_value }, this.getAttributeNode(attribute)));
                     //}
-                    xover.listener.dispatchEvent(new xover.listener.Event('changed', { target, attribute: attribute, value: value, old: old_value }), (value !== undefined && value !== null) && (this.getAttributeNode(attribute) || this.ownerDocument.createAttribute(attribute)));
+                    xover.listener.dispatchEvent(new xover.listener.Event('changed', { target, attribute: attribute, value: value, old: old_value }), (value !== undefined && value !== null) && (this.getAttributeNode(attribute) || this.createAttribute(attribute)));
                 }
                 source && source.save();
                 if (refresh) {
@@ -6593,13 +6606,26 @@ xover.modernize = function (targetWindow) {
             }
 
             var getAttribute_original = Element.prototype.getAttribute;
+            var getAttributeNS_original = Element.prototype.getAttributeNS;
 
             Element.prototype.getAttribute = function (attribute) {
+                let target = this;
                 if (this.ownerDocument && this.ownerDocument.store) {
                     attribute = attribute.replace(/^@/, "");
                 }
-                return getAttribute_original.call(this, attribute);
+
+                if (!this.hasAttribute(attribute) && (this.namespaceURI || '').indexOf("http://www.w3.org") !== 0) {
+                    let attribute_node = target.getAttributeNode(attribute);
+
+                    let { prefix, name: attribute_name } = attribute_node && { prefix: attribute_node.prefix, name: attribute_node.localName } || xover.xml.getAttributeParts(attribute);
+                    let namespace_URI = attribute_node && attribute_node.namespaceURI || target.resolveNS(prefix) || xover.spaces[prefix];
+                    if (namespace_URI) {
+                        return getAttributeNS_original.call(target, namespace_URI, attribute_name);
+                    }
+                }
+                return getAttribute_original.call(target, attribute);
             }
+
             Element.prototype.get = Element.prototype.getAttribute;
 
             Element.prototype.attr = function () {
@@ -6607,9 +6633,22 @@ xover.modernize = function (targetWindow) {
             }
 
             var original_getAttributeNode = Element.prototype.getAttributeNode;
+            var original_getAttributeNodeNS = Element.prototype.getAttributeNodeNS;
             Element.prototype.getAttributeNode = function (attribute) {
                 attribute = attribute.replace(/^@/, "");
-                if (!this.hasAttribute(attribute) && !["http://www.w3.org/2000/svg"].includes(this.namespaceURI)) {
+                if (!this.hasAttribute(attribute) && (this.namespaceURI || '').indexOf("http://www.w3.org") !== 0) { //se deshabilita porque no siempre se tiene que crear el nodo, hay ocasiones en que no es deseable que se genere
+                    let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
+                    let namespace_URI = this.resolveNS(prefix) || xover.spaces[prefix];
+                    if (namespace_URI) {
+                        return original_getAttributeNodeNS.call(this, namespace_URI, attribute_name);
+                    }
+                }
+                return original_getAttributeNode.call(this, attribute);
+            }
+
+            Element.prototype.createAttribute = function (attribute) {
+                attribute = attribute.replace(/^@/, "");
+                if (!this.hasAttribute(attribute) && (this.namespaceURI || '').indexOf("http://www.w3.org") !== 0) {
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
                     let namespace = this.resolveNS(prefix) || xover.spaces[prefix];
                     setAttributeNS_original.call(this, namespace, attribute, "");
@@ -6638,6 +6677,7 @@ xover.modernize = function (targetWindow) {
                 }
                 return this;
             }
+            Element.prototype.toggle = Element.prototype.toggleAttribute
 
             Element.prototype.setAttribute = async function (attribute, value, refresh = true, delay) {
                 if (attribute instanceof Attr) {
@@ -7157,7 +7197,7 @@ xover.modernize = function (targetWindow) {
                                 } else {
                                     result = xsltProcessor.transformToDocument(xml);
                                 }
-                                [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
+                                result && [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                 if (!(result && result.documentElement) && !xml.documentElement) {
                                     xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`))
                                     return xml.transform("empty.xslt");
@@ -7323,7 +7363,7 @@ xover.modernize = function (targetWindow) {
                                     //if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                                     data = dom;
                                     //}
-                                } while (i < 15 && dom.selectSingleNode(stylesheet.assert || "*[1=0]") && (!xsl.documentElement.resolveNS('binding') || dom.selectSingleNode("//@binding:changed")));
+                                } while (i < 20 && dom.selectSingleNode(stylesheet.assert || "*[1=0]") && (!xsl.documentElement.resolveNS('binding') || dom.selectSingleNode("//@binding:changed")));
                                 data.selectNodes("//@binding:changed").remove(false);
                                 continue;
                             }
@@ -7398,7 +7438,11 @@ xover.modernize = function (targetWindow) {
                                         } else {
                                             try {
                                                 //console.clear() //console.log(script.textContent)
-                                                (function () { eval.apply(this, arguments) }(script.textContent));
+                                                let result = (function () { return eval.apply(this, arguments) }(script.textContent));
+                                                if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
+                                                    let target = document.getElementById(script.id);
+                                                    target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
+                                                }
                                             } catch (message) {
                                                 console.error(message)
                                             }
@@ -7477,8 +7521,12 @@ xover.modernize = function (targetWindow) {
                                     target.append(...dom.cloneNode(true).childNodes);
                                 }
                             } else {
-                                scripts = dom.selectNodes('//*[self::xhtml:script]').removeAll();
-
+                                scripts = dom.selectNodes('//*[self::xhtml:script]').map(el => {
+                                    !el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
+                                    let cloned = el.cloneNode(true);
+                                    el.textContent = ''
+                                    return cloned;
+                                });
                                 (dom.documentElement || dom).setAttributeNS(null, "xo-store", tag);
                                 (dom.documentElement || dom).setAttributeNS(null, "xo-stylesheet", stylesheet.href);
                                 if (action == "replace") {
