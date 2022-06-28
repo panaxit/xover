@@ -507,7 +507,7 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
             event.detail["element"] = event.detail["element"] || axis.parentNode
             event.detail["attribute"] = event.detail["attribute"] || axis
             event.detail["value"] = event.detail.hasOwnProperty("value") ? event.detail["value"] : axis.value
-            
+
         } else if (axis instanceof Element) {
             event.detail["element"] = event.detail["element"] || axis
             event.detail["value"] = event.detail.hasOwnProperty("value") ? event.detail["value"] : axis.textContent
@@ -5290,6 +5290,31 @@ xover.listener.on("focusout", function (event) {
     }
 })
 
+var contentEdited = function (event) {
+    let elem = event.srcElement;
+    let source = elem && elem.scope || null
+    if (source instanceof Attr) {
+        if (elem.isContentEditable) {
+            source.set(elem.textContent, false)
+        } else {
+            source.set(elem.value, false)
+        }
+    }
+    elem.removeEventListener('blur', contentEdited);
+}
+
+xover.listener.on("input", function (event) {
+    if (event.defaultPrevented) return;
+    let elem = event.srcElement;
+    let source = elem && elem.scope || null;
+    if (source instanceof Attr) {
+        if (elem.isContentEditable) {
+            elem.removeEventListener('blur', contentEdited);
+            elem.addEventListener('blur', contentEdited);
+        }
+    }
+})
+
 xover.listener.on('click', function (event) {
     if (event.defaultPrevented) return;
     var srcElement = xover.dom.findClosestElementWithAttribute(event.target, "href");
@@ -7681,9 +7706,11 @@ xover.modernize = function (targetWindow) {
                             }));
                             [...target.querySelectorAll('textarea')].map(el => el.addEventListener('mouseup', function () {
                                 let el = event.srcElement;
-                                if (el.scope) {
-                                    el.scope.set('@state:height', el.offsetHeight, false);
-                                    el.scope.set('@state:width', el.offsetWidth, false);
+                                let scope = el.scope;
+                                let target = scope instanceof Element && scope || scope instanceof Attr && scope.parentNode
+                                if (target) {
+                                    target.set('@state:height', el.offsetHeight, false);
+                                    target.set('@state:width', el.offsetWidth, false);
                                 }
                             }));
                             [...target.querySelectorAll('[xo-attribute],input[type="file"]')].map(el => el.addEventListener('change', async function () {
