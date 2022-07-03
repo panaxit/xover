@@ -5355,7 +5355,7 @@ document.onkeydown = function (event) {
     } //if combined with alt/shift/ctrl keys 
     // in grids, this function will allow move up and down between elements
     var srcElement = event.srcElement;
-    if (event.keyCode == 40 && !(event.srcElement instanceof HTMLTextAreaElement)) {
+    if (event.keyCode == 40 && !(event.srcElement instanceof HTMLTextAreaElement || srcElement.hasAttribute("contenteditable"))) {
         if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
         currentNode = srcElement.source;
         if (!currentNode) return false;
@@ -5365,7 +5365,7 @@ document.onkeydown = function (event) {
             nextElement && nextElement.focus();
         }
         event.preventDefault();
-    } else if (event.keyCode == 38 && !(event.srcElement instanceof HTMLTextAreaElement)) {
+    } else if (event.keyCode == 38 && !(event.srcElement instanceof HTMLTextAreaElement || srcElement.hasAttribute("contenteditable"))) {
         if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
         currentNode = srcElement.source;
         if (!currentNode) return false;
@@ -7711,6 +7711,7 @@ xover.modernize = function (targetWindow) {
                                     ++i;
                                     dom = data.transform(xsl);
                                     //if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
+                                    dom.store = data.store
                                     data = dom;
                                     //}
                                 } while (i < 20 && dom.selectSingleNode(stylesheet.assert || "*[1=0]") && (!xsl.documentElement.resolveNS('binding') || dom.selectSingleNode("//@binding:changed")));
@@ -7955,14 +7956,18 @@ xover.modernize = function (targetWindow) {
 
                             let unbound_elements = dom.querySelectorAll('[xo-source=""],[xo-scope=""]');
                             if (unbound_elements.length) {
-                                console.error(`There are ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`)
+                                console.error(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`)
                             }
 
                             _applyScripts(document, scripts);
+                            [...target.querySelectorAll(`[xo-stylesheet]:not([xo-store]`)].forEach(el => data.render(
+                                data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
+                            ));
                             /*TODO: Mover este código a algún script diferido*/
                             [...(target && target.ownerDocument.querySelectorAll('[data-bs-toggle="tooltip"]') || [])].map(function (tooltipTriggerEl) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
                             })
+
                         }
                         return Promise.resolve(this);
                     },
@@ -8074,7 +8079,7 @@ xover.modernize();
 xover.dom.toExcel = (function (table, name) {
     if (!table.nodeType) table = document.getElementById(table)
     table = table.cloneNode(true);
-    [...table.querySelectorAll('.non_printable,input,select')].forEach(el => el.remove());
+    [...table.querySelectorAll('.non_printable,input,select,textarea')].forEach(el => el.remove());
     // from https://stackoverflow.com/questions/60483757/aboutblankblocked-error-when-export-table-in-excel
     var myBlob = new Blob([table.outerHTML], { type: 'application/vnd.ms-excel' });
     var url = window.URL.createObjectURL(myBlob);
