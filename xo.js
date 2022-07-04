@@ -4823,8 +4823,8 @@ xover.Store = function (xml, ...args) {
 
     }
     this.document = __document;
-    this.reseed();
     _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
+    this.reseed();
     xover.manifest.getSettings(this, 'stylesheets').forEach(stylesheet => store.addStylesheet(stylesheet, false));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }));
     return this;
@@ -6999,6 +6999,7 @@ xover.modernize = function (targetWindow) {
                         value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
 
                         let target = this;
+                        let target_node = this.parentNode;
                         let attribute_name = this.localName;
                         let store = this.store || this.ownerDocument.store;
                         let source = store && store.source || null;
@@ -7010,25 +7011,22 @@ xover.modernize = function (targetWindow) {
                             if (before.cancelBubble || before.defaultPrevented) return;
 
                             if (store) {
-                                if (old_value !== value) {
-                                    store.render(((event || {}).target || {}).stylesheet);
-                                }
                                 if (xover.tracking.attributes.includes(this.name) || xover.tracking.prefixes.includes(this.prefix)) {
                                     store.takeSnapshot();
-                                    if (!target.resolveNS("initial")) {
+                                    if (!target_node.resolveNS("initial")) {
                                         original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:initial", xover.spaces["initial"]);
                                     }
-                                    if (target.getAttribute(`initial:${attribute_name}`) == null) {
-                                        original_setAttributeNS.call(target, xover.spaces["initial"], "initial:" + attribute_name, old_value || "");
+                                    if (target_node.getAttribute(`initial:${attribute_name}`) == null) {
+                                        original_setAttributeNS.call(target_node, xover.spaces["initial"], "initial:" + attribute_name, old_value || "");
                                     }
 
-                                    if (!target.resolveNS("prev")) {
+                                    if (!target_node.resolveNS("prev")) {
                                         original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:prev", xover.spaces["prev"]);
                                     }
-                                    original_setAttributeNS.call(target, xover.spaces["prev"], "prev:" + attribute_name, (old_value || ""));
+                                    original_setAttributeNS.call(target_node, xover.spaces["prev"], "prev:" + attribute_name, (old_value || ""));
                                 }
-                                if (!target.resolveNS("state")) {
-                                    original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
+                                if (!target_node.resolveNS("state")) {
+                                    original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
                                 }
 
                                 if (!(this.ownerDocument.store)) {
@@ -7052,6 +7050,7 @@ xover.modernize = function (targetWindow) {
                                     xo.state.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
                                 }
                                 source && source.save();
+                                store && store.render(((event || {}).target || {}).stylesheet);
                             }
                         }
                         return return_value;
