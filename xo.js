@@ -526,6 +526,8 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         } else if (axis instanceof Document) {
             event.detail["document"] = event.detail["document"] || axis;
             event.detail["store"] = event.detail["store"] || axis.store;
+        } else if (axis instanceof xover.Store) {
+            event.detail["store"] = event.detail["store"] || axis;
         }
         axis = axis || {}; //Para los casos en los que axis es null
         let { prefix, constructor = "", name, value } = { prefix: axis.prefix, constructor: (axis.constructor || {}).name, name: (axis.nodeName || axis.name), value: event.detail["value"] }
@@ -1163,17 +1165,25 @@ Object.defineProperty(xover.state, 'set', {
         if (value instanceof Object) {
             if (prefix) {
                 state_stores[active][prefix][name] = state_stores[active][prefix][name] || {}
+                state_stores[active][prefix][name].merge(value)
             } else {
                 state_stores[active][name] = state_stores[active][name] || {};
+                state_stores[active][name].merge(value)
             }
-            state_stores[active][prefix][name].merge(value)
-
         } else {
             value = (value !== null && value !== undefined ? value.toString() : value);
-            if (prefix) {
-                state_stores[active][prefix][name] = value
+            if (value === undefined) {
+                if (prefix) {
+                    delete state_stores[active][prefix][name]
+                } else {
+                    delete state_stores[active][name];
+                }
             } else {
-                state_stores[active][name] = value;
+                if (prefix) {
+                    state_stores[active][prefix][name] = value
+                } else {
+                    state_stores[active][name] = value;
+                }
             }
         }
     }
@@ -4719,6 +4729,9 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(this, 'render', {
         value: async function () {
             let tag = self.tag;
+            let before = new xover.listener.Event('beforeRender', this);
+            xover.listener.dispatchEvent(before, this);
+            if (before.cancelBubble || before.defaultPrevented) return;
 
             _render_manager = _render_manager || xover.delay(1).then(async () => {
                 if (!__document.documentElement) {
@@ -4785,7 +4798,7 @@ xover.Store = function (xml, ...args) {
                 return;
             }).finally(async () => {
                 _render_manager = undefined;
-                xover.listener.dispatchEvent(new xover.listener.Event('rendered', { target: store }), this);
+                xover.listener.dispatchEvent(new xover.listener.Event('render', { target: store }), this);
             });
             return _render_manager;
         },
@@ -6905,7 +6918,7 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
-            Element.prototype.toggleAttribute = function (attribute, value, otherwise_value) {
+            Element.prototype.toggleAttribute = function (attribute, value, otherwise_value = null) {
                 value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 if (this.getAttribute(attribute) == value) {
                     this.setAttribute(attribute, otherwise_value)
@@ -7035,10 +7048,39 @@ xover.modernize = function (targetWindow) {
                         if (old_value !== value) {
                             if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
                                 xover.listener.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
+                                if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xo.state.get(this.name) || {}).length) {
+                                    xo.state.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
+                                }
                                 source && source.save();
                             }
                         }
                         return return_value;
+
+                    }
+                }
+            );
+
+            var original_node_namespaceURI = Object.getOwnPropertyDescriptor(Node.prototype, 'namespaceURI');
+            Object.defineProperty(Node.prototype, 'namespaceURI',
+                {
+                    get: function () {
+                        return original_node_namespaceURI.get.call(this) || "";
+                    },
+                    set: function (value) {
+                        return original_node_namespaceURI.set.call(this);
+
+                    }
+                }
+            );
+
+            var original_attr_namespaceURI = Object.getOwnPropertyDescriptor(Attr.prototype, 'namespaceURI');
+            Object.defineProperty(Attr.prototype, 'namespaceURI',
+                {
+                    get: function () {
+                        return original_attr_namespaceURI.get.call(this) || "";
+                    },
+                    set: function (value) {
+                        return original_attr_namespaceURI.set.call(this);
 
                     }
                 }
