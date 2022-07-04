@@ -2609,7 +2609,6 @@ Object.defineProperty(xover.stores, 'clear', {
 const original_removeAttribute = Element.prototype.removeAttribute;
 const original_remove = Element.prototype.remove;
 const replaceChild_original = Element.prototype.replaceChild
-const setAttribute_original = Element.prototype.setAttribute;
 const original_setAttribute = Element.prototype.setAttribute;
 const original_setAttributeNS = Element.prototype.setAttributeNS;
 const original_setAttributeNodeNS = Element.prototype.setAttributeNodeNS;
@@ -6551,14 +6550,17 @@ xover.modernize = function (targetWindow) {
                             let node = store.find(this.id) || store.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
 
                             if (node && attribute) {
+                                let attribute_node;
                                 if (attribute === 'text()') {
                                     [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
                                     return [...node.childNodes].filter(el => el instanceof Text).pop();
                                 }
                                 else if (node.getAttribute(attribute) === null) {
-                                    node.createAttribute(attribute);
+                                    attribute_node = node.createAttribute(attribute, null);
+
                                 }
-                                return node.selectSingleNode(`@${attribute}`);
+                                attribute_node = attribute_node || node.getAttributeNode(attribute);
+                                return attribute_node;
                             }
                             return node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
                         }
@@ -6875,16 +6877,26 @@ xover.modernize = function (targetWindow) {
 
             Element.prototype.createAttribute = function (attribute, value = '') {
                 attribute = attribute.replace(/^@/, "");
-                if (!this.hasAttribute(attribute)/* && (this.namespaceURI || '').indexOf("http://www.w3.org") !== 0*/) {
-                    let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                    let namespace = this.resolveNS(prefix) || xover.spaces[prefix];
-                    if (!namespace) {
-                        setAttribute_original.call(this, attribute, value);
-                    } else {
-                        original_setAttributeNS.call(this, namespace, attribute, value);
+                let parentNode = this;
+                let new_attribute_node;
+                let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
+                let namespace = this.resolveNS(prefix) || xover.spaces[prefix];
+                if (!namespace) {
+                    original_setAttribute.call(this, attribute, value);
+                } else {
+                    original_setAttributeNS.call(this, namespace, attribute, value);
+                }
+                new_attribute_node = original_getAttributeNode.call(this, attribute);
+                if (value === null) {
+                    original_removeAttribute.call(this, attribute);
+                    let descriptor = Object.getPropertyDescriptor(new_attribute_node, 'parentNode') || { writable: true };
+                    if (descriptor.hasOwnProperty("writable") ? descriptor.writable : true) {
+                        Object.defineProperty(new_attribute_node, 'parentNode', { get: function () { return parentNode } });
                     }
                 }
-                return original_getAttributeNode.call(this, attribute);
+                new_attribute_node = new_attribute_node || original_getAttributeNode.call(this, attribute);
+                Object.defineProperty(new_attribute_node, 'nil', { value: true, writable: true, editable: true });
+                return new_attribute_node;
             }
 
             Element.prototype.createAttributeNS = function (namespace_URI, attribute, value = '') {
@@ -6902,7 +6914,15 @@ xover.modernize = function (targetWindow) {
                     }
                     new_attribute_node = original_getAttributeNode.call(this, attribute);
                 }
-                Object.defineProperty(new_attribute_node, 'nill', { value: true, writable: true, editable: true });
+                if (value === null) {
+                    original_removeAttribute.call(this, attribute);
+                    let descriptor = Object.getPropertyDescriptor(new_attribute_node, 'parentNode') || { writable: true };
+                    if (descriptor.hasOwnProperty("writable") ? descriptor.writable : true) {
+                        Object.defineProperty(new_attribute_node, 'parentNode', { get: function () { return parentNode } });
+                    }
+                }
+
+                Object.defineProperty(new_attribute_node, 'nil', { value: true, writable: true, editable: true });
                 return new_attribute_node;
             }
 
@@ -6993,11 +7013,15 @@ xover.modernize = function (targetWindow) {
                 // wrapper function is required.
                 {
                     get: function () {
-                        return this.nill ? null : original_attr_value.get.call(this);
+                        return this.nil ? null : original_attr_value.get.call(this);
                     },
                     set: function (value) {
                         value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
 
+                        if (!this.ownerElement && value !== undefined && value !== null) {
+                            original_attr_value.set.call(this, value);
+                            this.parentNode.setAttributeNode(this);
+                        }
                         let target = this;
                         let target_node = this.parentNode;
                         let attribute_name = this.localName;
@@ -7038,9 +7062,10 @@ xover.modernize = function (targetWindow) {
 
                         let return_value;
                         if (value === null || value === undefined) {
+                            this.nil = true;
                             this.ownerElement && this.remove()
                         } else {
-                            this.nill = false;
+                            this.nil = false;
                             original_attr_value.set.call(this, value);
                         }
                         if (old_value !== value) {
