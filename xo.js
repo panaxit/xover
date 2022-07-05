@@ -1427,13 +1427,13 @@ xover.xml.createDocument = function (xml, options = {}) {
                 [...result.querySelectorAll('parsererror div')].map(message => {
                     if (String(message.textContent).match(/prefix|prefijo/)) {
                         var prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
-                        if (!xover.xml.namespaces[prefix]) {
+                        if (!xover.spaces[prefix]) {
                             var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
                             //xml.documentElement.appendChild(message.documentElement);
                             return message;
                         }
-                        //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.xml.namespaces[prefix]);
-                        sXML = sXML.replace(new RegExp(`\\b${prefix}:`), `xmlns:${prefix}="${xover.xml.namespaces[prefix]}" $&`)
+                        //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
+                        sXML = sXML.replace(new RegExp(`\\b(${prefix}):([^\\s\\>]+)`), `$1:$2 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
                         result = xover.xml.createDocument(sXML);
                         return result;
                     } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
