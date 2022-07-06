@@ -8077,6 +8077,22 @@ xover.modernize = function (targetWindow) {
                     '.' + pad(this.getMilliseconds()) +
                     'Z';
             }
+
+            Date.prototype.toLongDateString = function (format = 'es-mx') {
+                let date = this;
+                const monthNames = {
+                    "es-mx": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+                    ]
+                };
+                if (date instanceof Date) {
+                    date = date.toISOString()
+                }
+                var parts = date.match(/(\d{4})(\/|-)(\d{1,2})\2(\d{1,2})/)
+                if (format.indexOf('es') === 0) {
+                    return parts[4] + ' de ' + monthNames[format][parseInt(parts[3]) - 1] + ' de ' + parts[1];
+                }
+            }
         }
 
         // Production steps of ECMA-262, Edition 5, 15.4.4.18
