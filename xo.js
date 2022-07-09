@@ -1187,7 +1187,7 @@ Object.defineProperty(xover.state, 'set', {
             }
         }
     }
-    , enumerable: true
+    , enumerable: false
 });
 
 Object.defineProperty(xover.state, 'get', {
@@ -1202,7 +1202,7 @@ Object.defineProperty(xover.state, 'get', {
             return state_stores[active][name] || {};
         }
     }
-    , enumerable: true
+    , enumerable: false
 });
 
 Object.defineProperty(xover.state, 'activeCaret', {
@@ -1639,7 +1639,7 @@ xover.Source = function (source, tag) {
                     document.source = this;
                     return document;
                 }
-                throw (new Error("No se pudo obtener la fuente de datos"))
+                throw (new Error(`No se pudo obtener la fuente de datos ${tag}`))
             },
             writable: false, enumerable: false, configurable: false
         });
@@ -3775,7 +3775,7 @@ xover.init = async function () {
     this.init.initializing = this.init.initializing || new Promise(async (resolve) => {
         if (history.state) delete history.state.active;
         let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '') + '.manifest', { headers: { Accept: "*/*" } });
-        let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } }) || await xover.fetch.json('manifest.json', { headers: { Accept: "*/*" } });
+        let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } }) || await xover.fetch.json('manifest.json', { headers: { Accept: "*/*" } }) || {};
         manifest = manifest.merge(local_manifest);
         xover.manifest = new xover.Manifest(xover.manifest.merge(manifest));
         Object.assign(xover.spaces, xover.manifest.spaces);
