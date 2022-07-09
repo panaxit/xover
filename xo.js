@@ -1434,7 +1434,7 @@ xover.xml.createDocument = function (xml, options = {}) {
                         }
                         //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
                         sXML = sXML.replace(new RegExp(`\\b(${prefix}):([^\\s\\>]+)`), `$1:$2 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
-                        result = xover.xml.createDocument(sXML);
+                        result = xover.xml.createDocument(sXML, options);
                         return result;
                     } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
                         message.closest("html").remove();
@@ -2884,7 +2884,7 @@ xover.Response = function (response, request) {
             }
 
             let body = undefined;
-            let contentType = (response.headers.get('Content-Type') || '');
+            let contentType = (request.headers.get("accept") || response.headers.get('Content-Type') || '');
             var responseText;
             if (contentType.toLowerCase().indexOf("iso-8859-1") != -1) {
                 await response.arrayBuffer().then(buffer => {
@@ -6504,11 +6504,11 @@ xover.modernize = function (targetWindow) {
 
             var toString_original = Node.prototype.toString;
             Node.prototype.toString = function () {
-                if (this instanceof HTMLElement) {
-                    return toString_original
-                } else {
+                //if (this instanceof HTMLElement) {
+                //    return toString_original
+                //} else {
                     return new XMLSerializer().serializeToString(this);
-                }
+                //}
             }
             if (!Node.prototype.hasOwnProperty('xml')) {
                 Object.defineProperty(Node.prototype, 'xml', {
@@ -7005,6 +7005,16 @@ xover.modernize = function (targetWindow) {
                 else {
                     throw "For XML Elements Only";
                 }
+            }
+
+            Attr.prototype.getPropertyValue = function (property_name) {
+                for (let match of this.value.matchAll(new RegExp(`\\b(${property_name}):([^;]+)`, 'g'))) {
+                    return match[2]
+                }
+            }
+
+            Attr.prototype.setPropertyValue = function (property_name, value) {
+                this.value = this.value.replace(new RegExp(`\\b(${property_name}):([^;]+)`,'g'),(match, property)=>`${property}:${value}`)
             }
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
