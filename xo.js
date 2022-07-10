@@ -2884,9 +2884,15 @@ xover.Response = function (response, request) {
             }
 
             let body = undefined;
-            let contentType = (request.headers.get("accept") || response.headers.get('Content-Type') || '');
+            let charset = {}.merge(
+                Object.fromEntries([...new URLSearchParams((request.headers.get('Accept') || '').toLowerCase().replace(/;\s*/g, '&'))])
+                , Object.fromEntries([...new URLSearchParams((response.headers.get('Content-Type') || '').toLowerCase().replace(/;\s*/g, '&'))])
+            )["charset"] || '';
+            let contentType = response.headers.get('Content-Type');
+            
+
             var responseText;
-            if (contentType.toLowerCase().indexOf("iso-8859-1") != -1) {
+            if (charset.indexOf("iso-8859-1") != -1) {
                 await response.arrayBuffer().then(buffer => {
                     let decoder = new TextDecoder("iso-8859-1");
                     let text = decoder.decode(buffer);
