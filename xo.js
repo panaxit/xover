@@ -579,7 +579,16 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             await xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
-        let listeners = Object.values(xover.listener[event.type]).slice(0);
+        let listeners = Object.entries(xover.listener).filter(([key]) => {
+            [type, selector] = key.split('::'); try {
+                return type === event.type && (!selector || event.target && event.target.matches && event.target.matches(selector))
+            } catch (e) {
+                return false
+            }
+        }).reduce((new_array, [key]) => {
+            new_array.push(Object.values(xover.listener[key])[0]); return new_array
+        }, []);
+        //let listeners = Object.values(xover.listener[event.type]).slice(0);
         let first_listener = listeners[0];
         listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
     },
