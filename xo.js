@@ -585,8 +585,8 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             } catch (e) {
                 return false
             }
-        }).reduce((new_array, [key]) => {
-            new_array.push(Object.values(xover.listener[key])[0]); return new_array
+        }).reduce((new_array, [key, fn]) => {
+            new_array.push(...Object.values(fn).flat(Infinity)); return new_array
         }, []);
         //let listeners = Object.values(xover.listener[event.type]).slice(0);
         let first_listener = listeners[0];
