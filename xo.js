@@ -759,7 +759,7 @@ xover.Manifest = function (manifest = {}) {
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) {
         let tag_name = typeof (input) == 'string' && input || input.tag || "";
-        return Object.entries(this.settings).filter(([key, value]) => config_name in value && (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[\\]/g, '\\$&')}$`, "i")) || key[0] !== '#' && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).map(([key, value]) => value[config_name]).flat(Infinity);
+        return Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && config_name in value && (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")) || !['#','@'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).map(([key, value]) => value[config_name]).flat(Infinity);
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -1598,43 +1598,50 @@ xover.Source = function (source, tag) {
     } else {
         Object.defineProperty(this, 'fetch', {
             value: async function () {
-                let document = source; //Object.keys(xover.sources).includes(source) && xover.sources[source] || document;
+                let document;
                 let parameters, settings = {}, payload;
-                Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
-                    [parameters, settings = {}, payload] = document[endpoint].constructor === [].constructor && document[endpoint] || [document[endpoint]];
+                Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint in xover.server && xover.server[endpoint] || eval(`typeof ${endpoint}`) === "function").map(async (endpoint) => {
+                    [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
                 })
-                if (!(document instanceof Document)) {
+                if (!(source instanceof Document)) {
                     let sources = await xover.database.sources;
                     let stored_document = await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
 
                     if (stored_document && !((Date.now() - stored_document.lastModifiedDate) / 1000 > settings["expiry"])) {
-                        document = stored_document;
+                        source = stored_document;
                     }
                 }
-                if (document && document.constructor === {}.constructor) {
+                if (source instanceof Document) {
+                    document = source
+                } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
-                    Object.keys(document).filter(endpoint => endpoint in xover.server && xover.server[endpoint]).map(async (endpoint) => {
-                        let [parameters, settings = {}, payload] = document[endpoint].constructor === [].constructor && document[endpoint] || [document[endpoint]];
+                    Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint] || eval(`typeof ${endpoint}`) === "function").map(async (endpoint) => {
+                        let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
                         //settings["tag"] = settings["tag"] || tag;
                         promises.push(new Promise(async (resolve, reject) => {
                             if (tag === xo.state.active) {
                                 parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
                             }
-                            let document = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
+                            if (endpoint in xover.server) {
+                                source = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
+                            } else if (eval(`typeof ${endpoint}`) === "function") {
+                                let fn = eval(endpoint)
+                                source = await fn.apply(this, [parameters]);
+                            }
                             //await document.render(/*true*/);
                             //if (document instanceof XMLDocument && !document.isRendered) {
                             //    xover.stores.active = document;
                             //}
-                            resolve(document);
+                            resolve(source);
                         }));
                     })
                     let documents = await Promise.all(promises).then(document => document);
-                    if (tag) {
+                    if (tag && documents[0]) {
                         xover.database.write('sources', tag, documents[0]);
                     }
                     return documents[0];
-                } else if (typeof (document) == 'string') {
-                    document = await xover.fetch.xml(document) || document;
+                } else if (typeof (source) == 'string') {
+                    document = await xover.fetch.xml(source) || source;
 
                 }
                 if (!document) {
@@ -1658,6 +1665,8 @@ xover.Source = function (source, tag) {
     return this
 }
 
+
+
 xover.sources = new Proxy({}, {
     get: function (self, key) {
         let _manifest = Object.assign({}, xover.manifest.sources);
@@ -1666,7 +1675,7 @@ xover.sources = new Proxy({}, {
             return self[key];
         } else if (key[0] === '#') {
             let tag_name = key;
-            let match_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '#' && tag_name && tag_name.match(RegExp(`^${key.replace(/[.\\]/g, '\\$&')}$`, "i")))) || key;
+            let match_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")))) || key;
             let source;
             do {
                 source = _manifest[match_key];
@@ -1676,7 +1685,12 @@ xover.sources = new Proxy({}, {
                     match_key = source
                 }
             } while (match_key in _manifest);
-            xover.sources[key] = (key === match_key && new xover.Source(source, key)).document || xover.sources[match_key];
+
+            match_key[0] === '@' && [...key.matchAll(new RegExp(match_key.substr(1), "ig"))].forEach(([match, ...groups]) => {
+                Object.keys(source).forEach(fn => source[fn].forEach((el, ix) => source[fn][ix] = source[fn][ix].replace(/\$(\d+)/, ([el, num]) => groups[num - 1])))
+            })
+
+            xover.sources[key] = ((key === match_key || match_key[0] === '@') && new xover.Source(source, key)).document || xover.sources[match_key];
             return xover.sources[key];
         } else {
             xover.sources[key] = new xover.Source(key, key).document;
