@@ -1267,6 +1267,8 @@ Object.defineProperty(xover.state, 'seed', {
             new_state["seed"] = input;
             new_state["prev"] = prev;
             new_state["next"] = "";
+            new_state["position"] = new_state["position"] + 1;
+            xover.session.setKey('lastPosition', new_state["position"]);
             history.pushState(new_state, ((event || {}).target || {}).textContent, xover.stores[input].tag);
         }
     }
@@ -2898,7 +2900,7 @@ xover.Response = function (response, request) {
                 , Object.fromEntries([...new URLSearchParams((response.headers.get('Content-Type') || '').toLowerCase().replace(/;\s*/g, '&'))])
             )["charset"] || '';
             let contentType = response.headers.get('Content-Type');
-            
+
 
             var responseText;
             if (charset.indexOf("iso-8859-1") != -1) {
@@ -4819,7 +4821,7 @@ xover.Store = function (xml, ...args) {
         writable: true, enumerable: false, configurable: false
     });
 
-    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'selectSingleNode', 'selectNodes', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
+    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
         let prop_desc = Object.getPropertyDescriptor(__document, prop);
         if (!prop_desc) {
             continue
@@ -5319,19 +5321,24 @@ if (window.addEventListener) {
 };
 
 xover.listener.on('beforeRemoveHTMLElement', function ({ target }) {
-    if (target.classList && target.classList.contains("loading") || ["alert", "alertdialog"].includes(String(target.role).toLowerCase())) {
-        let store = target.store;
-        if (store && (store.state.submitting || store.state.busy)) {
-            event.preventDefault();
-            [store.stylesheets['loading.xslt']].removeAll();
-        };
+    let xo_store = target.getAttribute("xo-store");
+    if (xo_store) {
+        delete xover.stores[xo_store];
+    } else {
+        if (target.classList && target.classList.contains("loading") || ["alert", "alertdialog"].includes(String(target.role).toLowerCase())) {
+            let store = target.store;
+            if (store && (store.state.submitting || store.state.busy)) {
+                event.preventDefault();
+                [store.stylesheets['loading.xslt']].removeAll();
+            };
+        }
     }
 })
 
 xover.listener.on('remove', function ({ target }) {
-    let source = target.source; //TODO: Revisar que el comportamiento del borrado sea el deseado, pues en ocasiones se borra el elemento sin que la intención sea borrar el nodo
-    if (source instanceof Element) {
-        source && source.remove();
+    let scope = target.scope; //TODO: Revisar que el comportamiento del borrado sea el deseado, pues en ocasiones se borra el elemento sin que la intención sea borrar el nodo
+    if (scope instanceof Element) {
+        scope && scope.remove();
     }
 })
 
@@ -6522,7 +6529,7 @@ xover.modernize = function (targetWindow) {
                 //if (this instanceof HTMLElement) {
                 //    return toString_original
                 //} else {
-                    return new XMLSerializer().serializeToString(this);
+                return new XMLSerializer().serializeToString(this);
                 //}
             }
             if (!Node.prototype.hasOwnProperty('xml')) {
@@ -7029,7 +7036,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Attr.prototype.setPropertyValue = function (property_name, value) {
-                this.value = this.value.replace(new RegExp(`\\b(${property_name}):([^;]+)`,'g'),(match, property)=>`${property}:${value}`)
+                this.value = this.value.replace(new RegExp(`\\b(${property_name}):([^;]+)`, 'g'), (match, property) => `${property}:${value}`)
             }
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
