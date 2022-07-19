@@ -759,7 +759,7 @@ xover.Manifest = function (manifest = {}) {
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) {
         let tag_name = typeof (input) == 'string' && input || input.tag || "";
-        return Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && config_name in value && (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")) || !['#','@'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).map(([key, value]) => value[config_name]).flat(Infinity);
+        return Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && config_name in value && (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")) || !['#', '@'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).map(([key, value]) => value[config_name]).flat(Infinity);
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -1410,7 +1410,7 @@ Object.defineProperty(xover.state, 'restore', {
 
 xover.xml = {};
 
-xover.xml.createDocument = function (xml, options = {}) {
+xover.xml.createDocument = function (xml, options = { autotransform: true }) {
     let result = undefined;
     if (xml instanceof XMLDocument) {
         result = xml.cloneNode(true);
@@ -1464,21 +1464,26 @@ xover.xml.createDocument = function (xml, options = {}) {
         }
     }
 
+    //if (options["autotransform"]) {
     if (result.documentElement && !["http://www.w3.org/1999/xhtml", "http://www.w3.org/1999/XSL/Transform"].includes(result.documentElement.namespaceURI)) {
         xover.manifest.getSettings(result, 'stylesheets').reverse().forEach(stylesheet => result.addStylesheet(stylesheet));
     }
-    (result.stylesheets || []).filter(stylesheet => stylesheet.role == 'init').forEach(stylesheet => {
-        let new_document = result.transform(stylesheet.document);
-        if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
-            new_document.stylesheets[stylesheet.href].replaceBy(result.createComment('Initialized by ' + stylesheet.href));
-            /*La transformación no debe regresar un html ni otro documento del estándar*/
-            result = new_document;
-        } else {
-            delete stylesheet["role"];
-            result.addStylesheet(stylesheet);
-            console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
-        }
-    });
+    //    // Considerar quitar esta parte de aquí. 
+    //    (result.stylesheets || []).filter(stylesheet => stylesheet.role == 'init').forEach(stylesheet => {
+    //        if (stylesheet.document.documentElement instanceof Document) {
+    //            let new_document = result.transform(stylesheet.document);
+    //            if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
+    //                new_document.stylesheets[stylesheet.href].replaceBy(result.createComment('Initialized by ' + stylesheet.href));
+    //                /*La transformación no debe regresar un html ni otro documento del estándar*/
+    //                result = new_document;
+    //            } else {
+    //                delete stylesheet["role"];
+    //                result.addStylesheet(stylesheet);
+    //                console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
+    //            }
+    //        }
+    //    });
+    //}
     return result;
 }
 
@@ -1674,8 +1679,8 @@ xover.sources = new Proxy({}, {
         if (key in self) {
             return self[key];
         } else if (key[0] === '#') {
-            let tag_name = key;
-            let match_key = Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")))) || key;
+            let match_key = Object.keys(_manifest).filter(match_key => match_key[0] === '@' && key.match(new RegExp(match_key.substr(1), "i")) || match_key === key).pop() || key;
+            //Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")))) || key;
             let source;
             do {
                 source = _manifest[match_key];
@@ -1686,8 +1691,8 @@ xover.sources = new Proxy({}, {
                 }
             } while (match_key in _manifest);
 
-            match_key[0] === '@' && [...key.matchAll(new RegExp(match_key.substr(1), "ig"))].forEach(([match, ...groups]) => {
-                Object.keys(source).forEach(fn => source[fn].forEach((el, ix) => source[fn][ix] = source[fn][ix].replace(/\$(\d+)/, ([el, num]) => groups[num - 1])))
+            match_key[0] === '@' && [...key.matchAll(new RegExp(match_key.substr(1), "ig"))].forEach(([...groups]) => {
+                Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
             })
 
             xover.sources[key] = ((key === match_key || match_key[0] === '@') && new xover.Source(source, key)).document || xover.sources[match_key];
@@ -2985,7 +2990,7 @@ xover.Response = function (response, request) {
                     });
                     break;
                 case "xml":
-                    body = xover.xml.createDocument(responseText);
+                    body = xover.xml.createDocument(responseText, { autotransform: false });
                     Object.defineProperty(response, 'json', {
                         value: null
                     });
@@ -4345,14 +4350,15 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'documentElement', {
         get: function () {
-            if (__document.documentElement) {
+            //if (__document.documentElement) {
                 return __document.documentElement;
-            } else {
-                return new Promise(async resolve => {
-                    await this.initialize();
-                    resolve(__document.documentElement);
-                });
-            }
+            //} else if (__document.source) {
+            //    __document.store = store;
+            //    return __document.fetch()/*new Promise(async resolve => {
+            //        await this.initialize();
+            //        resolve(__document.documentElement);
+            //    })*/;
+            //}
         }
     })
 
@@ -5829,8 +5835,8 @@ xover.dom.elementVisible = function (el, container) {
     return true;
 }
 
-xover.data.getScrollPosition = function (target) {
-    var coordinates = ((target || xover.stores.active.documentElement || document.createElement('p')).selectNodes('@state:x-position|@state:y-position') || []).reduce((json, attr) => { json[attr.localName.replace('-position', '')] = attr.value; return json; }, {});
+xover.data.getScrollPosition = async function (target) {
+    var coordinates = ((target || await xover.stores.active.documentElement || document.createElement('p')).selectNodes('@state:x-position|@state:y-position') || []).reduce((json, attr) => { json[attr.localName.replace('-position', '')] = attr.value; return json; }, {});
     return coordinates;
 }
 
@@ -6366,8 +6372,12 @@ xover.modernize = function (targetWindow) {
                 }
                 let new_document;
                 let store = this.store;
-                return new Promise(resolve => {
+                this.fetching = this.fetching || new Promise(resolve => {
                     this.source.fetch().then(new_document => {
+                        this.fetching = undefined;
+                        if (new_document instanceof xover.Store) {
+                            new_document = new_document.document
+                        }
                         if (new_document) {
                             new_document = this.replaceBy(new_document);
                         } else {
@@ -6377,6 +6387,7 @@ xover.modernize = function (targetWindow) {
                         resolve(new_document);
                     });
                 });
+                return this.fetching;
             }
 
             if (!XMLDocument.prototype.hasOwnProperty('type')) {
@@ -7052,6 +7063,16 @@ xover.modernize = function (targetWindow) {
             Attr.prototype.setPropertyValue = function (property_name, value) {
                 this.value = this.value.replace(new RegExp(`\\b(${property_name}):([^;]+)`, 'g'), (match, property) => `${property}:${value}`)
             }
+
+            //var original_document_documentElement = Object.getOwnPropertyDescriptor(Document.prototype, 'documentElement');
+            //Object.defineProperty(Document.prototype, 'documentElement', {
+            //    get: function () {
+            //        let _documentElement = original_document_documentElement.get.call(this) || this.source && this.fetch && this.fetch() || null;
+            //        return original_document_documentElement.get.call(this);
+            //    },
+            //    set: function (value) { }
+            //});
+
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
             Object.defineProperty(Attr.prototype, 'value',
