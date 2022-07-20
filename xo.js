@@ -261,7 +261,7 @@ xover.stores = new Proxy({}, {
         }
         return exists && !(key in self)
     }, has: function (self, key) {
-        return key in self || key.toLowerCase() in self || key in xover.session || key in (xover.manifest.server || {});
+        return key in self || key.toLowerCase() in self || key in xover.sources || key in (xover.manifest.server || {});
     }
 });
 
@@ -607,6 +607,14 @@ Object.defineProperty(xover.listener, 'on', {
     },
     writable: true, enumerable: false, configurable: false
 });
+
+xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
+    new_hash = (new_hash || window.location.hash);
+    if (new_hash === '#' || !(new_hash in xover.stores)) {
+        event.preventDefault();
+    }
+    //xdom.stores.active = (xdom.stores[new_hash] || xdom.stores.active);
+})
 
 xover.listener.on('keyup', async function (event) {
     if (event.keyCode == 27) {
@@ -1707,7 +1715,7 @@ xover.sources = new Proxy({}, {
     },
     has: function (self, key) {
         if (!key) return false;
-        return source_defined = key in self || !!Object.entries(xover.manifest.sources || {}).find(([tag]) => key.match(new RegExp(`^${tag.replace(/[-[\]{}()*+?.,\\^$|#]/g, '\\$&')}$`)))
+        return source_defined = key in self || !!Object.keys(xover.manifest.sources || {}).filter(match_key => match_key[0] === '@' && key.match(new RegExp(match_key.substr(1), "i")) || match_key === key).pop()
     }
 })
 
@@ -6674,7 +6682,7 @@ xover.modernize = function (targetWindow) {
                 }
                 original_remove.apply(this, arguments);
                 let descriptor = Object.getPropertyDescriptor(this, 'parentNode') || { writable: true };
-                if (descriptor.hasOwnProperty("writable") ? descriptor.writable : true) {
+                if (!this.parentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
                     Object.defineProperty(this, 'parentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                 }
                 if (this.ownerDocument.selectSingleNode && store) {
