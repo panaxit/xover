@@ -1621,17 +1621,16 @@ xover.Source = function (source, tag) {
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint] || eval(`typeof ${endpoint}`) === "function").map(async (endpoint) => {
-                        let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
-                        //settings["tag"] = settings["tag"] || tag;
                         promises.push(new Promise(async (resolve, reject) => {
-                            if (tag === xo.state.active) {
-                                parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
-                            }
                             if (endpoint in xover.server) {
+                                let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
+                                if (tag === xo.state.active) {
+                                    parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
+                                }
                                 source = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
                             } else if (eval(`typeof ${endpoint}`) === "function") {
                                 let fn = eval(endpoint)
-                                source = await fn.apply(this, [parameters]);
+                                source = await fn.apply(this, source[endpoint]);
                             }
                             //await document.render(/*true*/);
                             //if (document instanceof XMLDocument && !document.isRendered) {
@@ -1674,7 +1673,7 @@ xover.Source = function (source, tag) {
 
 xover.sources = new Proxy({}, {
     get: function (self, key) {
-        let _manifest = Object.assign({}, xover.manifest.sources);
+        let _manifest = JSON.parse(JSON.stringify(xover.manifest.sources));
         let value = undefined;
         if (key in self) {
             return self[key];
@@ -1785,6 +1784,7 @@ xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
 xover.spaces["session"] = "http://panax.io/session"
 xover.spaces["xhtml"] = "http://www.w3.org/1999/xhtml"
+xover.spaces["xlink"] = "http://www.w3.org/1999/xlink"
 
 /* Binding */
 xover.spaces["request"] = "http://panax.io/fetch/request"
@@ -4772,6 +4772,9 @@ xover.Store = function (xml, ...args) {
             _render_manager = _render_manager || xover.delay(1).then(async () => {
                 if (!__document.documentElement) {
                     await store.fetch();
+                    if (!__document.documentElement) {
+                        throw (new Error(`No document body for ${tag}`));
+                    }
                 }
                 if (!(_store_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
                     store.addStylesheet({ href: store.tag.substring(1) + '.xslt', target: "@#shell main" })
