@@ -767,7 +767,7 @@ xover.Manifest = function (manifest = {}) {
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) {
         let tag_name = typeof (input) == 'string' && input || input.tag || "";
-        return Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && config_name in value && (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")) || !['#', '@'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).map(([key, value]) => value[config_name]).flat(Infinity);
+        return Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && config_name in value && (tag_name === key || key[0] === '^' && tag_name && tag_name.match(RegExp(`^${(key || '').replace(/[\\]/g, '\\$&')}$`, "i")) || !['#', '^'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).map(([key, value]) => value[config_name]).flat(Infinity);
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -1596,23 +1596,12 @@ xover.Source = function (source, tag) {
         }
     })
 
-    if (isFunction(source)) {
-        Object.defineProperty(this, 'fetch', {
-            get: function () {
-                return async function () {
-                    try {
-                        return source.apply(this, [...(arguments.length && arguments || [tag])]);
-                    } catch (e) {
-                        Promise.reject(e);
-                    }
-                }
-            }
-        });
-    } else {
-        Object.defineProperty(this, 'fetch', {
-            value: async function () {
-                let document;
-                let parameters, settings = {}, payload;
+    Object.defineProperty(this, 'fetch', {
+        value: async function (...args) {
+            let document;
+            let parameters, settings = {}, payload;
+
+            try {
                 Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint in xover.server && xover.server[endpoint] || eval(`typeof ${endpoint}`) === "function").map(async (endpoint) => {
                     [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
                 })
@@ -1635,15 +1624,11 @@ xover.Source = function (source, tag) {
                                 if (tag === xo.state.active) {
                                     parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
                                 }
-                                source = await xover.server[endpoint].apply(this, [payload, parameters, settings]);
+                                source = await xover.server[endpoint].apply(self, [payload, parameters, settings]);
                             } else if (eval(`typeof ${endpoint}`) === "function") {
-                                let fn = eval(endpoint)
-                                source = await fn.apply(this, source[endpoint]);
+                                let fn = eval(endpoint) || eval(`xo.server.${endpoint}`)
+                                source = await fn.apply(self, (source[endpoint] || []).concat(args));
                             }
-                            //await document.render(/*true*/);
-                            //if (document instanceof XMLDocument && !document.isRendered) {
-                            //    xover.stores.active = document;
-                            //}
                             resolve(source);
                         }));
                     })
@@ -1655,25 +1640,23 @@ xover.Source = function (source, tag) {
                 } else if (typeof (source) == 'string') {
                     document = await xover.fetch.xml(source) || source;
 
+                } else if (tag[0] !== '#') {
+                    document = await xover.fetch.xml(tag) || source;
                 }
                 if (!document) {
                     document = xover.sources.defaults[tag];
                 }
                 if (document instanceof Document) {
-                    //if (!document.documentElement && document !== __document) {
-                    //    document = await document.fetch();
-                    //}
-                    //if (document.source.tag === tag) {
-                    //    xover.database.write('sources', tag, document);
-                    //}
                     document.source = this;
                     return document;
                 }
-                throw (new Error(`No se pudo obtener la fuente de datos ${tag}`))
-            },
-            writable: false, enumerable: false, configurable: false
-        });
-    }
+                throw (new Error(`No se pudo obtener la fuente de datos ${tag}`));
+            } catch (e) {
+                throw (new Error(e.message));
+            }
+        },
+        writable: false, enumerable: false, configurable: false
+    });
     return this
 }
 
@@ -1685,37 +1668,40 @@ xover.sources = new Proxy({}, {
         let value = undefined;
         if (key in self) {
             return self[key];
-        } else if (key[0] === '#') {
-            let match_key = Object.keys(_manifest).filter(match_key => match_key[0] === '@' && key.match(new RegExp(match_key.substr(1), "i")) || match_key === key).pop() || key;
-            //Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '@' && tag_name && tag_name.match(RegExp(`^${(key.substr(1) || '').replace(/[\\]/g, '\\$&')}$`, "i")))) || key;
-            let source;
-            do {
-                source = _manifest[match_key];
-                if (!source) return new xover.Source(source, match_key).document;
-                delete _manifest[match_key];
-                if (source in _manifest) {
-                    match_key = source
-                }
-            } while (match_key in _manifest);
-
-            match_key[0] === '@' && [...key.matchAll(new RegExp(match_key.substr(1), "ig"))].forEach(([...groups]) => {
-                Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
-            })
-
-            xover.sources[key] = ((key === match_key || match_key[0] === '@') && new xover.Source(source, key)).document || xover.sources[match_key];
-            return xover.sources[key];
-        } else {
-            xover.sources[key] = new xover.Source(key, key).document;
-            return xover.sources[key];
         }
+        //else if (key[0] === '#') {
+        let match_key = Object.keys(_manifest).filter(match_key => match_key[0] === '^' && key.match(new RegExp(match_key, "i")) || match_key === key).pop() || key;
+        //Object.keys(_manifest).reverse().find((key) => (tag_name === key || key[0] === '^' && tag_name && tag_name.match(RegExp(`^${(key || '').replace(/[\\]/g, '\\$&')}$`, "i")))) || key;
+        let source;
+        do {
+            source = _manifest[match_key];
+            if (!source) {
+                xover.sources[key] = new xover.Source(source, match_key).document;
+                return xover.sources[key];
+            }
+            delete _manifest[match_key];
+            if (source in _manifest) {
+                match_key = source
+            }
+        } while (match_key in _manifest);
+
+        match_key[0] === '^' && [...key.matchAll(new RegExp(match_key, "ig"))].forEach(([...groups]) => {
+            Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+        })
+
+        xover.sources[key] = ((key === match_key || match_key[0] === '^') && new xover.Source(source, key)).document || xover.sources[match_key];
+        return xover.sources[key];
+        //} else {
+        //    xover.sources[key] = new xover.Source(key, key).document;
+        //    return xover.sources[key];
+        //}
     },
     set: function (self, key, input) {
         self[key] = input;
-        return self[key];
     },
     has: function (self, key) {
         if (!key) return false;
-        return source_defined = key in self || !!Object.keys(xover.manifest.sources || {}).filter(match_key => match_key[0] === '@' && key.match(new RegExp(match_key.substr(1), "i")) || match_key === key).pop()
+        return source_defined = key in self || !!Object.keys(xover.manifest.sources || {}).filter(match_key => match_key[0] === '^' && key.match(new RegExp(match_key, "i")) || match_key === key).pop()
     }
 })
 
@@ -4359,7 +4345,7 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(this, 'documentElement', {
         get: function () {
             //if (__document.documentElement) {
-                return __document.documentElement;
+            return __document.documentElement;
             //} else if (__document.source) {
             //    __document.store = store;
             //    return __document.fetch()/*new Promise(async resolve => {
@@ -4468,19 +4454,16 @@ xover.Store = function (xml, ...args) {
             requests = requests.filter(req => !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag].hasOwnProperty(req.nodeType == 1 ? req.getAttribute("command") : req.value)));
             if (requests.length) {
                 for (let node of requests) {
-                    if (!(node.prefix in (xover.manifest.server || {}))) {
-                        console.warn(`Endpoint ${node.prefix} is not configured`)
-                        continue;
-                    }
-                    let command = node.getAttribute("command");
-                    command = command.replace(/^[\s\n]+|[\s\n]+$/g, "");
-                    let headers = new Headers({
-                        "Accept": content_type.xml
-                    })
+                    //if (!(node.prefix in (xover.manifest.server || {}))) {
+                    //    console.warn(`Endpoint ${node.prefix} is not configured`)
+                    //    continue;
+                    //}
+                    let command = (node.getAttribute("command") || '').replace(/^[\s\n]+|[\s\n]+$/g, "");
+                    let request = `${node.prefix}:=${command || ''}`;
 
                     xover.data.binding.requests[tag] = (xover.data.binding.requests[tag] || {});
-                    if (!(command || '').match("{{") && !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag][command])) {
-                        console.log("Binding " + command);
+                    if (!(request || '').match("{{") && !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag][request])) {
+                        console.log("Binding " + request);
 
                         let response_handler = async (response) => {
                             //var response_is_message = !!response.documentElement.selectSingleNode('self::xo:message');
@@ -4489,9 +4472,9 @@ xover.Store = function (xml, ...args) {
                             //    new_node.documentElement.appendChild(response.documentElement);
                             //    response.appendChild(new_node.documentElement);
                             //}
-                            ////response.documentElement.setAttributeNS(null, "command", original_request)
+                            ////response.documentElement.setAttributeNS(null, "request", original_request)
                             ////response = xover.xml.reseed(response);
-                            /*!(response instanceof xover.Store) && node.selectNodes(`//source:*[@command="${command}"]`).map((targetNode, index, array) => {*/
+                            /*!(response instanceof xover.Store) && node.selectNodes(`//source:*[@request="${request}"]`).map((targetNode, index, array) => {*/
                             let targetNode = node
                             let new_node = response.cloneNode(true).reseed();
                             let fragment = document.createDocumentFragment();
@@ -4528,13 +4511,16 @@ xover.Store = function (xml, ...args) {
                                 targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
                             }
                             await context.render()
-                            delete xover.data.binding.requests[self.tag][command];
+                            delete xover.data.binding.requests[self.tag][request];
                             //xover.delay(50).then(() => {
                             //xover.stores[tag].render(/*true*/);
                             //});
                             //});
                         };
-                        xover.data.binding.requests[tag][command] = (xover.data.binding.requests[tag][command] || xover.server[node.prefix](xover.json.tryParse(command), {
+                        let headers = new Headers({
+                            "Accept": content_type.xml
+                        })
+                        xover.data.binding.requests[tag][request] = (xover.data.binding.requests[tag][request] || xover.sources[`${node.nodeName}:=${node.get("command")}`].fetch(xover.json.tryParse(command), {
                             source: node
                             , method: 'GET'
                             , headers: headers
@@ -6377,14 +6363,14 @@ xover.modernize = function (targetWindow) {
                 return this.selectSingleNode('//*[@xo:id="' + xo_id + '"]')
             }
 
-            XMLDocument.prototype.fetch = async function () {
+            XMLDocument.prototype.fetch = async function (...args) {
                 if (!this.hasOwnProperty("source")) {
                     throw (new Error("Document is not associated to a Source and can't be fetched"));
                 }
                 let new_document;
                 let store = this.store;
                 this.fetching = this.fetching || new Promise(resolve => {
-                    this.source.fetch().then(new_document => {
+                    this.source.fetch.apply(this, args).then(new_document => {
                         this.fetching = undefined;
                         if (new_document instanceof xover.Store) {
                             new_document = new_document.document
