@@ -610,7 +610,7 @@ Object.defineProperty(xover.listener, 'on', {
 
 xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     new_hash = (new_hash || window.location.hash);
-    if (new_hash === '#' || !(new_hash in xover.stores)) {
+    if (new_hash === '#' || !(document.getElementById(new_hash) || new_hash in xover.sources)) {
         event.preventDefault();
     }
     //xdom.stores.active = (xdom.stores[new_hash] || xdom.stores.active);
@@ -1624,12 +1624,12 @@ xover.Source = function (source, tag) {
                                 if (tag === xo.state.active) {
                                     parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
                                 }
-                                source = await xover.server[endpoint].apply(self, [payload, parameters, settings]);
+                                document = await xover.server[endpoint].apply(self, [payload, parameters, settings]);
                             } else if (eval(`typeof ${endpoint}`) === "function") {
                                 let fn = eval(endpoint) || eval(`xo.server.${endpoint}`)
-                                source = await fn.apply(self, (source[endpoint] || []).concat(args));
+                                document = await fn.apply(self, (source[endpoint] || []).concat(args));
                             }
-                            resolve(source);
+                            resolve(document);
                         }));
                     })
                     let documents = await Promise.all(promises).then(document => document);
@@ -4475,6 +4475,13 @@ xover.Store = function (xml, ...args) {
                             ////response.documentElement.setAttributeNS(null, "request", original_request)
                             ////response = xover.xml.reseed(response);
                             /*!(response instanceof xover.Store) && node.selectNodes(`//source:*[@request="${request}"]`).map((targetNode, index, array) => {*/
+                            if (response instanceof Error) {
+                                throw (response);
+                                return;
+                            } else if (typeof (response) === 'string') {
+                                throw (new Error(response));
+                                return;
+                            }
                             let targetNode = node
                             let new_node = response.cloneNode(true).reseed();
                             let fragment = document.createDocumentFragment();
@@ -7193,7 +7200,7 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(HTMLSelectElement.prototype, 'value', value_handler);
 
             Attr.prototype.set = function (value) {
-                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                value = typeof value === 'function' && value.call(this, this.value) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 //if (this.value != value) {
                 //this.ownerElement.store && this.ownerElement.store.render();
                 //}
@@ -7204,7 +7211,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Attr.prototype.toggle = function (value) {
-                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                value = typeof value === 'function' && value.call(this, this.value) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 //if (this.value != value) {
                 this.ownerElement.store && this.ownerElement.store.render();
                 //}
