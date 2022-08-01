@@ -537,6 +537,10 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         if (prefix) {
             xover.listener[`${event.type}::${prefix}:*`] && listeners.push(`${event.type}::${prefix}:*`);
         }
+        let matching_listeners = Object.keys(xover.listener).filter((key) => key.indexOf(`${event.type}::`) == 0 && event.detail['element'].$$(`../${key.split(/::/g)[1]}`).find(attr => attr === event.detail['attribute']));
+
+        listeners = listeners.concat(matching_listeners);
+
         let constructors = [constructor];
         if (axis instanceof HTMLElement) {
             constructors.push('HTMLElement')
@@ -579,13 +583,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             await xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
-        let listeners = Object.entries(xover.listener).filter(([key]) => {
-            [type, selector] = key.split('::'); try {
-                return type === event.type && (!selector || event.target && event.target.matches && event.target.matches(selector))
-            } catch (e) {
-                return false
-            }
-        }).reduce((new_array, [key, fn]) => {
+        let listeners = Object.entries(xover.listener).filter(([key]) => key == event.type).reduce((new_array, [key, fn]) => {
             new_array.push(...Object.values(fn).flat(Infinity)); return new_array
         }, []);
         //let listeners = Object.values(xover.listener[event.type]).slice(0);
