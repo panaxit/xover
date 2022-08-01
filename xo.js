@@ -4494,7 +4494,8 @@ xover.Store = function (xml, ...args) {
                             } else {
                                 fragment.append(...new_node.childNodes);
                             }
-
+                            new_node.documentElement.selectNodes("@xo:id").remove()
+                            new_node.documentElement.selectNodes('@*').forEach(attr => targetNode.setAttributeNS(attr.namespaceURI, attr.name, attr.value))
                             let prev_value = targetNode.parentNode.getAttribute("prev:value");
                             targetNode = context.find(targetNode) || targetNode;
                             if (response.documentElement.selectSingleNode(`xo:r[@value="${prev_value}"]`)) {
