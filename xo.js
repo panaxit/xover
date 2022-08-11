@@ -346,6 +346,7 @@ Object.defineProperty(xover.database, 'sources', {
 Object.defineProperties(xover.database, {
     read: {
         value: async function (store_name, key) {
+            let store;
             store = await this[store_name];
             return store.get(key);
         }
@@ -666,6 +667,7 @@ xover.listener.on('popstate', async function (event) {
     //    let finished = false;
     //    let cancel = () => finished = true;
     xover.session.database_id = xover.session.database_id;
+    xover.state.seed = (event.state || {}).seed || event.target.location.hash;
     //const promise = new Promise((resolve, reject) => {
     //    setTimeout(async () => {
     if (event.state) delete event.state.active;
@@ -714,6 +716,7 @@ xover.listener.on('popstate', async function (event) {
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     if (event.defaultPrevented) return;
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
+    xover.state.seed = xover.state.seed || location.hash
     if (history.state) delete history.state.active;
     if (!history.state && !location.hash && positionLastShown || xover.state.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.state.seed])) {
         history.back();
@@ -1109,7 +1112,7 @@ xover.state = new Proxy(Object.assign({}, history.state), {
         if (!history.state) {
             with ((window.top || window)) {
                 //history.replaceState({}, {}, location.pathname + location.search + (location.hash || ''));
-                history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
+                history.replaceState(Object.assign({ position: history.length - 1 }, history.state), {}, location.pathname + location.search + (location.hash || ''));
             }
             xover.session.setKey('lastPosition', self.position);
         }
@@ -1123,7 +1126,7 @@ xover.state = new Proxy(Object.assign({}, history.state), {
         try {
             self[key] = value;
             let hash = [xo.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
-            history.replaceState(Object.assign({}, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
+            history.replaceState(Object.assign({ position: history.length - 1 }, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
         } catch (e) {
             console.error(e);
         }
@@ -1140,8 +1143,7 @@ Object.defineProperty(xover.state, 'hash', {
     get() { return location.hash }
     , set(input) {
         input = input[input.length - 1] != '#' ? input : '';
-        let new_state = Object.assign({}, this, { active: history.state.active });
-        history.replaceState(new_state, ((event || {}).target || {}).textContent, location.pathname + location.search + (input || ''));
+        history.replaceState(Object.assign({ position: history.length - 1 }, this, { active: history.state.active }), ((event || {}).target || {}).textContent, location.pathname + location.search + (input || ''));
     }
     , enumerable: false
 });
@@ -1275,7 +1277,7 @@ Object.defineProperty(xover.state, 'seed', {
             new_state["next"] = "";
             new_state["position"] = new_state["position"] + 1;
             xover.session.setKey('lastPosition', new_state["position"]);
-            history.pushState(new_state, ((event || {}).target || {}).textContent, xover.stores[input].tag);
+            history.pushState(Object.assign({ position: history.length - 1 }, new_state), ((event || {}).target || {}).textContent, xover.stores[input].tag);
         }
     }
     , enumerable: true
@@ -1605,7 +1607,7 @@ xover.Source = function (source, tag) {
                 })
                 if (!(source instanceof Document)) {
                     let sources = await xover.database.sources;
-                    let stored_document = await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
+                    let stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
 
                     if (stored_document && !((Date.now() - stored_document.lastModifiedDate) / 1000 > settings["expiry"])) {
                         source = stored_document;
@@ -2638,6 +2640,7 @@ Object.defineProperty(xover.stores, 'restore', {
     value: async function (name_list = []) {
         name_list = name_list instanceof Array && name_list || [name_list];
         let restoring = [];
+        if (xover.session.disableCache) return;
 
         Object.entries(sessionStorage).filter(([key]) => key != '#' && (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
             console.log('Restoring document ' + tag);
@@ -4062,6 +4065,14 @@ xover.Store = function (xml, ...args) {
         });
     }
 
+    if (!this.hasOwnProperty('remove')) {
+        Object.defineProperty(this, 'remove', {
+            value: function () {
+                delete xover.stores[_tag];
+            }
+        });
+    }
+
     Object.defineProperty(_library, 'clear', {
         value: function (forced) {
             Object.keys(this).map((key) => {
@@ -4479,11 +4490,15 @@ xover.Store = function (xml, ...args) {
                             } else if (typeof (response) === 'string') {
                                 throw (new Error(response));
                                 return;
+                            } else if (!(response instanceof Document)) {
+                                throw (new Error("Response is not a document"))
+                            } else if (!response.documentElement) {
+                                throw (new Error("Response is empty"))
                             }
                             let targetNode = node
                             let new_node = response.cloneNode(true).reseed();
                             let fragment = document.createDocumentFragment();
-                            if (response.documentElement.tagName == targetNode.tagName || response.documentElement.$('self::xo:response') || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI)) {
+                            if (response.documentElement && (response.documentElement.tagName == targetNode.tagName || response.documentElement.$('self::xo:response') || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI))) {
                                 if (!new_node.documentElement.firstElementChild) {
                                     fragment.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
                                 } else {
@@ -4493,9 +4508,9 @@ xover.Store = function (xml, ...args) {
                                 fragment.append(...new_node.childNodes);
                             }
                             new_node.documentElement.selectNodes("@xo:id").remove()
-                            new_node.documentElement.selectNodes('@*').forEach(attr => targetNode.setAttributeNS(attr.namespaceURI, attr.name, attr.value))
                             let prev_value = targetNode.parentNode.getAttribute("prev:value");
                             targetNode = context.find(targetNode) || targetNode;
+                            new_node.documentElement.selectNodes('@*').forEach(attr => targetNode.setAttributeNS(attr.namespaceURI, attr.name, attr.value))
                             if (response.documentElement.selectSingleNode(`xo:r[@value="${prev_value}"]`)) {
                                 targetNode.parentElement.setAttributeNS(null, "value", prev_value)
                             }
@@ -5454,7 +5469,7 @@ document.onkeyup = function (e) {
 
 // TODO: Modificar listeners para que funcion con el método de XOVER
 xover.listener.on('beforeunload', async function (e) {
-    history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
+    history.replaceState(Object.assign({ position: history.length - 1 }, history.state), {}, location.pathname + location.search + (location.hash || ''));
     //let stores = await xover.database.sources;
     //for (let hashtag in xover.stores) {
     //    console.log("Saving " + hashtag)
@@ -6951,6 +6966,7 @@ xover.modernize = function (targetWindow) {
 
             Element.prototype.createAttributeNS = function (namespace_URI, attribute, value = '') {
                 attribute = attribute.replace(/^@/, "");
+                let parentNode = this;
                 let new_attribute_node;
                 if (namespace_URI) {
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
@@ -7414,6 +7430,15 @@ xover.modernize = function (targetWindow) {
                 return this.parentNode.replaceChild(new_node.cloneNode(true), this);
             }
 
+            var original_append = Element.prototype.append
+            Element.prototype.append = function (...args) {
+                let beforeEvent = new xover.listener.Event('beforeAppendChildren', { target: this, args: args, srcEvent: event });
+                xover.listener.dispatchEvent(beforeEvent, this);
+                if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
+                original_append.apply(this, args);
+                xover.listener.dispatchEvent(new xover.listener.Event('appendChildren', { node: this }), this);
+            }
+
             Node.prototype.appendAfter = function (new_node) {
                 this.parentNode.insertBefore((new_node.documentElement || new_node), this.nextElementSibling);
             }
@@ -7867,7 +7892,8 @@ xover.modernize = function (targetWindow) {
                                 }
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
-                            if (stylesheet_target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
+                            let dom = data.transform(xsl);
+                            if (dom.documentElement.id && dom.documentElement.id == stylesheet_target.id || stylesheet_target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
                                 action = 'replace';
                             } else if (!action && stylesheet_target.matches(`[xo-store='${tag}']:not([xo-stylesheet])`)) {
                                 action = 'append';
@@ -7885,7 +7911,6 @@ xover.modernize = function (targetWindow) {
                                 console.warn(`There's a missing href in a processing-instruction`)
                             }
                             //let dom = xover.xml.transform(data, (this.library[stylesheet.href] || xover.library[stylesheet.href] || !(document.querySelector(`[xo-store]`)) && (xover.library.defaults[stylesheet.href] || xover.library.defaults["shell.xslt"]) || xover.library.defaults[stylesheet.href] || stylesheet.href));
-                            let dom = data.transform(xsl);
                             if (!(dom && dom.documentElement)) { continue; }
                             if (((dom.documentElement || {}).namespaceURI || "").indexOf("http://www.mozilla.org/TransforMiix") != -1) {
                                 // TODO: Revisar esta parte
@@ -7924,7 +7949,12 @@ xover.modernize = function (targetWindow) {
                                             }
                                         } else {
                                             try {
-                                                //console.clear() //console.log(script.textContent)
+                                                //function evalInScope(js, scope) {
+                                                //    return function () {
+                                                //        with (this) { return eval(js) }
+                                                //    }.call(scope)
+                                                //}
+                                                //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
                                                 let result = (function () { return eval.apply(this, arguments) }(script.textContent));
                                                 if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                                                     let target = document.getElementById(script.id);
@@ -8012,6 +8042,9 @@ xover.modernize = function (targetWindow) {
                                     !el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
                                     let cloned = el.cloneNode(true);
                                     el.textContent = ''
+                                    Object.defineProperty(cloned, 'parentNode', {
+                                        value: el.parentNode
+                                    });
                                     return cloned;
                                 });
                                 (dom.documentElement || dom).setAttributeNS(null, "xo-store", tag);
