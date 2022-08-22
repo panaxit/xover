@@ -533,12 +533,15 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         axis = axis || {}; //Para los casos en los que axis es null
         let { prefix, constructor = "", name, value } = { prefix: axis.prefix, constructor: (axis.constructor || {}).name, name: (axis.nodeName || axis.name), value: event.detail["value"] }
         let axes = [];
+        if (axis instanceof Attr) {
+            name = '@'+name
+        }
         xover.listener[`${event.type}::${name}[${value}]`] && listeners.push(`${event.type}::${name}[${value}]`);
         xover.listener[`${event.type}::${name}`] && listeners.push(`${event.type}::${name}`);
         if (prefix) {
             xover.listener[`${event.type}::${prefix}:*`] && listeners.push(`${event.type}::${prefix}:*`);
         }
-        let matching_listeners = Object.keys(xover.listener).filter((key) => key.indexOf(`${event.type}::`) == 0 && event.detail['element'].$$(`../${key.split(/::/g)[1]}`).find(attr => attr === event.detail['attribute']));
+        let matching_listeners = Object.keys(xover.listener).filter((key) => key.indexOf(`${event.type}::`) == 0 && [axis.$$('self::*|ancestor::*'), axis.ownerDocument].flat().reverse().find(el => el.$$(`${key.replace(/^\w+::/g, '')}`).includes(axis)));
 
         listeners = listeners.concat(matching_listeners);
 
@@ -1791,11 +1794,12 @@ xover.spaces["source_value"] = "http://panax.io/source/request/value"
 xover.spaces["source_filters"] = "http://panax.io/source/request/filters"
 xover.spaces["source_fields"] = "http://panax.io/source/request/fields"
 /* Values */
-xover.spaces["confirmed"] = "http://panax.io/xover/state/confirmed"
-xover.spaces["suggested"] = "http://panax.io/xover/state/suggested"
-xover.spaces["initial"] = "http://panax.io/xover/state/initial"
-xover.spaces["prev"] = "http://panax.io/xover/state/previous"
-xover.spaces["fixed"] = "http://panax.io/xover/state/fixed"
+xover.spaces["confirmed"] = "http://panax.io/state/confirmed"
+xover.spaces["readonly"] = "http://panax.io/state/readonly"
+xover.spaces["suggested"] = "http://panax.io/state/suggested"
+xover.spaces["initial"] = "http://panax.io/state/initial"
+xover.spaces["prev"] = "http://panax.io/state/previous"
+xover.spaces["fixed"] = "http://panax.io/state/fixed"
 
 xover.dom.alert = async function (message) {
     let xMessage = xover.data.createMessage(message)
@@ -2384,7 +2388,7 @@ Object.defineProperty(xover.library, "xover/databind.xslt", {
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
   xmlns:xo="http://panax.io/xover"
   xmlns:source="http://panax.io/source"
-  xmlns:prev="http://panax.io/xover/state/previous"
+  xmlns:prev="http://panax.io/state/previous"
   xmlns:changed="http://panax.io/xover/binding/changed"
   xmlns:fetch="http://panax.io/fetch"
   xmlns:data="http://panax.io/fetch"
@@ -3172,7 +3176,7 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         settings["method"] = 'POST';
         let pending = [];
         if (payload instanceof XMLDocument) {
-            payload.$$("//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/xover/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
+            payload.$$("//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
         }
         await Promise.all(pending);
     }
@@ -5510,7 +5514,7 @@ xover.dom.print = function () {
     }
 }
 
-xover.listener.on('change::state:*', async function ({ target, attribute: key }) {
+xover.listener.on('change::@state:*', async function ({ target, attribute: key }) {
     if (event.defaultPrevented || !(target && target.parentNode)) return;
     let stylesheets = target.parentNode.stylesheets
     if (!stylesheets) return;
@@ -5519,7 +5523,7 @@ xover.listener.on('change::state:*', async function ({ target, attribute: key })
     documents.filter(stylesheet => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
 });
 
-xover.listener.on('change::state:busy', function ({ target, value }) {
+xover.listener.on('change::@state:busy', function ({ target, value }) {
     if (event.defaultPrevented) return;
     let store = target.store;
     if (store instanceof xover.Store && store.isActive) {
@@ -5536,7 +5540,7 @@ xover.listener.on('change::state:busy', function ({ target, value }) {
     }
 });
 
-xover.listener.on('remove::state:busy', function ({ target, value }) {
+xover.listener.on('remove::@state:busy', function ({ target, value }) {
     let store = target.store;
     if (store instanceof xover.Store && store.isActive) {
         [...document.querySelectorAll(`[xo-store='${store.tag}'][xo-stylesheet='loading.xslt']`)].removeAll();
@@ -7115,11 +7119,11 @@ xover.modernize = function (targetWindow) {
                         let source = store && store.source || null;
                         let old_value = this.value;
 
+                        let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
+                        xover.listener.dispatchEvent(before, this);
+                        if (before.cancelBubble || before.defaultPrevented) return;
+                        value = before.detail.value;
                         if (old_value !== value) {
-                            let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
-                            xover.listener.dispatchEvent(before, this);
-                            if (before.cancelBubble || before.defaultPrevented) return;
-
                             if (store) {
                                 if (xover.tracking.attributes.includes(this.name) || xover.tracking.prefixes.includes(this.prefix)) {
                                     store.takeSnapshot();
@@ -7223,6 +7227,10 @@ xover.modernize = function (targetWindow) {
                 let source = this.ownerDocument.source;
                 source && source.save();
                 return this;
+            }
+
+            Element.prototype.has = function (attribute_name) {
+                return !!this.getAttributeNode(attribute_name);
             }
 
             Attr.prototype.toggle = function (value) {
