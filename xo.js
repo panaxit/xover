@@ -924,6 +924,9 @@ xover.session = new Proxy({}, {
             let active_stores = xover.stores.getActive();
             let stylesheets = await Promise.all([...Object.values(active_stores), ...Object.values(active_stores.getInitiators())].map(store => store.stylesheets.getDocuments()).flat(Infinity))
             stylesheets.filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
+
+            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.store.library[el.get("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render())
+
             if (xover.session.network_id) {
                 xover.storage.setKey(key, new_value);
                 xover.storage.setKey(key, undefined);
@@ -7776,12 +7779,10 @@ xover.modernize = function (targetWindow) {
             if (!Node.prototype.hasOwnProperty('render')) {
                 Object.defineProperty(Node.prototype, 'render', {
                     value: async function () {
-                        if (this.rendering) return;
                         let ref = this.closest("[xo-stylesheet]")
                         if (ref) {
-                            this.rendering = this.store.render(this.getAttribute("xo-stylesheet") || '', this.selector);
+                            return this.store.render(this.getAttribute("xo-stylesheet") || '', this.selector);
                         }
-                        return this.rendering;
                     }
                 });
             }
