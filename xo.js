@@ -542,6 +542,8 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
             name = '@' + name
         } else if (axis instanceof xover.Store) {
             name = axis.tag
+        } else if (axis instanceof HTMLElement) {
+            name = axis.tagName
         }
         xover.listener[`${event.type}::${name}[${value}]`] && listeners.push(`${event.type}::${name}[${value}]`);
         xover.listener[`${event.type}::${name}`] && listeners.push(`${event.type}::${name}`);
@@ -7099,7 +7101,7 @@ xover.modernize = function (targetWindow) {
                         let target = this;
                         let target_node = this.parentNode;
                         let attribute_name = this.localName;
-                        let store = this.store || this.ownerDocument.store;
+                        let store = /*this.store || */this.ownerDocument.store;
                         let source = store && store.source || null;
                         let old_value = this.value;
 
@@ -7150,9 +7152,9 @@ xover.modernize = function (targetWindow) {
                                 }
                                 source && source.save();
 
-                                let context = ((event || {}).target || document.createElement("p")).closest('*[xo-stylesheet]')
-                                context && context.render();
-                                //store && store.render(((event || {}).target || {}).stylesheet);
+                                //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
+                                //context && context.render();
+                                [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.store === store).forEach((el) => el.render())
                             }
                         }
                         return return_value;
@@ -7427,11 +7429,11 @@ xover.modernize = function (targetWindow) {
 
             var original_append = Element.prototype.append
             Element.prototype.append = function (...args) {
-                let beforeEvent = new xover.listener.Event('beforeAppendChildren', { target: this, args: args, srcEvent: event });
+                let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this, args: args, srcEvent: event });
                 xover.listener.dispatchEvent(beforeEvent, this);
                 if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                 original_append.apply(this, args);
-                xover.listener.dispatchEvent(new xover.listener.Event('appendChildren', { node: this }), this);
+                xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { node: this }), this);
             }
 
             Node.prototype.appendAfter = function (new_node) {
