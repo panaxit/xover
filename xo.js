@@ -7859,9 +7859,11 @@ xover.modernize = function (targetWindow) {
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
                             target = stylesheet_target;
-                            let before = xover.listener.dispatchEvent(new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target }), store);
+                            let before = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target })
+                            xover.listener.dispatchEvent(before, store);
                             if (before.cancelBubble || before.defaultPrevented) continue;
-                            let before_dom = xover.listener.dispatchEvent(new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target }), target);
+                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target })
+                            xover.listener.dispatchEvent(before_dom, target);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             let dom = data.transform(xsl);
                             (dom.documentElement || dom).setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
@@ -8111,7 +8113,7 @@ xover.modernize = function (targetWindow) {
                             [...(target && target.ownerDocument.querySelectorAll('[data-bs-toggle="tooltip"]') || [])].map(function (tooltipTriggerEl) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
                             })
-                            dependants = [...target.querySelectorAll(`[xo-store="${tag}"][xo-stylesheet="${stylesheet.href}"] *[xo-store],[xo-store="${tag}"][xo-stylesheet="${stylesheet.href}"] *[xo-stylesheet]`)]
+                            dependants = [...target.querySelectorAll(`*[xo-store],*[xo-stylesheet]`)]
                             xover.listener.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }), this);
                             dependants.forEach(el => el.render());
                         }
