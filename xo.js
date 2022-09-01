@@ -5363,12 +5363,12 @@ xover.listener.on('beforeRemoveHTMLElement', function ({ target }) {
     }
 })
 
-xover.listener.on('remove', function ({ target }) {
-    let scope = target.scope; //TODO: Revisar que el comportamiento del borrado sea el deseado, pues en ocasiones se borra el elemento sin que la intención sea borrar el nodo
-    if (scope instanceof Element) {
-        scope && scope.remove();
-    }
-})
+//xover.listener.on('remove', function ({ target }) { //Se quita para que no borre stores accidentalmente (si se borra el nodo raíz). Si la intención es borrar el store o el nodo, mejor realizar un element.scope.remove()
+//    let scope = target.scope; 
+//    if (scope instanceof Element) {
+//        scope && scope.remove();
+//    }
+//})
 
 xover.listener.keypress = function (e = {}) {
     xover.listener.keypress.ctrlKey = e.ctrlKey;
@@ -6674,8 +6674,9 @@ xover.modernize = function (targetWindow) {
                 if (store) { /*Asumimos que el store es administrado correctamente por la misma clase. Garantizar que se mantenga la referencia*/
                     store.takeSnapshot();
                 }
-                if (this.store) {
-                    this.store.save();
+                let context_store = this.store;
+                if (context_store) {
+                    context_store.save();
                 }
                 original_remove.apply(this, arguments);
                 let descriptor = Object.getPropertyDescriptor(this, 'parentNode') || { writable: true };
