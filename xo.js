@@ -1751,7 +1751,16 @@ xover.ProcessingInstruction = function (stylesheet) {
         Object.defineProperty(stylesheet, 'document', {
             get: function () {
                 //this.ownerDocument.store = this.ownerDocument.store || (xover.stores.find(this.ownerDocument).shift() || document.createElement('p')).store //Se pone esta solución pero debería tomar automáticamente el store. Ver si se puede solucionar este problema de raíz.
-                return this.ownerDocument.store && this.ownerDocument.store.library[this.href] || xover.library[this.href];// || xover.library.load(this.href);
+                try {
+                    let store = this.ownerDocument.store;
+                    href = this.href;
+                    let document = store && store.library[href] || xover.library[href].cloneNode(true);// || xover.library.load(this.href);
+                    document.store = store;
+                    document.href = href
+                    return document
+                } catch (e) {
+                    console.log(`Couldn't retrieve document for stylesheet ${this.href}: ${e.message}`)
+                }
             }
         });
     }
