@@ -3833,7 +3833,7 @@ xover.init = async function () {
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
         this.init.status = 'initialized';
-        await xover.stores.active.render();
+        xover.stores.active.render();
         xover.session.checkStatus();
     }).finally(() => {
         this.init.initializing = undefined;
@@ -7435,6 +7435,7 @@ xover.modernize = function (targetWindow) {
                 if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                 original_append.apply(this, args);
                 xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { node: this }), this);
+                return args;
             }
 
             Node.prototype.appendAfter = function (new_node) {
@@ -8026,13 +8027,13 @@ xover.modernize = function (targetWindow) {
                                     return cloned;
                                 });
                                 if (action == "replace") {
-                                    target = target.replace(dom);
+                                    target = [target.replace(dom)];
                                 } else {//if (action == "append") {
                                     //target.append(dom.documentElement || dom);
                                     //} else {
                                     //    xover.dom.clear(target);
                                     //target.append(...dom.cloneNode(true).childNodes);
-                                    target.append(...dom.childNodes);
+                                    target = target.append(...dom.childNodes);
                                 }
 
                                 var lines = document.querySelectorAll(".leader-line")
@@ -8048,10 +8049,10 @@ xover.modernize = function (targetWindow) {
                                 }
                                 xover.state.restore(dom);
                             }
-                            [...target.querySelectorAll('img')].map(el => el.addEventListener('error', function () {
+                            target.flatMap(el => [...el.querySelectorAll('img')]).map(el => el.addEventListener('error', function () {
                                 window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
                             }));
-                            [...target.querySelectorAll('textarea')].map(el => el.addEventListener('mouseup', function () {
+                            target.flatMap(el => [...el.querySelectorAll('textarea')]).map(el => el.addEventListener('mouseup', function () {
                                 let el = event.srcElement;
                                 let scope = el.scope;
                                 if (scope instanceof Attr) {
@@ -8062,7 +8063,7 @@ xover.modernize = function (targetWindow) {
                                     scope.set('@state:width', el.offsetWidth, false);
                                 }
                             }));
-                            [...target.querySelectorAll('[xo-attribute],input[type="file"]')].map(el => el.addEventListener('change', async function () {
+                            target.flatMap(el => [...el.querySelectorAll('[xo-attribute],input[type="file"]')]).map(el => el.addEventListener('change', async function () {
                                 let scope = this.source;
                                 let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
                                 if (this.type && this.type.toLowerCase() === 'file') {
@@ -8106,14 +8107,14 @@ xover.modernize = function (targetWindow) {
                             }
 
                             _applyScripts(document, scripts);
-                            [...target.querySelectorAll(`[xo-stylesheet]:not([xo-store]`)].forEach(el => data.render(
+                            target.flatMap(el => [...el.querySelectorAll('[xo-stylesheet]:not([xo-store]')]).forEach(el => data.render(
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
                             /*TODO: Mover este código a algún script diferido*/
-                            [...(target && target.ownerDocument.querySelectorAll('[data-bs-toggle="tooltip"]') || [])].map(function (tooltipTriggerEl) {
+                            target.flatMap(el => [...el.querySelectorAll('[data-bs-toggle="tooltip"]')]).map(function (tooltipTriggerEl) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
                             })
-                            dependants = [...target.querySelectorAll(`*[xo-store],*[xo-stylesheet]`)]
+                            dependants = target.flatMap(el => [...el.querySelectorAll('*[xo-store],*[xo-stylesheet]')]);
                             xover.listener.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }), this);
                             dependants.forEach(el => el.render());
                         }
