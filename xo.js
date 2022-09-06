@@ -6442,6 +6442,12 @@ xover.modernize = function (targetWindow) {
                 return this.fetching;
             }
 
+            XMLDocument.prototype.reload = async function () {
+                await this.fetch()
+                let store = this.store;
+                [...top.document.querySelectorAll(`[xo-stylesheet="${this.href}"]`)].filter(el => el.store === store).forEach((el) => el.render())
+            }
+
             if (!XMLDocument.prototype.hasOwnProperty('type')) {
                 Object.defineProperty(XMLDocument.prototype, 'type', {
                     get: function () {
@@ -7865,7 +7871,10 @@ xover.modernize = function (targetWindow) {
                         if (this.selectSingleNode('xsl:*')) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
                             options = options || {};
                             options["target"] = options["target"] || document.querySelector(`[xo-store="${options["document"] && options["document"].tag || options["document"] || tag}"]`);
+                            options["action"] = options["action"] || undefined
                             this.copyPropertiesFrom(options);
+                            this.target = options.target
+                            this.action = options.action
                             return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`)).render(this);
                         }
                         var data = this.cloneNode(true);
@@ -7905,10 +7914,12 @@ xover.modernize = function (targetWindow) {
                                 }
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
-                            target = stylesheet_target;
-                            let before = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target })
-                            xover.listener.dispatchEvent(before, store);
-                            if (before.cancelBubble || before.defaultPrevented) continue;
+                            let target = stylesheet_target;
+                            if (store) {
+                                let before = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target })
+                                xover.listener.dispatchEvent(before, store);
+                                if (before.cancelBubble || before.defaultPrevented) continue;
+                            }
                             let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target })
                             xover.listener.dispatchEvent(before_dom, target);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
