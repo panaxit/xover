@@ -7450,6 +7450,9 @@ xover.modernize = function (targetWindow) {
 
             Node.prototype.replaceChild = function (new_node, target, refresh = true) {
                 new_node = (new_node.documentElement || new_node);
+                let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this.parentElement, srcEvent: event });
+                xover.listener.dispatchEvent(beforeEvent, this.parentElement);
+                if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                 if ((this.ownerDocument || this) instanceof XMLDocument) {
                     let store = this.store;
                     //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
@@ -7466,11 +7469,11 @@ xover.modernize = function (targetWindow) {
                         });
                     }
                     if (refresh && store) store.render()
-                    return new_node;
                 } else {
                     replaceChild_original.apply(this, [new_node, target]);
-                    return new_node;
                 }
+                xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { target: this.parentElement, srcEvent: event }), this.parentElement);
+                return new_node;
             }
 
             Node.prototype.replace = function (new_node) {
