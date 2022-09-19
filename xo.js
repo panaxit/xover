@@ -8175,7 +8175,8 @@ xover.modernize = function (targetWindow) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
                             })
                             dependants = target.flatMap(el => [...el.querySelectorAll('*[xo-store],*[xo-stylesheet]')]);
-                            xover.listener.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }), this);
+                            xover.listener.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }), target);
+                            xover.listener.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }), store);
                             dependants.forEach(el => el.render());
                         }
                         return Promise.resolve(this);
