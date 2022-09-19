@@ -5677,6 +5677,7 @@ xover.browser.updateIndicator();
 xover.string = {}
 xover.string.htmlDecode = function (string) {
     var txt = document.createElement("textarea");
+    txt.style.textTransform = 'unset'
     txt.innerHTML = string;
     return txt.value;
 }
@@ -6400,6 +6401,7 @@ xover.modernize = function (targetWindow) {
                 let source = this;
                 var dummyContent = source.toString();
                 var dummy = (document.createElement('input'));
+                dummy.style.textTransform = 'unset'
                 dummy.value = dummyContent;
                 document.body.appendChild(dummy);
                 dummy.select();
