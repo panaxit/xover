@@ -7138,82 +7138,82 @@ xover.modernize = function (targetWindow) {
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
             Object.defineProperty(Attr.prototype, 'value',
-                // Passing innerText or innerText.get directly does not work,
-                // wrapper function is required.
-                {
-                    get: function () {
-                        return this.nil ? null : original_attr_value.get.call(this);
-                    },
-                    set: function (value) {
-                        value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+            // Passing innerText or innerText.get directly does not work,
+            // wrapper function is required.
+            {
+                get: function () {
+                    return this.nil ? null : original_attr_value.get.call(this);
+                },
+                set: function (value) {
+                    value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
 
-                        if (!this.ownerElement && value !== undefined && value !== null) {
-                            original_attr_value.set.call(this, value);
-                            this.parentNode.setAttributeNode(this);
-                        }
-                        let target = this;
-                        let target_node = this.parentNode;
-                        let attribute_name = this.localName;
-                        let store = /*this.store || */this.ownerDocument.store;
-                        let source = store && store.source || null;
-                        let old_value = this.value;
-
-                        let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
-                        xover.listener.dispatchEvent(before, this);
-                        if (before.cancelBubble || before.defaultPrevented) return;
-                        value = before.detail.value;
-                        if (old_value !== value) {
-                            if (store) {
-                                if (xover.tracking.attributes.includes(this.name) || xover.tracking.prefixes.includes(this.prefix)) {
-                                    store.takeSnapshot();
-                                    if (!target_node.resolveNS("initial")) {
-                                        original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:initial", xover.spaces["initial"]);
-                                    }
-                                    if (target_node.getAttribute(`initial:${attribute_name}`) == null) {
-                                        original_setAttributeNS.call(target_node, xover.spaces["initial"], "initial:" + attribute_name, old_value || "");
-                                    }
-
-                                    if (!target_node.resolveNS("prev")) {
-                                        original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:prev", xover.spaces["prev"]);
-                                    }
-                                    original_setAttributeNS.call(target_node, xover.spaces["prev"], "prev:" + attribute_name, (old_value || ""));
-                                }
-                                if (!target_node.resolveNS("state")) {
-                                    original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
-                                }
-
-                                if (!(this.ownerDocument.store)) {
-                                    let scope = this.source;
-                                    scope && scope.set(value)
-                                }
-                            }
-                        }
-
-                        let return_value;
-                        if (value === null || value === undefined) {
-                            this.nil = true;
-                            this.ownerElement && this.remove()
-                        } else {
-                            this.nil = false;
-                            original_attr_value.set.call(this, value);
-                        }
-                        if (old_value !== value) {
-                            if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
-                                xover.listener.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
-                                if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xo.state.get(this.name) || {}).length) {
-                                    xo.state.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
-                                }
-                                source && source.save();
-
-                                //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
-                                //context && context.render();
-                                [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.store === store).forEach((el) => el.render())
-                            }
-                        }
-                        return return_value;
-
+                    if (!this.ownerElement && value !== undefined && value !== null) {
+                        original_attr_value.set.call(this, value);
+                        this.parentNode.setAttributeNode(this);
                     }
+                    let target = this;
+                    let target_node = this.parentNode;
+                    let attribute_name = this.localName;
+                    let store = /*this.store || */this.ownerDocument.store;
+                    let source = store && store.source || null;
+                    let old_value = this.value;
+
+                    let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
+                    xover.listener.dispatchEvent(before, this);
+                    if (before.cancelBubble || before.defaultPrevented) return;
+                    value = before.detail.value;
+                    if (old_value !== value) {
+                        if (store) {
+                            if (xover.tracking.attributes.includes(this.name) || xover.tracking.prefixes.includes(this.prefix)) {
+                                store.takeSnapshot();
+                                if (!target_node.resolveNS("initial")) {
+                                    original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:initial", xover.spaces["initial"]);
+                                }
+                                if (target_node.getAttribute(`initial:${attribute_name}`) == null) {
+                                    original_setAttributeNS.call(target_node, xover.spaces["initial"], "initial:" + attribute_name, old_value || "");
+                                }
+
+                                if (!target_node.resolveNS("prev")) {
+                                    original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:prev", xover.spaces["prev"]);
+                                }
+                                original_setAttributeNS.call(target_node, xover.spaces["prev"], "prev:" + attribute_name, (old_value || ""));
+                            }
+                            if (!target_node.resolveNS("state")) {
+                                original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
+                            }
+
+                            if (!(this.ownerDocument.store)) {
+                                let scope = this.source;
+                                scope && scope.set(value)
+                            }
+                        }
+                    }
+
+                    let return_value;
+                    if (value === null || value === undefined) {
+                        this.nil = true;
+                        this.ownerElement && this.remove()
+                    } else {
+                        this.nil = false;
+                        original_attr_value.set.call(this, value);
+                    }
+                    if (old_value !== value) {
+                        if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
+                            xover.listener.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
+                            if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xo.state.get(this.name) || {}).length) {
+                                xo.state.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
+                            }
+                            source && source.save();
+
+                            //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
+                            //context && context.render();
+                            [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.store === store && el.store.library[el.get("xo-stylesheet")].$(`xsl:stylesheet/xsl:param[@name="${this.name}"]|xsl:stylesheet//*[@xo-attribute="${this.name}"]`)).forEach((el) => el.render())
+                        }
+                    }
+                    return return_value;
+
                 }
+            }
             );
 
             var original_node_namespaceURI = Object.getOwnPropertyDescriptor(Node.prototype, 'namespaceURI');
