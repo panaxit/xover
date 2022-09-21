@@ -806,6 +806,7 @@ xover.server = new Proxy({}, {
                 settings = {}
             }
             let payload = args.pop() || settings["payload"];
+            payload = Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, value.indexOf('${') !== -1 && eval("`" + value + "`") || value]))
             let query = args.pop() || settings["query"] || {};
 
             var url, params;
