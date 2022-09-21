@@ -7207,7 +7207,7 @@ xover.modernize = function (targetWindow) {
 
                                 //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
                                 //context && context.render();
-                                [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.store === store).forEach((el) => el.render())
+                                [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.store === store && el.store.library[el.get("xo-stylesheet")].$(`xsl:stylesheet/xsl:param[@name="${this.name}"]`)).forEach((el) => el.render())
                             }
                         }
                         return return_value;
