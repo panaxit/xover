@@ -557,7 +557,7 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         if (prefix) {
             xover.listener[`${event.type}::${prefix}:*`] && listeners.push(`${event.type}::${prefix}:*`);
         }
-        let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && [node.$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
+        let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && node instanceof Node && [node.$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
 
         listeners = listeners.concat(matching_listeners);
 
@@ -806,7 +806,7 @@ xover.server = new Proxy({}, {
                 settings = {}
             }
             let payload = args.pop() || settings["payload"];
-            payload = payload instanceof Object && Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, value.indexOf('${') !== -1 && eval("`" + value + "`") || value])) || payload
+            payload = payload && {}.constructor === payload.constructor && Object.fromEntries(Object.entries(payload).map(([key, value]) => [key, value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value])) || payload
             let query = args.pop() || settings["query"] || {};
 
             var url, params;
@@ -833,13 +833,13 @@ xover.server = new Proxy({}, {
             });
 
             if (settings["auto-process"] !== false) {
-                if (return_value instanceof XMLDocument && (return_value.stylesheets || []).length) {
+                /*if (return_value instanceof XMLDocument && (return_value.stylesheets || []).length) {
                     return_value = new xover.Store(return_value, { tag: settings["tag"], initiator: request.initiator });
-                    return_value.render(/*true*/);
+                    return_value.render();
                     if (!return_value.isRendered) {
                         xover.stores.active = return_value;
                     }
-                } else if (return_value instanceof DocumentFragment) {
+                } else */if (return_value instanceof DocumentFragment) {
                     xover.dom.createDialog(return_value);
                 }
             }
@@ -1650,15 +1650,19 @@ xover.Source = function (source, tag) {
                     let promises = [];
                     Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint] || eval(`typeof ${endpoint}`) === "function").map(async (endpoint) => {
                         promises.push(new Promise(async (resolve, reject) => {
-                            if (endpoint in xover.server) {
-                                let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
-                                if (tag === xo.state.active) {
-                                    parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
+                            try {
+                                if (endpoint in xover.server) {
+                                    let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
+                                    if (tag === xo.state.active) {
+                                        parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
+                                    }
+                                    document = await xover.server[endpoint].apply(self, [payload, parameters, settings]);
+                                } else if (eval(`typeof ${endpoint}`) === "function") {
+                                    let fn = eval(endpoint) || eval(`xo.server.${endpoint}`)
+                                    document = await fn.apply(self, (source[endpoint] || []).concat(args));
                                 }
-                                document = await xover.server[endpoint].apply(self, [payload, parameters, settings]);
-                            } else if (eval(`typeof ${endpoint}`) === "function") {
-                                let fn = eval(endpoint) || eval(`xo.server.${endpoint}`)
-                                document = await fn.apply(self, (source[endpoint] || []).concat(args));
+                            } catch (e) {
+                                return reject(e)
                             }
                             resolve(document);
                         }));
@@ -1684,7 +1688,7 @@ xover.Source = function (source, tag) {
                 }
                 throw (new Error(`No se pudo obtener la fuente de datos ${tag}`));
             } catch (e) {
-                throw (new Error(e.message));
+                return Promise.reject(e)
             }
         },
         writable: false, enumerable: false, configurable: false
@@ -3263,20 +3267,38 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         xover.session.status = "unauthorized";
     }
     if (response.status == 204) {
-        return Promise.reject(response);
-    } else if ([409, 449].includes(response.status)) {
-        return Promise.reject(response);
-    } else if (
-        (req.headers.get("Accept") || "").indexOf("*/*") != -1 ||
-        xover.mimeTypes[response.bodyType] == req.headers.get("Accept") ||
-        (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
-        (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
-        return Promise.resolve(response);
-    } else if (response.bodyType == 'html' && document instanceof DocumentFragment) {
-        xover.dom.createDialog(document);
+        document = xover.xml.createDocument();
     }
 
-    return Promise.reject(response);
+    if (response.ok) {
+        if (
+            (req.headers.get("Accept") || "").indexOf("*/*") != -1 ||
+            xover.mimeTypes[response.bodyType] == req.headers.get("Accept") ||
+            (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
+            (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
+            return Promise.resolve(response);
+        } else {
+            return Promise.reject(response);
+        }
+    } else {
+        return Promise.reject(response);
+    }
+
+
+    //if (response.status == 204) {
+    //    return Promise.reject(response);
+    //} else if ([409, 449, 503].includes(response.status)) {
+    //    return Promise.reject(response);
+    //} else if (
+    //    (req.headers.get("Accept") || "").indexOf("*/*") != -1 ||
+    //    xover.mimeTypes[response.bodyType] == req.headers.get("Accept") ||
+    //    (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
+    //    (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
+    //    return Promise.resolve(response);
+    //} else if (response.bodyType == 'html' && document instanceof DocumentFragment) {
+    //    xover.dom.createDialog(document);
+    //}
+    //return Promise.reject(response);
 }
 
 xover.fetch.from = async function () {
@@ -4801,7 +4823,7 @@ xover.Store = function (xml, ...args) {
                 } else {
                     delete stylesheet["role"];
                     __document.addStylesheet(stylesheet);
-                    console.warn("Initial transformation shouldn't yield and html or any other document from the w3 standard.");
+                    console.warn("Initial transformation shouldn't yield a html or any other document from the w3 standard.");
                 }
             });
             store.save();
@@ -6421,15 +6443,13 @@ xover.modernize = function (targetWindow) {
                 }
                 let new_document;
                 let store = this.store;
-                this.fetching = this.fetching || new Promise(resolve => {
+                this.fetching = this.fetching || new Promise((resolve, reject) => {
                     this.source && this.source.fetch.apply(this, args).then(new_document => {
-                        this.fetching = undefined;
+                        if (!(new_document instanceof Document)) {
+                            Promise.reject(new_document);
+                        }
                         this.href = new_document.href;
                         this.url = new_document.url;
-
-                        if (new_document instanceof xover.Store) {
-                            new_document = new_document.document
-                        }
                         if (this.href in xover.library && xover.library[this.href].document != this && !xover.library[this.href].document) {
                             xover.library[this.href].replaceBy(new_document.cloneNode(true))
                         }
@@ -6440,10 +6460,41 @@ xover.modernize = function (targetWindow) {
                         }
                         xover.listener.dispatchEvent(new xover.listener.Event('load', { document: new_document, store: store }), this);
                         resolve(new_document);
+                    }).catch(e => {
+                        if (e && e.render) {
+                            e.render();
+                        } else {
+                            reject(e)
+                        }
+                    }).finally(() => {
+                        this.fetching = undefined;
                     });
                 });
                 return this.fetching;
             }
+
+
+            //XMLDocument.prototype.initialize = async function () {
+            //    if (this instanceof XMLDocument) {
+            //        xover.manifest.getSettings(this, 'stylesheets').reverse().forEach(stylesheet => this.addStylesheet(stylesheet));
+            //    }
+            //    this.stylesheets.filter(stylesheet => stylesheet.role == 'init' && !this.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(async stylesheet => {
+            //        let _document_stylesheet = stylesheet.document;
+            //        _document_stylesheet = await _document_stylesheet.fetch()
+            //        if (_document_stylesheet) {
+            //            _document_stylesheet.append(this.createComment('Initialized by ' + stylesheet.href));
+            //        }
+
+            //        let new_document = this.transform(_document_stylesheet);
+            //        if ((((new_document.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1)) {
+            //            this.document.replaceBy(new_document);
+            //        } else {
+            //            //delete stylesheet["role"];
+            //            //__document.addStylesheet(stylesheet);
+            //            console.warn("Initial transformation shouldn't yield a html or any other document from the w3 standard.");
+            //        }
+            //    });
+            //}
 
             XMLDocument.prototype.reload = async function () {
                 await this.fetch()
@@ -7139,82 +7190,83 @@ xover.modernize = function (targetWindow) {
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
             Object.defineProperty(Attr.prototype, 'value',
-            // Passing innerText or innerText.get directly does not work,
-            // wrapper function is required.
-            {
-                get: function () {
-                    return this.nil ? null : original_attr_value.get.call(this);
-                },
-                set: function (value) {
-                    value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                // Passing innerText or innerText.get directly does not work,
+                // wrapper function is required.
+                {
+                    get: function () {
+                        return this.nil ? null : original_attr_value.get.call(this);
+                    },
+                    set: function (value) {
+                        value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
 
-                    if (!this.ownerElement && value !== undefined && value !== null) {
-                        original_attr_value.set.call(this, value);
-                        this.parentNode.setAttributeNode(this);
-                    }
-                    let target = this;
-                    let target_node = this.parentNode;
-                    let attribute_name = this.localName;
-                    let store = /*this.store || */this.ownerDocument.store;
-                    let source = store && store.source || null;
-                    let old_value = this.value;
+                        if (!this.ownerElement && value !== undefined && value !== null) {
+                            original_attr_value.set.call(this, value);
+                            this.parentNode.setAttributeNode(this);
+                        }
+                        let target = this;
+                        let target_node = this.parentNode;
+                        let attribute_name = this.localName;
+                        let store = /*this.store || */this.ownerDocument.store;
+                        let source = store && store.source || null;
+                        let old_value = this.value;
 
-                    let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
-                    xover.listener.dispatchEvent(before, this);
-                    if (before.cancelBubble || before.defaultPrevented) return;
-                    value = before.detail.value;
-                    if (old_value !== value) {
-                        if (store) {
-                            if (xover.tracking.attributes.includes(this.name) || xover.tracking.prefixes.includes(this.prefix)) {
-                                store.takeSnapshot();
-                                if (!target_node.resolveNS("initial")) {
-                                    original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:initial", xover.spaces["initial"]);
+                        let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
+                        xover.listener.dispatchEvent(before, this);
+                        if (before.cancelBubble || before.defaultPrevented) return;
+                        value = before.detail.value;
+                        if (old_value !== value) {
+                            if (store) {
+                                if (xover.tracking.attributes.includes(this.name) || xover.tracking.prefixes.includes(this.prefix)) {
+                                    store.takeSnapshot();
+                                    if (!target_node.resolveNS("initial")) {
+                                        original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:initial", xover.spaces["initial"]);
+                                    }
+                                    if (target_node.getAttribute(`initial:${attribute_name}`) == null) {
+                                        original_setAttributeNS.call(target_node, xover.spaces["initial"], "initial:" + attribute_name, old_value || "");
+                                    }
+
+                                    if (!target_node.resolveNS("prev")) {
+                                        original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:prev", xover.spaces["prev"]);
+                                    }
+                                    original_setAttributeNS.call(target_node, xover.spaces["prev"], "prev:" + attribute_name, (old_value || ""));
                                 }
-                                if (target_node.getAttribute(`initial:${attribute_name}`) == null) {
-                                    original_setAttributeNS.call(target_node, xover.spaces["initial"], "initial:" + attribute_name, old_value || "");
+                                if (!target_node.resolveNS("state")) {
+                                    original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
                                 }
 
-                                if (!target_node.resolveNS("prev")) {
-                                    original_setAttributeNS.call(target.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:prev", xover.spaces["prev"]);
+                                if (!(this.ownerDocument.store)) {
+                                    let scope = this.source;
+                                    scope && scope.set(value)
                                 }
-                                original_setAttributeNS.call(target_node, xover.spaces["prev"], "prev:" + attribute_name, (old_value || ""));
-                            }
-                            if (!target_node.resolveNS("state")) {
-                                original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
-                            }
-
-                            if (!(this.ownerDocument.store)) {
-                                let scope = this.source;
-                                scope && scope.set(value)
                             }
                         }
-                    }
 
-                    let return_value;
-                    if (value === null || value === undefined) {
-                        this.nil = true;
-                        this.ownerElement && this.remove()
-                    } else {
-                        this.nil = false;
-                        original_attr_value.set.call(this, value);
-                    }
-                    if (old_value !== value) {
-                        if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
-                            xover.listener.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
-                            if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xo.state.get(this.name) || {}).length) {
-                                xo.state.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
-                            }
-                            source && source.save();
-
-                            //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
-                            //context && context.render();
-                            [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.store === store && el.store.library[el.get("xo-stylesheet")].$(`xsl:stylesheet/xsl:param[@name="${this.name}"]|xsl:stylesheet//*[@xo-attribute="${this.name}"]`)).forEach((el) => el.render())
+                        let return_value;
+                        if (value === null || value === undefined) {
+                            this.nil = true;
+                            this.ownerElement && this.remove()
+                        } else {
+                            this.nil = false;
+                            original_attr_value.set.call(this, value);
                         }
-                    }
-                    return return_value;
+                        if (old_value !== value) {
+                            if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
+                                xover.listener.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
+                                if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xo.state.get(this.name) || {}).length) {
+                                    xo.state.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
+                                }
+                                source && source.save();
 
+                                //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
+                                //context && context.render();
+                                let prefixes = Object.entries(xover.spaces).filter(([key, value]) => this.namespaceURI.indexOf(value) == 0).map(([key]) => key);
+                                [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.store === store && el.store.library[el.get("xo-stylesheet")].$(`xsl:stylesheet/xsl:param[@name="${this.name}"]${prefixes.map(prefix => `|xsl:stylesheet/xsl:param[@name="${prefix}:touched"]`).join('')}|xsl:stylesheet//*[@xo-attribute="${this.name}"]`)).forEach((el) => el.render())
+                            }
+                        }
+                        return return_value;
+
+                    }
                 }
-            }
             );
 
             var original_node_namespaceURI = Object.getOwnPropertyDescriptor(Node.prototype, 'namespaceURI');
@@ -7884,10 +7936,11 @@ xover.modernize = function (targetWindow) {
                             return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`)).render(this);
                         }
                         var data = this.cloneNode(true);
-                        data.selectNodes('//xo:r[position()>600 and @value!=../../@value]').remove(false);
+                        //data.selectNodes('//xo:r[position()>600 and @value!=../../@value]').remove(false);
 
                         let action;
                         let stylesheet_target = 'body';
+                        let targets = []
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             action = (stylesheet.action || !stylesheet.target && "append" || action);
@@ -8112,6 +8165,8 @@ xover.modernize = function (targetWindow) {
                                 }
                                 xover.state.restore(dom);
                             }
+                            targets.push(target)
+
                             target.flatMap(el => [...el.querySelectorAll('img')]).map(el => el.addEventListener('error', function () {
                                 window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
                             }));
@@ -8182,7 +8237,7 @@ xover.modernize = function (targetWindow) {
                             xover.listener.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }), store);
                             dependants.forEach(el => el.render());
                         }
-                        return Promise.resolve(this);
+                        return Promise.resolve(targets);
                     },
                     writable: false, enumerable: false, configurable: false
                 });
