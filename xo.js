@@ -1411,7 +1411,11 @@ Object.defineProperty(xover.state, 'save', {
         //if (srcElement && !(srcElement instanceof HTMLElement) || !targetDocument.querySelector('*')) {
         //    return
         //}
-        srcElement = srcElement || targetDocument.querySelector(this.activeElement.selector || this.activeElement);
+        try {
+            srcElement = srcElement || targetDocument.querySelector(this.activeElement.selector || 'body');
+        } catch (e) {
+            console.error(e)
+        }
         if (srcElement) {
             this.activeElement = srcElement.selector;
             this.activeCaret = xover.dom.getCaretPosition(srcElement);
@@ -4906,7 +4910,7 @@ xover.Store = function (xml, ...args) {
                 if (e instanceof Response && ![401].includes(e.status)) {
                     xover.dom.alert(e.statusText)
                 } else {
-                    console.error(e.message || `Couldn't render store ${store.tag}`);
+                    console.error(response instanceof Error && e || e.message || `Couldn't render store ${store.tag}`);
                 }
                 return;
             }).finally(async () => {
