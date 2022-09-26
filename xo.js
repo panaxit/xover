@@ -3321,7 +3321,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //    return_value = xover.xml.fromJSON(return_value.documentElement);
     //}
     if (xover.session.debug) {
-        return_value.$$(`//xsl:template//xhtml:*[1]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}</xsl:comment> `)))
+        return_value.$$(`//xsl:template//xhtml:*[1][parent::xsl:*]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}</xsl:comment> `)))
     }
     return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
         let href = node.getAttribute("href");
