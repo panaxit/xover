@@ -4910,7 +4910,7 @@ xover.Store = function (xml, ...args) {
                 if (e instanceof Response && ![401].includes(e.status)) {
                     xover.dom.alert(e.statusText)
                 } else {
-                    console.error(response instanceof Error && e || e.message || `Couldn't render store ${store.tag}`);
+                    console.error(e instanceof Error && e || e.message || `Couldn't render store ${store.tag}`);
                 }
                 return;
             }).finally(async () => {
@@ -8012,6 +8012,7 @@ xover.modernize = function (targetWindow) {
                             xover.listener.dispatchEvent(before_dom, target);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             let dom = data.transform(xsl);
+                            xover.listener.dispatchEvent(new xover.listener.Event('transform', { store: store, stylesheet: stylesheet, target: target, node: dom }), store);
                             (dom.documentElement || dom).setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
                             (dom.documentElement || dom).setAttributeNS(null, "xo-stylesheet", target.getAttribute("xo-stylesheet"));
                             if (dom.documentElement.id && dom.documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
