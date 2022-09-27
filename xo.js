@@ -1162,6 +1162,12 @@ xover.site = new Proxy(Object.assign({}, history.state), {
     }
 })
 
+Object.defineProperty(xover.site, 'reference', {
+    get() { return (history.state['reference'] || []) }
+    , set() { throw `State "reference" is readonly` }
+    , enumerable: true
+});
+
 Object.defineProperty(xover.site, 'prev', {
     get() { return (history.state['prev'] || []) }
     , set() { throw `State "prev" is readonly` }
@@ -1644,7 +1650,7 @@ xover.Source = function (source, tag) {
                 Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint in xover.server && xover.server[endpoint] || eval(`typeof ${endpoint}`) === "function").map(async (endpoint) => {
                     [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
                 })
-                if (!(source instanceof Document)) {
+                if (!xover.session.rebuild && !(source instanceof Document)) {
                     let sources = await xover.database.sources;
                     let stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || document;
 
@@ -3898,6 +3904,8 @@ xover.init = async function () {
         this.init.status = 'initialized';
         xover.stores.active.render();
         xover.session.checkStatus();
+    }).catch(e => {
+        return Promise.reject(e);
     }).finally(() => {
         this.init.initializing = undefined;
     });
@@ -4911,7 +4919,9 @@ xover.Store = function (xml, ...args) {
                 if (e instanceof Response && ![401].includes(e.status)) {
                     xover.dom.alert(e.statusText)
                 } else {
-                    console.error(e instanceof Error && e || e.message || `Couldn't render store ${store.tag}`);
+                    let message = e instanceof Error && e || e.message || e || `Couldn't render store ${store.tag}`
+                    xover.dom.alert(message)
+                    return Promise.reject(message);
                 }
                 return;
             }).finally(async () => {
@@ -7034,6 +7044,18 @@ xover.modernize = function (targetWindow) {
 
                 let attribute_node = target.getAttributeNode(attribute);
                 return attribute_node ? attribute_node.value : null;
+            }
+
+            Element.prototype.getAttributes = function (attributes = []) {
+                let node = this;
+                let return_attributes = Object.fromEntries(Object.values(node.attributes).filter(el => attributes.includes(el.name) || !attributes.length && el.namespaceURI != xover.spaces["xmlns"]).map(el => [el.name, el.value]))
+                return return_attributes;
+            }
+
+            Element.prototype.getAttributeNodes = function (attributes = []) {
+                let node = this;
+                let return_attributes = Object.values(node.attributes).filter(el => attributes.includes(el.name) || !attributes.length && el.namespaceURI != xover.spaces["xmlns"]).map(el => el)
+                return return_attributes;
             }
 
             Element.prototype.get = Element.prototype.getAttribute;
