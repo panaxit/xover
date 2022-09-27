@@ -247,13 +247,13 @@ xover.stores = new Proxy({}, {
     },
     deleteProperty: function (self, key) {
         let exists = key in self
-        let same = self[xover.state.seed] === self[key]
+        let same = self[xover.site.seed] === self[key]
         sessionStorage.removeItem(key);
         xover.database.remove('sources', key);
 
         if (exists) {
             Reflect.deleteProperty(self, key);
-            if (same && xover.state.position > 1) {
+            if (same && xover.site.position > 1) {
                 history.back();
             } else {
                 xover.dom.refresh();
@@ -690,14 +690,14 @@ xover.listener.on('popstate', async function (event) {
     //    let finished = false;
     //    let cancel = () => finished = true;
     xover.session.database_id = xover.session.database_id;
-    xover.state.seed = (event.state || {}).seed || event.target.location.hash;
+    xover.site.seed = (event.state || {}).seed || event.target.location.hash;
     //const promise = new Promise((resolve, reject) => {
     //    setTimeout(async () => {
     if (event.state) delete event.state.active;
-    let hashtag = (xover.state.seed || '#')
+    let hashtag = (xover.site.seed || '#')
     let store = xover.stores[hashtag];
     if (store) {
-        await store.render()//xover.state.active == xover.state.seed || xover.state.active == store.tag);
+        await store.render()//xover.site.active == xover.site.seed || xover.site.active == store.tag);
         if (store instanceof xover.Store && !store.isRendered) {
             xover.stores.active = store;
         }
@@ -739,14 +739,14 @@ xover.listener.on('popstate', async function (event) {
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     if (event.defaultPrevented) return;
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
-    xover.state.seed = xover.state.seed || location.hash
+    xover.site.seed = xover.site.seed || location.hash
     if (history.state) delete history.state.active;
-    if (!history.state && !location.hash && positionLastShown || xover.state.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.state.seed])) {
+    if (!history.state && !location.hash && positionLastShown || xover.site.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.site.seed])) {
         history.back();
         event.stopPropagation()
-    } else if (history.state && positionLastShown > xover.state.position) {
+    } else if (history.state && positionLastShown > xover.site.position) {
         window.top.dispatchEvent(new CustomEvent('navigatedBack', { bubbles: false }));
-    } else if (history.state && positionLastShown < xover.state.position) {
+    } else if (history.state && positionLastShown < xover.site.position) {
         window.top.dispatchEvent(new CustomEvent('navigatedForward', { bubbles: false }));
     }
 })
@@ -758,7 +758,7 @@ xover.listener.on('submitSuccess', async function (event) {
 
 xover.listener.on('navigatedForward', function (event) {
     if (event.defaultPrevented) return;
-    if (xover.state.seed == "#" && xover.state.position > 1 && !(xover.state.prev || []).length) {
+    if (xover.site.seed == "#" && xover.site.position > 1 && !(xover.site.prev || []).length) {
         alert("Navigated forward");
         history.back();
     }
@@ -1133,7 +1133,7 @@ Object.defineProperty(xover.session, 'clearCache', {
     writable: false, enumerable: false, configurable: false
 });
 
-xover.state = new Proxy(Object.assign({}, history.state), {
+xover.site = new Proxy(Object.assign({}, history.state), {
     get: function (self, key) {
         let proxy = self;
         if (!history.state) {
@@ -1162,13 +1162,13 @@ xover.state = new Proxy(Object.assign({}, history.state), {
     }
 })
 
-Object.defineProperty(xover.state, 'prev', {
+Object.defineProperty(xover.site, 'prev', {
     get() { return (history.state['prev'] || []) }
     , set() { throw `State "prev" is readonly` }
     , enumerable: true
 });
 
-Object.defineProperty(xover.state, 'hash', {
+Object.defineProperty(xover.site, 'hash', {
     get() { return location.hash }
     , set(input) {
         input = input[input.length - 1] != '#' ? input : '';
@@ -1177,13 +1177,13 @@ Object.defineProperty(xover.state, 'hash', {
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'stores', {
+Object.defineProperty(xover.site, 'stores', {
     get() { return (history.state['stores'] || {}) }
     , set(input) { history.state['stores'] = input }
     , enumerable: true
 });
 
-Object.defineProperty(xover.state, 'set', {
+Object.defineProperty(xover.site, 'set', {
     value(input, value) {
         let prop;
         if (input instanceof Node) {
@@ -1236,7 +1236,7 @@ Object.defineProperty(xover.state, 'set', {
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'get', {
+Object.defineProperty(xover.site, 'get', {
     value(prop) {
         let { prefix, name } = xover.xml.getAttributeParts(prop);
         let active = this.active;
@@ -1251,7 +1251,7 @@ Object.defineProperty(xover.state, 'get', {
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'activeCaret', {
+Object.defineProperty(xover.site, 'activeCaret', {
     get() {
         let active = this.active;
         let state_stores = this.stores;
@@ -1266,7 +1266,7 @@ Object.defineProperty(xover.state, 'activeCaret', {
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'activeElement', {
+Object.defineProperty(xover.site, 'activeElement', {
     get() {
         targetDocument = ((document.activeElement || {}).contentDocument || document);
         let active = this.active;
@@ -1283,20 +1283,20 @@ Object.defineProperty(xover.state, 'activeElement', {
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'next', {
+Object.defineProperty(xover.site, 'next', {
     get() { return (history.state['next'] || {}) }
     , set(input) { history.state['next'] = input }
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'seed', {
+Object.defineProperty(xover.site, 'seed', {
     get() { return (history.state['seed'] || location.hash || '#') }
     , set(input) {
         if (!history.state['seed']) {
             history.state['seed'] = input;
-            //xover.state.active = input;
+            //xover.site.active = input;
         } else if (history.state['seed'] != input) {
-            xover.state.next = input;
+            xover.site.next = input;
             var prev = [...this["prev"]];
             prev.unshift(history.state.seed);
             let new_state = Object.assign({}, history.state); //If state is not copied, attributes that are not present like "stores", might be lost
@@ -1312,19 +1312,19 @@ Object.defineProperty(xover.state, 'seed', {
     , enumerable: true
 });
 
-Object.defineProperty(xover.state, 'scrollableElements', {
+Object.defineProperty(xover.site, 'scrollableElements', {
     get() { return (history.state['scrollableElements'] || {}) }
     , set(input) { history.state['scrollableElements'] = input }
     , enumerable: true
 });
 
-Object.defineProperty(xover.state, 'position', {
+Object.defineProperty(xover.site, 'position', {
     get() { return [history.state['position'], Number(this.prev.length) + 1].coalesce() }
-    , set(input) { history.go(input - xover.state.position) }
+    , set(input) { history.go(input - xover.site.position) }
     , enumerable: true
 });
 
-Object.defineProperty(xover.state, 'active', {
+Object.defineProperty(xover.site, 'active', {
     get: function () {
         if (xover.session.getKey("status") != 'authorized' && 'login' in xover.server) {
             return "#login";
@@ -1356,7 +1356,7 @@ Object.defineProperty(xover.state, 'active', {
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'activeTags', {
+Object.defineProperty(xover.site, 'activeTags', {
     get: function () {
         return function (tag) {
             let active_tag = tag || (xover.stores[this.active] || {}).tag || this.active; //se hace de esta manera porque el estado podría guardar como active el tag "#"
@@ -1375,7 +1375,7 @@ Object.defineProperty(xover.state, 'activeTags', {
     , enumerable: false
 });
 
-Object.defineProperty(xover.state, 'update', {
+Object.defineProperty(xover.site, 'update', {
     value: function (new_state) {
         if (!new_state) return;
         let new_active = new_state['active'];
@@ -1389,7 +1389,7 @@ Object.defineProperty(xover.state, 'update', {
     , writable: false, enumerable: false, configurable: false
 });
 
-Object.defineProperty(xover.state, 'detectActive', {
+Object.defineProperty(xover.site, 'detectActive', {
     value: function () {
         //let active_tag = self.tag;
         let active_tags = [...window.document.querySelectorAll(`[xo-store]`)].reduce((new_target, el) => { let tag = el.getAttribute("xo-store"); new_target.push(tag); return new_target; }, []);
@@ -1397,13 +1397,13 @@ Object.defineProperty(xover.state, 'detectActive', {
         //let state_stores = this.stores;
         //state_stores[active_tag] = (state_stores[active_tag] || {})
         //state_stores[active_tag]["active"] = active_tags;
-        //xover.state.activeTags = [...new Set([xover.state.activeTags(), active_tags].flat())];
+        //xover.site.activeTags = [...new Set([xover.site.activeTags(), active_tags].flat())];
         //return state_stores[active_tag]["active"];
     }
     , enumerable: false, configurable: false
 });
 
-Object.defineProperty(xover.state, 'save', {
+Object.defineProperty(xover.site, 'save', {
     value: function (srcElement) {
         //xover.delay(1).then(() => {
         //srcElement = (srcElement || event && event.srcElement);
@@ -1428,7 +1428,7 @@ Object.defineProperty(xover.state, 'save', {
     , enumerable: false, configurable: false
 });
 
-Object.defineProperty(xover.state, 'restore', {
+Object.defineProperty(xover.site, 'restore', {
     value: function (scope) {
         targetDocument = (scope || (document.activeElement || {}).contentDocument || document);
         //var linkEls = targetDocument.querySelectorAll('a');
@@ -1436,15 +1436,15 @@ Object.defineProperty(xover.state, 'restore', {
         //    link.addEventListener('click', () => { new xover.listener.Event('click', [hashtag, (window.top || window).location.hash]) }, true);
         //}
 
-        let activeElement = xover.state.activeElement
-        Object.entries(xover.state.scrollableElements).map(([selector, coordinates]) => {
+        let activeElement = xover.site.activeElement
+        Object.entries(xover.site.scrollableElements).map(([selector, coordinates]) => {
             xover.dom.setScrollPosition(targetDocument.querySelector(selector), coordinates)
         })
         if (!activeElement) {
             return;
         }
         xover.dom.triggeredByTab = undefined;
-        xover.dom.setCaretPosition(activeElement, xover.state.activeCaret);
+        xover.dom.setCaretPosition(activeElement, xover.site.activeCaret);
     }
     , enumerable: false, configurable: false
 });
@@ -1617,10 +1617,10 @@ xover.Source = function (source, tag) {
         enumerable: true,
         get: function () {
             let tag = self.tag;
-            return _isActive !== false && (tag === xover.stores.active.tag || /*self.isRendered || */(xover.state.activeTags() || [tag]).includes(tag));
+            return _isActive !== false && (tag === xover.stores.active.tag || /*self.isRendered || */(xover.site.activeTags() || [tag]).includes(tag));
         },
         set: function (input) {
-            xover.state.active = self.tag;
+            xover.site.active = self.tag;
         }
     });
 
@@ -1646,7 +1646,7 @@ xover.Source = function (source, tag) {
                 })
                 if (!(source instanceof Document)) {
                     let sources = await xover.database.sources;
-                    let stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xo.state.active ? location.search : '')) || document;
+                    let stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || document;
 
                     if (stored_document && !((Date.now() - stored_document.lastModifiedDate) / 1000 > settings["expiry"])) {
                         source = stored_document;
@@ -1661,7 +1661,7 @@ xover.Source = function (source, tag) {
                             try {
                                 if (endpoint in xover.server) {
                                     let [parameters, settings = {}, payload] = source[endpoint].constructor === [].constructor && source[endpoint] || [source[endpoint]];
-                                    if (tag === xo.state.active) {
+                                    if (tag === xover.site.active) {
                                         parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
                                     }
                                     document = await xover.server[endpoint].apply(self, [payload, parameters, settings]);
@@ -2241,7 +2241,7 @@ xover.data.updateScrollPosition = function (document, coordinates) {
 
 xover.dom.onscroll = function () {
     xover.dom.onscroll.Promise = xover.dom.onscroll.Promise || xover.delay(500).then(async () => {
-        Object.entries(xover.state.scrollableElements).map(([selector, coordinates]) => {
+        Object.entries(xover.site.scrollableElements).map(([selector, coordinates]) => {
             let scroll_data = xover.dom.getScrollPosition(document.querySelector(selector))
             xover.dom.scrollableElements[selector]["x"] = scroll_data["x"] || 0
             xover.dom.scrollableElements[selector]["y"] = scroll_data["y"] || 0
@@ -2267,13 +2267,13 @@ document.addEventListener("DOMContentLoaded", function (event) {
 });
 
 window.addEventListener("focusin", function (event) {
-    xover.state.save(event.target);
+    xover.site.save(event.target);
 });
 
 document.addEventListener("selectionchange", function (event) {
     let target = document.getSelection().focusNode;
     if (target && target.nodeName == '#text') {
-        xover.state.save(target);
+        xover.site.save(target);
     }
 });
 
@@ -2570,7 +2570,7 @@ Object.defineProperty(xover.stores, "#", {
 
 Object.defineProperty(xover.stores, 'active', {
     get: function () {
-        let store = xover.stores[xover.state.active] || xover.stores[xover.state.seed] || xover.stores["#"];// || xover.Store(`<?xml-stylesheet type="text/xsl" href="message.xslt" role="modal" target="body" action="append"?><xo:message xmlns:xo="http://panax.io/xover" xo:id="xhr_message_${Math.random()}"/>`);
+        let store = xover.stores[xover.site.active] || xover.stores[xover.site.seed] || xover.stores["#"];// || xover.Store(`<?xml-stylesheet type="text/xsl" href="message.xslt" role="modal" target="body" action="append"?><xo:message xmlns:xo="http://panax.io/xover" xo:id="xhr_message_${Math.random()}"/>`);
         return store;
     }
     , set: async function (input) {
@@ -2593,7 +2593,7 @@ Object.defineProperty(xover.stores, 'active', {
             //if (hashtag != (history.state.seed || (window.top || window).location.hash || xover.stores["#"].tag)) {//(history.state.hash || (window.top || window).location.hash)
             if (!xover.stores[hashtag].isActive) {
                 //xover.dom.history.push((window.top || window).location.hash);
-                xover.state.active = hashtag;
+                xover.site.active = hashtag;
             }
             /*await */xover.stores[hashtag].render();
         }
@@ -2602,12 +2602,12 @@ Object.defineProperty(xover.stores, 'active', {
 
 Object.defineProperty(xover.stores, 'detectActive', {
     value: function () {
-        if ((xover.state.activeTags() || []).includes(xover.state.hash)) {
+        if ((xover.site.activeTags() || []).includes(xover.site.hash)) {
             var activeTags = [];
             [...document.querySelectorAll("[xo-store]")].filter(el => xover.stores[el.getAttribute("xo-store")]).map(el => {
                 activeTags.push(el.getAttribute("xo-store"));
             });
-            xover.state.activeTags = activeTags;
+            xover.site.activeTags = activeTags;
         }
         return this.getActive()
     },
@@ -2710,7 +2710,7 @@ Object.defineProperty(xover.stores, 'restore', {
 
 Object.defineProperty(xover.stores, 'seed', {
     get: function () {
-        return this[xover.state.seed] || this["#"];
+        return this[xover.site.seed] || this["#"];
     }
 });
 
@@ -4344,7 +4344,7 @@ xover.Store = function (xml, ...args) {
             //    __document.documentElement.setAttributeNS(xover.spaces["x"], "xo:hash", input);
             //}
             _hash = input;
-            xover.state.hash = _hash;
+            xover.site.hash = _hash;
         }
     });
 
@@ -4882,10 +4882,10 @@ xover.Store = function (xml, ...args) {
                 }
                 await store.library.load();
                 let isActive = self.isActive
-                let active_tag = xover.state.active;
+                let active_tag = xover.site.active;
                 let active_store = xover.stores.active;
                 if (active_store === self && location.hash !== self.hash) {
-                    xover.state.active = tag;
+                    xover.site.active = tag;
                 }
                 //if (!isActive) {
                 //    return Promise.reject(`Store ${tag} is not active`);
@@ -4903,7 +4903,7 @@ xover.Store = function (xml, ...args) {
                 window.top.dispatchEvent(new xover.listener.Event('domLoaded', { target: dom, initiator: this }));
                 let active_store = xover.stores.active;
                 if (active_store == self) {
-                    self.detectActive(); // xover.state.detectActive(); //xover.stores.active.detectActive();
+                    self.detectActive(); // xover.site.detectActive(); //xover.stores.active.detectActive();
                 }
                 return Promise.resolve(self)
             }).catch((e) => {
@@ -4969,7 +4969,7 @@ Object.defineProperty(xover.Store.prototype, 'fetch', {
 
 Object.defineProperty(xover.Store.prototype, 'isActive', {
     get: function () {
-        return (this === xover.stores.active || xover.state.activeTags().includes(this.tag) || this.isRendered || !window.document.querySelector("[xo-store]"));
+        return (this === xover.stores.active || xover.site.activeTags().includes(this.tag) || this.isRendered || !window.document.querySelector("[xo-store]"));
     },
     set: function (input) {
         if (input) {
@@ -4991,11 +4991,11 @@ Object.defineProperty(xover.Store.prototype, 'detectActive', {
         let active_tag = this.tag;
         let active_tags = [...window.document.querySelectorAll(`[xo-store]`)].reduce((new_target, el) => { let tag = el.getAttribute("xo-store"); /*tag != active_tag && */new_target.push(tag); return new_target; }, []);
         active_tags = [...new Set(active_tags)];
-        let state_stores = xover.state.stores;
+        let state_stores = xover.site.stores;
         state_stores[active_tag] = (state_stores[active_tag] || {})
         state_stores[active_tag]["active"] = active_tags;
-        xover.state.stores = state_stores;
-        //xover.state.activeTags = [...new Set([xover.state.activeTags(), active_tags].flat())];
+        xover.site.stores = state_stores;
+        //xover.site.activeTags = [...new Set([xover.site.activeTags(), active_tags].flat())];
         return state_stores[active_tag]["active"];
     }
 });
@@ -5463,7 +5463,7 @@ xover.listener.keypress.streak_count = 0;
 document.onkeydown = function (event) {
     if (![9].includes(event.keyCode)) {
         xover.delay(1).then(() => {
-            xover.state.save(event.srcElement);
+            xover.site.save(event.srcElement);
         })
     }
     if (event.keyCode == xover.listener.keypress.last_key) {
@@ -5683,7 +5683,7 @@ xover.listener.on("click", function (event) {
             if (xover.listener.keypress.ctrlKey && !xover.listener.keypress.shiftKey && !xover.listener.keypress.altKey/* && target_tag !== (window.top || window).location.hash)*/) {
                 let target_tag = target_store.tag;
                 //target_store.detectActive();
-                xover.state.update({ active: target_tag, hash: target_tag });
+                xover.site.update({ active: target_tag, hash: target_tag });
             }
         }
     })
@@ -5889,11 +5889,11 @@ xover.dom.setCaretPosition = function (elem, caret_pos) {
                     } else {
                         elem.setSelectionRange(start, end);
                     }
-                    xover.state.activeCaret = [start, end];
+                    xover.site.activeCaret = [start, end];
                 } else {
                     range.move('character', start);
                     range.select();
-                    xover.state.activeCaret = [start];
+                    xover.site.activeCaret = [start];
                 }
             }
             else if (elem.setSelectionRange) {
@@ -5904,10 +5904,10 @@ xover.dom.setCaretPosition = function (elem, caret_pos) {
                     } else {
                         elem.setSelectionRange(start, end);
                     }
-                    xover.state.activeCaret = [start, end];
+                    xover.site.activeCaret = [start, end];
                 } else {
                     elem.setSelectionRange(start, start);
-                    xover.state.activeCaret = [start];
+                    xover.site.activeCaret = [start];
                 }
             } else {
                 elem.focus();
@@ -5950,7 +5950,7 @@ xover.dom.setScrollPosition = function (el, coordinates) {
         }
         el.scrollTo(coordinates.x, coordinates.y);
     } else {
-        Object.entries(xover.state.scrollableElements).map(([selector, coordinates]) => {
+        Object.entries(xover.site.scrollableElements).map(([selector, coordinates]) => {
             xover.dom.setScrollPosition(selector, coordinates)
         })
     }
@@ -5992,7 +5992,7 @@ xover.dom.updateScrollableElements = function (el) {
         xover.dom.scrollableElements[path]["x"] = coordinates.x;
         xover.dom.scrollableElements[path]["y"] = coordinates.y;
     });
-    xover.state.scrollableElements = xover.dom.scrollableElements;
+    xover.site.scrollableElements = xover.dom.scrollableElements;
     //xover.stores.active.selectNodes("//*[@state:x-position]").filter(node => {
     //    return (node.getAttribute("state:x-position") > 0 || node.getAttribute("state:y-position") > 0)/* && document.querySelector(`#${node.getAttributeNS("http://panax.io/xover", "id")}`)*/
     //}).map(node => {
@@ -7281,8 +7281,8 @@ xover.modernize = function (targetWindow) {
                         if (old_value !== value) {
                             if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
                                 xover.listener.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
-                                if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xo.state.get(this.name) || {}).length) {
-                                    xo.state.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
+                                if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xover.site.get(this.name) || {}).length) {
+                                    xover.site.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
                                 }
                                 source && source.save();
 
@@ -7808,7 +7808,7 @@ xover.modernize = function (targetWindow) {
                                 xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`).map(param => {
                                     try {
                                         let key = param.getAttribute("name").split(/:/).pop()
-                                        let state_value = xover.stores.active.state[key] || xover.state[key];
+                                        let state_value = xover.stores.active.state[key] || xover.site[key];
                                         if (state_value !== undefined) {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), state_value);
                                         }
@@ -7949,7 +7949,7 @@ xover.modernize = function (targetWindow) {
                     value: async function (stylesheets) {
                         let store = this.store;
                         if (!this.documentElement) await this.fetch();
-                        xover.state.save() //TODO: Reubicar a un posición en donde se optimice más su uso, por ejemplo al scroll
+                        xover.site.save() //TODO: Reubicar a un posición en donde se optimice más su uso, por ejemplo al scroll
                         let last_argument = [...arguments].pop();
                         let options = last_argument && typeof (last_argument) == 'object' && last_argument.constructor === {}.constructor && last_argument || undefined;
                         stylesheets = stylesheets !== options && stylesheets || this.stylesheets;
@@ -8105,7 +8105,7 @@ xover.modernize = function (targetWindow) {
                                     }
                                 }
                                 let missing_stores = []
-                                let active_tags = xover.state.activeTags();
+                                let active_tags = xover.site.activeTags();
                                 active_tags.filter(_tag => tag != _tag && xover.stores[_tag] && !xover.stores[_tag].isRendered).map(async _tag => {
                                     let store = xover.stores[_tag];
                                     if (store) {
@@ -8153,7 +8153,7 @@ xover.modernize = function (targetWindow) {
                                     iframe.src = url;
                                 }
                                 target = iframe;
-                                xover.state.restore(target);
+                                xover.site.restore(target);
                             } else if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                                 dom = await dom.transform('error.xslt');
                                 target = document.querySelector('main') || document.querySelector('body')
@@ -8194,7 +8194,7 @@ xover.modernize = function (targetWindow) {
                                         return script;
                                     }));
                                 }
-                                xover.state.restore(dom);
+                                xover.site.restore(dom);
                             }
                             targets.push(target)
 
