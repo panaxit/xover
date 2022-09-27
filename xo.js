@@ -3325,7 +3325,8 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //    return_value = xover.xml.fromJSON(return_value.documentElement);
     //}
     if (xover.session.debug) {
-        return_value.$$(`//xsl:template//xhtml:*[1][parent::xsl:*]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}</xsl:comment> `)))
+        return_value.$$(`//xsl:template//xhtml:*[1][parent::xsl:*]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `)))
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(@xo-scope)][self::xhtml:div or self::xhtml:span or self::xhtml:label]`).forEach(el => { el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}"); el.set("xo-attribute", "{name(current()[not(self::*)])}") })
     }
     return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
         let href = node.getAttribute("href");
@@ -8252,6 +8253,7 @@ xover.modernize = function (targetWindow) {
                                 document.head.appendChild(script);
                             }
 
+                            [...dom.querySelectorAll('[xo-attribute=""]')].removeAll();
                             let unbound_elements = dom.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
                             if (unbound_elements.length) {
                                 console.error(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`)
@@ -8408,4 +8410,9 @@ xover.dom.toExcel = (function (table, name) {
     //adding some delay in removing the dynamically created link solved the problem in FireFox
     setTimeout(function () { window.URL.revokeObjectURL(url); }, 0);
 
+});
+
+addEventListener("error", (event, source, lineno, colno, error) => {
+    xo.dom.alert(event.message)
+    console.error(event)
 });
