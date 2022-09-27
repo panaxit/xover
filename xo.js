@@ -4916,8 +4916,12 @@ xover.Store = function (xml, ...args) {
                 return Promise.resolve(self)
             }).catch((e) => {
                 e = e || {}
-                if (e instanceof Response && ![401].includes(e.status)) {
-                    xover.dom.alert(e.statusText)
+                if (e instanceof Response) {
+                    if ([401].includes(e.status)) {
+                        console.error(e.status)
+                    } else {
+                        xover.dom.alert(e.statusText)
+                    }
                 } else {
                     let message = e instanceof Error && e || e.message || e || `Couldn't render store ${store.tag}`
                     xover.dom.alert(message)
