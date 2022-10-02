@@ -1312,7 +1312,7 @@ Object.defineProperty(xover.site, 'seed', {
             new_state["next"] = "";
             new_state["position"] = new_state["position"] + 1;
             xover.session.setKey('lastPosition', new_state["position"]);
-            history.pushState(Object.assign({ position: history.length - 1 }, new_state), ((event || {}).target || {}).textContent, xover.stores[input].tag);
+            history.pushState(Object.assign({ position: history.length - 1 }, new_state), ((event || {}).target || {}).textContent, (xover.stores[input] || {}).tag);
         }
     }
     , enumerable: true
@@ -1829,6 +1829,7 @@ xover.spaces["xmlns"] = "http://www.w3.org/2000/xmlns/"
 xover.spaces["x"] = "http://panax.io/xover"
 xover.spaces["xo"] = "http://panax.io/xover"
 xover.spaces["xson"] = "http://panax.io/xson"
+xover.spaces["meta"] = "http://panax.io/metadata"
 xover.spaces["metadata"] = "http://panax.io/metadata"
 xover.spaces["xml"] = "http://www.w3.org/XML/1998/namespace"
 xover.spaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
@@ -3331,8 +3332,12 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //    return_value = xover.xml.fromJSON(return_value.documentElement);
     //}
     if (xover.session.debug) {
-        return_value.$$(`//xsl:template//xhtml:*[1][parent::xsl:*]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `)))
-        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(@xo-scope)][self::xhtml:div or self::xhtml:span or self::xhtml:label]`).forEach(el => { el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}"); el.set("xo-attribute", "{name(current()[not(self::*)])}") })
+        return_value.$$(`//xsl:template/*[not(self::xsl:param or self::xsl:attribute or self::xsl:variable)]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `)));
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(@xo-scope)]`).forEach(el => { el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}"); if (!el.getAttribute("xo-attribute")) { el.set("xo-attribute", "{name(current()[not(self::*)])}") } });
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`).forEach(el => {
+            el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
+            el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
+        });
     }
     return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
         let href = node.getAttribute("href");
@@ -6334,7 +6339,7 @@ xover.modernize = function (targetWindow) {
                     value: function () {
                         let node = this;
                         if (node.nodeType !== 2) {
-                            [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-store='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px');
+                            [node instanceof HTMLElement && node || undefined, ...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-store='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].filter(el => el).map(target => target.style.outline = '#f00 solid 2px');
                         }
                     },
                     writable: false, enumerable: false, configurable: false
@@ -6740,7 +6745,7 @@ xover.modernize = function (targetWindow) {
                         if (!store) {
                             return null;
                         } else {
-                            let dom_scope = store.find(this.id) && this || this.closest("[xo-scope],[xo-source]");
+                            let dom_scope = /*store.find(this.id) && this || */this.closest("[xo-scope],[xo-source]");
                             let attribute = this.closest("[xo-attribute]");
                             if (!dom_scope) {
                                 return null;
@@ -6749,7 +6754,7 @@ xover.modernize = function (targetWindow) {
                             } else {
                                 attribute = null;
                             }
-                            let node = store.find(this.id) || store.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
+                            let node = /*store.find(this.id) || */store.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
 
                             if (node && attribute) {
                                 let attribute_node;
@@ -8124,6 +8129,7 @@ xover.modernize = function (targetWindow) {
                             //let styles = document.head.appendChild(await xover.library.load("styles.css"));
                             scripts_external = dom.selectNodes('//*[self::xhtml:script[@src or @defer or @async or not(text())] or self::xhtml:link[@href] or self::xhtml:meta][not(text())]').removeAll();
                             _applyScripts(document, scripts_external);
+                            dom.$$('//@xo-attribute[.="" or .="xo:id"]').removeAll()
                             if (!target) {
                                 if (xover.debug.enabled) {
                                     if (stylesheet_target) {
@@ -8279,7 +8285,6 @@ xover.modernize = function (targetWindow) {
                                 document.head.appendChild(script);
                             }
 
-                            [...dom.querySelectorAll('[xo-attribute=""]')].removeAll();
                             let unbound_elements = dom.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
                             if (unbound_elements.length) {
                                 console.error(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`)
