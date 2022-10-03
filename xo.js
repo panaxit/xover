@@ -3333,7 +3333,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //}
     if (xover.session.debug) {
         return_value.$$(`//xsl:template/*[not(self::xsl:param or self::xsl:attribute or self::xsl:variable)]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `)));
-        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(@xo-scope)]`).forEach(el => { el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}"); if (!el.getAttribute("xo-attribute")) { el.set("xo-attribute", "{name(current()[not(self::*)])}") } });
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => { el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}"); if (!el.getAttribute("xo-attribute")) { el.set("xo-attribute", "{name(current()[not(self::*)])}") } });
         return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`).forEach(el => {
             el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
             el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
@@ -4923,7 +4923,7 @@ xover.Store = function (xml, ...args) {
                 e = e || {}
                 if (e instanceof Response) {
                     if ([401].includes(e.status)) {
-                        console.error(e.status)
+                        console.error(e.statusText)
                     } else {
                         xover.dom.alert(e.statusText)
                     }
@@ -6735,44 +6735,50 @@ xover.modernize = function (targetWindow) {
             }
 
             let original_HTMLTableCellElement = Object.getOwnPropertyDescriptor(HTMLTableCellElement.prototype, 'scope')
-            if (!Element.prototype.hasOwnProperty('scope')) {
-                Object.defineProperty(Element.prototype, 'scope', { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
-                    get: function () {
-                        if (this.ownerDocument instanceof XMLDocument) return null;
-                        let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
-                        let self = this;
-                        let store = this.store;
-                        if (!store) {
+            let scope_handler = { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
+                get: function () {
+                    if (this.ownerDocument instanceof XMLDocument) return null;
+                    let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
+                    let self = this;
+                    let store = this.store;
+                    if (!store) {
+                        return null;
+                    } else {
+                        let ref = this.parentElement && this.closest && this || this.parentNode || this
+                        let dom_scope = /*store.find(this.id) && this || */ref.closest("[xo-scope],[xo-source]");
+                        let attribute = ref.closest("[xo-attribute]");
+                        if (!dom_scope) {
                             return null;
+                        } else if (dom_scope.contains(attribute)) {
+                            attribute = attribute.getAttribute("xo-attribute");
                         } else {
-                            let dom_scope = /*store.find(this.id) && this || */this.closest("[xo-scope],[xo-source]");
-                            let attribute = this.closest("[xo-attribute]");
-                            if (!dom_scope) {
-                                return null;
-                            } else if (dom_scope.contains(attribute)) {
-                                attribute = attribute.getAttribute("xo-attribute");
-                            } else {
-                                attribute = null;
-                            }
-                            let node = /*store.find(this.id) || */store.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
-
-                            if (node && attribute) {
-                                let attribute_node;
-                                if (attribute === 'text()') {
-                                    [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
-                                    return [...node.childNodes].filter(el => el instanceof Text).pop();
-                                }
-                                else if (node.getAttribute(attribute) === null) {
-                                    attribute_node = node.createAttribute(attribute, null);
-
-                                }
-                                attribute_node = attribute_node || node.getAttributeNode(attribute);
-                                return attribute_node;
-                            }
-                            return node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
+                            attribute = null;
                         }
+                        let node = /*store.find(this.id) || */store.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
+
+                        if (node && attribute) {
+                            let attribute_node;
+                            if (attribute === 'text()') {
+                                [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
+                                return [...node.childNodes].filter(el => el instanceof Text).pop();
+                            }
+                            else if (node.getAttribute(attribute) === null) {
+                                attribute_node = node.createAttribute(attribute, null);
+
+                            }
+                            attribute_node = attribute_node || node.getAttributeNode(attribute);
+                            return attribute_node;
+                        }
+                        //Implementar para Text $0.$$('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.$('self::xo:r')).pop().getAttributeNode($0.scope.value)
+                        return node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
                     }
-                });
+                }
+            }
+            if (!Element.prototype.hasOwnProperty('scope')) {
+                Object.defineProperty(Element.prototype, 'scope', scope_handler);
+            }
+            if (!Text.prototype.hasOwnProperty('scope')) {
+                Object.defineProperty(Text.prototype, 'scope', scope_handler);
             }
 
             if (!Element.prototype.hasOwnProperty('source')) {
@@ -6780,19 +6786,23 @@ xover.modernize = function (targetWindow) {
             }
             Object.defineProperty(HTMLTableCellElement.prototype, 'scope', Object.getOwnPropertyDescriptor(Element.prototype, 'scope'));
 
-            if (!Element.prototype.hasOwnProperty('store')) {
-                Object.defineProperty(Element.prototype, 'store', {
-                    get: function () {
-                        if (this.ownerDocument instanceof XMLDocument) {
-                            return this.ownerDocument.store
-                        } else {
-                            let node = this.parentElement && this || this.parentNode || this;
-                            let store_name = [node.closest && node.closest("[xo-store]")].map(el => el && el.getAttribute("xo-store") || null)[0];
-                            let store = store_name && store_name in xover.stores && xover.stores[store_name] || null;
-                            return store;
-                        }
+            const store_handler = {
+                get: function () {
+                    if (this.ownerDocument instanceof XMLDocument) {
+                        return this.ownerDocument.store
+                    } else {
+                        let node = this.parentElement && this.closest && this || this.parentNode || this;
+                        let store_name = [node.closest && node.closest("[xo-store]")].map(el => el && el.getAttribute("xo-store") || null)[0];
+                        let store = store_name && store_name in xover.stores && xover.stores[store_name] || null;
+                        return store;
                     }
-                });
+                }
+            }
+            if (!Element.prototype.hasOwnProperty('store')) {
+                Object.defineProperty(Element.prototype, 'store', store_handler);
+            }
+            if (!Text.prototype.hasOwnProperty('store')) {
+                Object.defineProperty(Text.prototype, 'store', store_handler);
             }
 
             if (!Element.prototype.hasOwnProperty('stylesheet')) {
