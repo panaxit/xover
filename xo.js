@@ -8454,6 +8454,6 @@ xover.dom.toExcel = (function (table, name) {
 });
 
 addEventListener("error", (event, source, lineno, colno, error) => {
-    xo.dom.alert(event.message)
+    if (event.message) xo.dom.alert(event.message)
     console.error(event)
 });
