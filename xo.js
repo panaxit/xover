@@ -3333,7 +3333,12 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //}
     if (xover.session.debug) {
         return_value.$$(`//xsl:template/*[not(self::xsl:param or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element)]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `)));
-        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => { el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}"); if (!el.getAttribute("xo-attribute")) { el.set("xo-attribute", "{name(current()[not(self::*)])}") } });
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
+            el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
+            if (!el.getAttribute("xo-attribute")) {
+                el.set("xo-attribute", "{name(current()[not(self::*)])}")
+            }
+        });
         return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`).forEach(el => {
             el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
             el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
@@ -3579,7 +3584,7 @@ xover.xml.transform = function (xml, xsl, target) {
             ////if (!xml.documentElement) {
             ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
             ////}
-            if (xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
+            if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                 console.time();
             }
             if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"]')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
@@ -3603,7 +3608,7 @@ xover.xml.transform = function (xml, xsl, target) {
             } else {
                 result = xsltProcessor.transformToDocument(xml);
             }
-            if (xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
+            if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                 console.timeEnd();
             }
         } catch (e) {
@@ -7862,8 +7867,8 @@ xover.modernize = function (targetWindow) {
                                 ////if (!xml.documentElement) {
                                 ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                 ////}
-                                if (xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
-                                    console.time();
+                                if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
+                                    console.time(xsl.href || "Transform");
                                 }
                                 if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"]')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
                                     let transformed = xsltProcessor.transformToFragment(xml, document);
@@ -7891,8 +7896,8 @@ xover.modernize = function (targetWindow) {
                                     xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`))
                                     return xml.transform("empty.xslt");
                                 }
-                                if (xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
-                                    console.timeEnd();
+                                if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
+                                    console.timeEnd(xsl.href || "Transform");
                                 }
                             } catch (e) {
                                 let default_document = xover.library.defaults[(xsl.selectSingleNode("//xsl:import") || document.createElement('p')).getAttribute("href")];
@@ -8007,8 +8012,6 @@ xover.modernize = function (targetWindow) {
                             return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`)).render(this);
                         }
                         var data = this.cloneNode(true);
-                        //data.selectNodes('//xo:r[position()>600 and @value!=../../@value]').remove(false);
-
                         let action;
                         let stylesheet_target = 'body';
                         let targets = []
@@ -8022,8 +8025,9 @@ xover.modernize = function (targetWindow) {
                                 do {
                                     data.selectNodes("//@binding:changed").remove(false);
                                     ++i;
-                                    dom = data.transform(xsl);
+                                    dom = await data.transform(xsl);
                                     //if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
+                                    dom.reseed();
                                     dom.store = data.store
                                     data = dom;
                                     //}
@@ -8053,7 +8057,7 @@ xover.modernize = function (targetWindow) {
                             let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target })
                             xover.listener.dispatchEvent(before_dom, target);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
-                            let dom = data.transform(xsl);
+                            let dom = await data.transform(xsl);
                             xover.listener.dispatchEvent(new xover.listener.Event('transform', { store: store, stylesheet: stylesheet, target: target, node: dom }), store);
                             (dom.documentElement || dom).setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
                             (dom.documentElement || dom).setAttributeNS(null, "xo-stylesheet", target.getAttribute("xo-stylesheet"));
