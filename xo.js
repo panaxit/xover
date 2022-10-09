@@ -922,7 +922,7 @@ xover.session = new Proxy({}, {
         let old_value = xover.session.getKey(key);
         if (new_value instanceof Array) {
             refresh = !old_value && !!new_value || old_value.length === new_value.length && old_value.every((value, index) => value === new_value[index]);
-        } else if (xo.json.isValid(new_value)) {
+        } else if (xover.json.isValid(new_value)) {
             refresh = JSON.stringify(new_value) != JSON.stringify(old_value);
         } else {
             refresh = old_value !== new_value;
@@ -1152,7 +1152,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
     set: function (self, key, new_value) {
         try {
             self[key] = new_value;
-            let hash = [xo.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
+            let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
             history.replaceState(Object.assign({ position: history.length - 1 }, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
 
             [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.store && el.store.library[el.get("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render())
@@ -1672,7 +1672,7 @@ xover.Source = function (source, tag) {
                                     }
                                     document = await xover.server[endpoint].apply(self, [payload, parameters, settings]);
                                 } else if (eval(`typeof ${endpoint}`) === "function") {
-                                    let fn = eval(endpoint) || eval(`xo.server.${endpoint}`)
+                                    let fn = eval(endpoint) || eval(`xover.server.${endpoint}`)
                                     document = await fn.apply(self, (source[endpoint] || []).concat(args));
                                 }
                             } catch (e) {
@@ -3332,7 +3332,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //    return_value = xover.xml.fromJSON(return_value.documentElement);
     //}
     if (xover.session.debug) {
-        return_value.$$(`//xsl:template/*[not(self::xsl:param or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element)]`).forEach(el => el.appendBefore(xo.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `)));
+        return_value.$$(`//xsl:template/*[not(self::xsl:param or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element)]`).forEach(el => el.appendBefore(xover.xml.createNode(`<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `)));
         return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
             el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             if (!el.getAttribute("xo-attribute")) {
@@ -5394,27 +5394,27 @@ Object.defineProperty(xover.network, 'listener', {
                     let ref_node;
                     switch (action) {
                         case 'remove':
-                            ref_node = xo.stores[store].find(target_id);
+                            ref_node = xover.stores[store].find(target_id);
                             ref_node && ref_node.remove();
                             break;
                         case 'insert':
-                            ref_node = xo.stores[store].find(target_id);
+                            ref_node = xover.stores[store].find(target_id);
                             ref_node && ref_node.insertAfter(xover.xml.createNode(target_node.value), target_node.find(new_value.find(new_value.params.preceding_sibling)));
                             break;
                         case 'set':
                             let attribute = new_value.params.attribute;
                             let namespace = new_value.params.namespace;
                             if (new_value.params.attribute) {
-                                ref_node = xo.stores[store].find(target_id);
+                                ref_node = xover.stores[store].find(target_id);
                                 ref_node && ref_node.setAttributeNS(namespace, attribute, new_value.params.value);
                             } else {
                                 let new_node = xover.xml.createNode(new_value.params.value);
-                                ref_node = xo.stores[store].find(new_value.params.preceding_sibling);
+                                ref_node = xover.stores[store].find(new_value.params.preceding_sibling);
                                 if (ref_node) {
                                     ref_node.appendAfter(new_node)
                                     break;
                                 }
-                                ref_node = xo.stores[store].find(new_value.params.parent);
+                                ref_node = xover.stores[store].find(new_value.params.parent);
                                 if (ref_node) {
                                     ref_node.appendChild(new_node)
                                     break;
@@ -8458,6 +8458,6 @@ xover.dom.toExcel = (function (table, name) {
 });
 
 addEventListener("error", (event, source, lineno, colno, error) => {
-    if (event.message) xo.dom.alert(event.message)
+    if (event.message) xover.dom.alert(event.message)
     console.error(event)
 });
