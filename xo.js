@@ -1665,7 +1665,7 @@ xover.Source = function (source, tag) {
                 } else if (source === undefined && tag[0] !== '#') {
                     document = await xover.fetch.xml(tag);
                 } else if (typeof (source) == 'string' && source[0] == '#') {
-                    return await xover.sources[source].fetch()
+                    document = await xover.sources[source].fetch()
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     Object.keys(source).filter(endpoint => endpoint in xover.server && xover.server[endpoint] || eval(`typeof ${endpoint}`) === "function").map(async (endpoint) => {
@@ -1698,11 +1698,10 @@ xover.Source = function (source, tag) {
                 if (!(document instanceof Document)) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
-                //document.source = self;
                 __document.url = document.url
                 __document.href = document.href
-                xover.listener.dispatchEvent(new xover.listener.Event('fetch', { document: __document, tag: tag }), self);
                 __document.replaceBy(document);
+                xover.listener.dispatchEvent(new xover.listener.Event('fetch', { document: __document, tag: tag, section: __document.section }), self);
                 return resolve(__document);
             }).catch(async (e) => {
                 if (!e) {
@@ -2641,10 +2640,10 @@ Object.defineProperty(xover.sections, 'restore', {
         let restoring = [];
         if (xover.session.disableCache) return;
 
-        Object.entries(sessionStorage).filter(([key]) => key != '#' && (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
-            console.log('Restoring document ' + tag);
-            xover.sections[tag] = new xover.Section(xover.sources[JSON.parse(value)["source"]], { tag: tag });
-        })
+        //Object.entries(sessionStorage).filter(([key]) => key != '#' && (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
+        //    console.log('Restoring document ' + tag);
+        //    xover.sections[tag] = new xover.Section(xover.sources[JSON.parse(value)["source"]], { tag: tag });
+        //})
         return restoring;
     },
     writable: false, enumerable: false, configurable: false
@@ -4729,10 +4728,17 @@ xover.Section = function (xml, ...args) {
     });
     Object.defineProperty(this, 'fetch', {
         value: async function () {
+            let event;
+            event = new xover.listener.Event('beforeFetch', { tag: _tag, document: __document });
+            xover.listener.dispatchEvent(event, self);
+            __document = event.detail.document || __document;
             if (__document.fetch) {
                 __document.section = section;
                 await __document.fetch()
             }
+            event = new xover.listener.Event('fetch', { tag: _tag, document: __document });
+            xover.listener.dispatchEvent(event, self);
+            __document = event.detail.document || __document;
             await this.initialize();
             this.reseed();
         },
@@ -4770,7 +4776,6 @@ xover.Section = function (xml, ...args) {
             on_complete.apply(self, _this_arguments);
         };
         __document.status = "ready";
-        //[__document.stylesheets["loading.xslt"]].removeAll();
     }
 
     if (!__document) throw (new Error("__document is empty"));
@@ -4795,7 +4800,7 @@ xover.Section = function (xml, ...args) {
                         return Promise.reject(`No document body for ${tag}`);
                     }
                     let source = __document.source;
-                    source.save && source.save();
+                    source && source.save && source.save();
                 }
                 if (!(_section_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
                     section.addStylesheet({ href: section.tag.substring(1) + '.xslt', target: "@#shell main" })
@@ -7236,7 +7241,8 @@ xover.modernize = function (targetWindow) {
                                 if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xover.site.get(this.name) || {}).length) {
                                     xover.site.set(this.name, new Object.push(this.parentNode.get("xo:id"), value))
                                 }
-                                this.ownerDocument.save && this.ownerDocument.save();
+                                let source = this.ownerDocument.source;
+                                source && source.save && source.save();
 
                                 //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || section;
                                 //context && context.render();
@@ -7887,18 +7893,18 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
-            if (!XMLDocument.prototype.hasOwnProperty('save')) {
-                Object.defineProperty(XMLDocument.prototype, 'save', {
-                    value: async function () {
-                        if (this.href) {
-                            xover.database.write('sources', this.href, this.toString());
-                        } else {
-                            console.warn("File can't be saved on database if lacks of href property")
-                        }
-                    },
-                    writable: false, enumerable: false, configurable: false
-                })
-            }
+            //if (!XMLDocument.prototype.hasOwnProperty('save')) {
+            //    Object.defineProperty(XMLDocument.prototype, 'save', {
+            //        value: async function () {
+            //            if (this.href) {
+            //                xover.database.write('sources', this.href, this.toString());
+            //            } else {
+            //                console.warn("File can't be saved on database if lacks of href property")
+            //            }
+            //        },
+            //        writable: false, enumerable: false, configurable: false
+            //    })
+            //}
 
 
             if (!XMLDocument.prototype.hasOwnProperty('render')) {
@@ -7961,11 +7967,11 @@ xover.modernize = function (targetWindow) {
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-section='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`) || stylesheet_target;
                             let target = stylesheet_target;
                             if (section) {
-                                let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target })
+                                let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: dom })
                                 xover.listener.dispatchEvent(before, section);
                                 if (before.cancelBubble || before.defaultPrevented) continue;
                             }
-                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target })
+                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: dom })
                             xover.listener.dispatchEvent(before_dom, target);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             original_append.apply(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`) );
