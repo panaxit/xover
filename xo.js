@@ -1155,7 +1155,11 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
             history.replaceState(Object.assign({ position: history.length - 1 }, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
 
-            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.section && el.section.sources[el.get("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render())
+            let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
+
+            Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
+                [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render())
+            })
         } catch (e) {
             console.error(e);
         }
@@ -1730,7 +1734,8 @@ xover.Source = function (source, tag) {
 
 xover.sources = new Proxy({}, {
     get: function (self, key) {
-        let _manifest = JSON.parse(JSON.stringify(xover.manifest.sources));
+        //let _manifest = JSON.parse(JSON.stringify(xover.manifest.sources));
+        let _manifest = xover.manifest.sources;
         let value = undefined;
         if (key in self) {
             return self[key];
@@ -1835,6 +1840,7 @@ xover.spaces["debug"] = "http://panax.io/debug"
 xover.spaces["js"] = "http://panax.io/xover/javascript"
 xover.spaces["session"] = "http://panax.io/session"
 xover.spaces["shell"] = "http://panax.io/shell"
+xover.spaces["site"] = "http://panax.io/site"
 xover.spaces["state"] = "http://panax.io/state"
 xover.spaces["height"] = "http://panax.io/state/height"
 xover.spaces["width"] = "http://panax.io/state/width"
@@ -3509,6 +3515,16 @@ xover.xml.transform = function (xml, xsl, target) {
                     }
                 } catch (e) {
                     //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
+                    console.error(e.message);
+                }
+            });
+            xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
+                try {
+                    let param_value = xover.site[param.getAttribute("name").split(/:/).pop()];
+                    if (param_value !== undefined) {
+                        xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
+                    }
+                } catch (e) {
                     console.error(e.message);
                 }
             });
@@ -6657,7 +6673,7 @@ xover.modernize = function (targetWindow) {
                         return null;
                     } else {
                         let ref = this.parentElement && this.closest && this || this.parentNode || this
-                        let dom_scope = /*section.find(this.id) && this || */ref.closest("[xo-scope],[xo-source]");
+                        let dom_scope = /*section.find(this.id) && this || */ref.closest("[xo-scope]");
                         let attribute = ref.closest("[xo-attribute]");
                         if (!dom_scope) {
                             return null;
@@ -6725,7 +6741,7 @@ xover.modernize = function (targetWindow) {
                         } else {
                             let node = this.parentElement && this || this.parentNode || this;
                             let stylesheet_name = [node.closest("[xo-stylesheet]")].map(el => el && el.getAttribute("xo-stylesheet") || null)[0];
-                            return stylesheet_name;
+                            return (((node || {}).section || {}).sources || {})[stylesheet_name] || undefined;
                         }
                     }
                 });
@@ -7247,7 +7263,7 @@ xover.modernize = function (targetWindow) {
                                 //let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || section;
                                 //context && context.render();
                                 let prefixes = Object.entries(xover.spaces).filter(([key, value]) => this.namespaceURI.indexOf(value) == 0).map(([key]) => key);
-                                [...top.document.querySelectorAll('[xo-stylesheet]'), ...top.document.querySelectorAll(`[xo-attribute="${this.name}"]`)].filter(el => el.section === section).filter(el => el.get('xo-attribute') || el.section.sources[el.stylesheet].$(`xsl:stylesheet/xsl:param[@name="${this.name}"]${prefixes.map(prefix => `|xsl:stylesheet/xsl:param[@name="${prefix}:touched"]`).join('')}`)).forEach((el) => el.render())
+                                [...top.document.querySelectorAll('[xo-stylesheet]'), ...top.document.querySelectorAll(`[xo-attribute="${this.name}"]`)].filter(el => el.section === section).filter(el => el.get('xo-attribute') || el.stylesheet.$(`xsl:stylesheet/xsl:param[@name="${this.name}"]${prefixes.map(prefix => `|xsl:stylesheet/xsl:param[@name="${prefix}:touched"]`).join('')}`)).forEach((el) => el.render())
                             }
                         }
                         return return_value;
@@ -7399,7 +7415,7 @@ xover.modernize = function (targetWindow) {
                         return_value = original_removeAttribute.call(this.parentNode, this.name)
                     }
                     let descriptor = Object.getPropertyDescriptor(this, 'parentNode') || { writable: true };
-                    if (!(this.parentNode) && descriptor.hasOwnProperty("writable") ? descriptor.writable : true) {
+                    if (!(this.parentNode) && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
                         Object.defineProperty(this, 'parentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de ownerElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                     }
                     this.value = null;
@@ -7774,6 +7790,18 @@ xover.modernize = function (targetWindow) {
                                         let state_value = xover.sections.active.state[key] || xover.site[key];
                                         if (state_value !== undefined) {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), state_value);
+                                        }
+                                    } catch (e) {
+                                        //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
+                                        console.error(e.message);
+                                    }
+                                });
+                                xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
+                                    try {
+                                        let key = param.getAttribute("name").split(/:/).pop()
+                                        let param_value = xover.site[key] || xover.site[key];
+                                        if (param_value !== undefined) {
+                                            xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                         }
                                     } catch (e) {
                                         //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
