@@ -804,7 +804,7 @@ xover.server = new Proxy({}, {
         }
         let handler = (async (...args) => {
             args = args.filter(el => el);
-            let settings = args.pop() || {};
+            let settings = args.length>1 && args.pop() || {};
             if (settings.constructor != {}.constructor) {
                 args.push(settings);
                 settings = {}
