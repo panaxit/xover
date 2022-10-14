@@ -804,7 +804,7 @@ xover.server = new Proxy({}, {
         }
         let handler = (async (...args) => {
             args = args.filter(el => el);
-            let settings = args.length>1 && args.pop() || {};
+            let settings = args.length > 1 && args.pop() || {};
             if (settings.constructor != {}.constructor) {
                 args.push(settings);
                 settings = {}
@@ -2901,7 +2901,8 @@ xover.Response = function (response, request) {
                     xover.dom.createDialog(content);
                 }
             } else {
-                xover.dom.createDialog(content);
+                let response = this.json || this.document || this.body;
+                response.render && response.render();
             }
         }
     });
@@ -6047,6 +6048,48 @@ xover.modernize = function (targetWindow) {
             });
         }
 
+        if (!String.prototype.hasOwnProperty('alert')) {
+            Object.defineProperty(String.prototype, 'alert', {
+                value: function () {
+                    xover.dom.alert(this)
+                },
+                writable: true, enumerable: false, configurable: false
+            });
+        }
+
+        if (!Object.prototype.hasOwnProperty('render')) {
+            Object.defineProperty(Object.prototype, 'render', {
+                value: function (target) {
+                    let source = this.message && typeof (this.message) === 'string' && new String(this.message) || this;
+                    if (typeof (source.alert) === 'function') {
+                        source.alert(target)
+                    } else {
+                        xover.dom.alert(this)
+                    }
+                },
+                writable: true, enumerable: false, configurable: false
+            });
+        }
+
+        if (!Object.prototype.hasOwnProperty('alert')) {
+            Object.defineProperty(Object.prototype, 'alert', {
+                value: function (target) {
+                    xover.dom.alert(this)
+                },
+                writable: true, enumerable: false, configurable: false
+            });
+        }
+
+        if (!Response.prototype.hasOwnProperty('render')) {
+            Object.defineProperty(Response.prototype, 'render', {
+                value: function (target) {
+                    let source = this.json || this.document || this.body;
+                    source.render && source.render()
+                },
+                writable: true, enumerable: false, configurable: false
+            });
+        }
+
         if (!Object.prototype.hasOwnProperty('cloneObject')) {
             Object.defineProperty(Object.prototype, 'cloneObject', {
                 value: function () {
@@ -7909,14 +7952,30 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
-            if (!Node.prototype.hasOwnProperty('render')) {
-                Object.defineProperty(Node.prototype, 'render', {
-                    value: async function () {
-                        let ref = this.closest("[xo-stylesheet]")
-                        if (ref) {
-                            let stylesheet = this.getAttribute("xo-stylesheet")
-                            return this.section.render(stylesheet || '', stylesheet && this.selector || undefined);
-                        }
+            let html_node_render_handler = async function () {
+                let ref = this.closest("[xo-stylesheet]")
+                if (ref) {
+                    let stylesheet = this.getAttribute("xo-stylesheet")
+                    return this.section.render(stylesheet || '', stylesheet && this.selector || undefined);
+                }
+            }
+
+            if (!HTMLElement.prototype.hasOwnProperty('render')) {
+                Object.defineProperty(HTMLElement.prototype, 'render', {
+                    value: html_node_render_handler
+                });
+            }
+
+            if (!SVGElement.prototype.hasOwnProperty('render')) {
+                Object.defineProperty(SVGElement.prototype, 'render', {
+                    value: html_node_render_handler
+                });
+            }
+
+            if (!HTMLDocument.prototype.hasOwnProperty('render')) {
+                Object.defineProperty(HTMLDocument.prototype, 'render', {
+                    value: function () {
+                        xover.dom.createDialog(this)
                     }
                 });
             }
@@ -8002,7 +8061,7 @@ xover.modernize = function (targetWindow) {
                             let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
                             xover.listener.dispatchEvent(before_dom, target);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
-                            original_append.apply(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`) );
+                            original_append.apply(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
                             let dom = await data.transform(xsl);
                             xover.listener.dispatchEvent(new xover.listener.Event('transform', { section: section, stylesheet: stylesheet, target: target, node: dom }), section);
                             (dom.documentElement || dom).setAttributeNS(null, "xo-section", target.getAttribute("xo-section") || tag);
