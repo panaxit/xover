@@ -8462,7 +8462,22 @@ xover.dom.toExcel = (function (table, name) {
 
 });
 
-addEventListener("error", (event, source, lineno, colno, error) => {
-    if (event.message) xover.dom.alert(event.message)
-    console.error(event)
+addEventListener("error", (event) => {
+    if (event.message) {
+        String(event.message).alert()
+    } else {
+        let e = event.reason
+        e.render && e.render()
+    }
+    console.error(event.message || event.reason)
+});
+
+addEventListener("unhandledrejection", (event) => {
+    if (event.message) {
+        String(event.message).alert()
+    } else {
+        let e = event.reason
+        e.render && e.render()
+    }
+    console.error(event.message || event.reason)
 });
