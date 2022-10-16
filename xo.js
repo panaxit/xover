@@ -5680,7 +5680,7 @@ xover.string.getFileParts = function (file_name = '') {
 
 xover.json.isValid = function (input) {
     try {
-        return [{}.constructor, [].constructor].includes(JSON.parse(JSON.stringify(input)).constructor)
+        return input !== undefined && [{}.constructor, [].constructor].includes(JSON.parse(JSON.stringify(input)).constructor)
     } catch (e) {
         return false;
     }
