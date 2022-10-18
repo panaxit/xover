@@ -1546,7 +1546,7 @@ xover.Source = function (source, tag, manifest_key) {
     console.log(`${tag}: ${source && source.constructor == {}.constructor && JSON.stringify(source) || source}`);
     let _isActive = undefined;
     let self = this;
-    let __document = typeof (source) == 'string' && source[0] == '#' ? xover.sources[source] : xover.xml.createDocument();
+    let __document = typeof (source) == 'string' && source[0] == '#' && source !== tag ? xover.sources[source] : xover.xml.createDocument();
     //__document.url = new xover.URL(tag);
     if (!__document.hasOwnProperty("source")) {
         Object.defineProperty(__document, 'source', {
@@ -1573,6 +1573,13 @@ xover.Source = function (source, tag, manifest_key) {
     if (!__document.hasOwnProperty("tag")) {
         Object.defineProperty(this, 'tag', {
             value: tag,
+            writable: false, enumerable: false, configurable: false
+        });
+    }
+
+    if (!__document.hasOwnProperty("manifest_key")) {
+        Object.defineProperty(this, 'manifest_key', {
+            value: manifest_key,
             writable: false, enumerable: false, configurable: false
         });
     }
@@ -1651,15 +1658,15 @@ xover.Source = function (source, tag, manifest_key) {
     })
     Object.defineProperty(this, 'fetch', {
         value: async function (...args) {
-            let url = new xo.URL(tag), href = url.href;
+            let url, href;
             let payload;
-            let settings = Object.fromEntries(xover.manifest.getSettings(href));
-            let document;
+            let settings = Object.fromEntries(xover.manifest.getSettings(tag));
             this.fetching = this.fetching || new Promise(async (resolve, reject) => {
+                let document;
                 let endpoint_settings;
                 xover.listener.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }), self);
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/,'') in xover.server || eval(`typeof ${endpoint}`) === "function").map((endpoint) => {
-                    manifest_key[0] === '^' && [...key.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
+                    manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                         Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
                     })
                     let parameters = source[endpoint]
@@ -1682,10 +1689,6 @@ xover.Source = function (source, tag, manifest_key) {
                 }
                 if (stored_document instanceof Document) {
                     document = stored_document
-                } else if (source === undefined && tag[0] !== '#') {
-                    document = await xover.fetch.xml(tag);
-                } else if (typeof (source) == 'string' && source[0] == '#') {
-                    document = await xover.sources[source].fetch()
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     endpoints.map(async ([endpoint, parameters]) => {
@@ -1694,7 +1697,7 @@ xover.Source = function (source, tag, manifest_key) {
                                 if (endpoint.replace(/^server:/, '') in xover.server) {
                                     document = await xover.server[endpoint.replace(/^server:/, '')].apply(self, parameters);
                                 } else if (eval(`typeof ${endpoint}`) === "function") {
-                                    let fn = eval(endpoint) || eval(`xover.server.${endpoint}`)
+                                    let fn = eval(endpoint);
                                     document = await fn.apply(self, parameters.concat(args));
                                 }
                             } catch (e) {
@@ -1705,8 +1708,8 @@ xover.Source = function (source, tag, manifest_key) {
                     })
                     let documents = await Promise.all(promises).then(document => document);
                     document = documents[0];
-                } else if (typeof (source) == 'string') {
-                    document = await xover.fetch.xml(source) || source;
+                } else if (source[0] !== '#') {
+                    document = await xover.fetch.xml(source);
                 }
                 if (!document) {
                     document = xover.sources.defaults[tag];
@@ -1750,11 +1753,16 @@ xover.sources = new Proxy({}, {
         if (key in self) {
             return self[key];
         }
-        let manifest_key = Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key).pop() || key;
+        key = xover.URL(key).href;
+        if (key in self) {
+            return self[key];
+        }
+        let manifest_key = Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key).pop();
         let source;
-        source = _manifest[manifest_key];
+        source = _manifest[manifest_key] || key;
+        source = manifest_key !== key && JSON.parse(JSON.stringify(source)) || source;
         xover.sources[key] = new xover.Source(source, key, manifest_key).document;
-        return xover.sources[key];
+        return self[key];
     },
     set: function (self, key, input) {
         self[key] = input;
@@ -1799,7 +1807,7 @@ xover.ProcessingInstruction = function (stylesheet) {
                 try {
                     let section = this.ownerDocument.section;
                     href = this.href;
-                    let document = section && section.sources[href] || xover.sources[href].cloneNode(true);
+                    let document = section && section.sources[href] || xover.sources[href];
                     document.section = section;
                     document.href = href;
                     return document
@@ -2681,7 +2689,7 @@ xover.NodeSet = function (nodeSet = []) {
         writable: false, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'setAttribute', {
-        value: async function (attribute, value, refresh) {
+        value: function (attribute, value, refresh) {
             attribute = attribute.replace(/^@/, "");
             nodeSet.map((target) => {
                 if (target instanceof Element || target.nodeType == 1) {
@@ -4042,6 +4050,9 @@ xover.Section = function (xml, ...args) {
     let _section_stylesheets = [];
     let _sources = new Proxy({}, {
         get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
             if (!self.hasOwnProperty(key)) {
                 self[key] = self[key] || xover.sources[key].cloneNode(true);
             }
@@ -4646,7 +4657,7 @@ xover.Section = function (xml, ...args) {
                 section.render();
             }
             let stylesheet = this.getStylesheet(definition.href);
-            return stylesheet.document.documentElement && stylesheet.document || stylesheet.document.fetch();
+            return stylesheet;//.document.documentElement && stylesheet.document || stylesheet.document.fetch();
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -4791,12 +4802,12 @@ xover.Section = function (xml, ...args) {
 
     Object.defineProperty(this, 'render', {
         value: async function (stylesheet = '', target) {
-            let tag = self.tag;
             //let before = new xover.listener.Event('beforeRender', this);
             //xover.listener.dispatchEvent(before, this);
             //if (before.cancelBubble || before.defaultPrevented) return;
 
             _render_manager[stylesheet] = _render_manager[stylesheet] || xover.delay(1).then(async () => {
+                let tag = self.tag;
                 if (!__document.documentElement) {
                     if (!window.document.querySelector('[xo-section]')) {
                         await xover.sources['loading.xslt'].render();
@@ -4829,6 +4840,7 @@ xover.Section = function (xml, ...args) {
                 await doc.render(stylesheet && doc.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: target }) || undefined);
                 return Promise.resolve(self);
             }).then(async () => {
+                let tag = self.tag;
                 let targetDocument = ((document.activeElement || {}).contentDocument || document);
                 let dom = targetDocument.querySelector(`[xo-section="${tag}"]`)
                 window.top.dispatchEvent(new xover.listener.Event('domLoaded', { target: dom, initiator: this }));
@@ -4838,6 +4850,7 @@ xover.Section = function (xml, ...args) {
                 }
                 return Promise.resolve(self)
             }).catch((e) => {
+                let tag = self.tag;
                 e = e || {}
                 if (e instanceof Response) {
                     if ([401].includes(e.status)) {
@@ -4846,7 +4859,7 @@ xover.Section = function (xml, ...args) {
                         xover.dom.alert(e.statusText)
                     }
                 } else {
-                    let message = e instanceof Error && e || e.message || e || `Couldn't render section ${section.tag}`
+                    let message = e instanceof Error && e || e.message || e || `Couldn't render section ${tag}`
                     xover.dom.alert(message)
                     return Promise.reject(message);
                 }
@@ -6454,12 +6467,16 @@ xover.modernize = function (targetWindow) {
                         //    xover.sources[this.href].replaceBy(new_document.cloneNode(true))
                         //}
                         if (new_document) {
-                            new_document = this.replaceBy(new_document);
-                        } else {
-                            new_document = this;
+                            if (this == new_document) {
+                                Object.values(xover.sections).forEach(section => {
+                                    Object.values(section.sources).filter(stylesheet => stylesheet.source === new_document.source).forEach(document => document = new_document.cloneNode(true) )
+                                })
+                            } else {
+                                this.replaceBy(new_document.cloneNode(true)); //document is cloned to keep the original document in the source
+                            }
                         }
                         xover.listener.dispatchEvent(new xover.listener.Event('load', { document: new_document, section: section }), this);
-                        resolve(new_document);
+                        resolve(this);
                     }).catch(async (e) => {
                         if (!e) {
                             return reject(e);
@@ -6652,7 +6669,7 @@ xover.modernize = function (targetWindow) {
                     document.insertBefore(pi, target || document.selectSingleNode(`(processing-instruction('xml-stylesheet')${definition.role == 'init' ? '' : definition.role == 'binding' ? `[not(contains(.,'role="init"') or contains(.,'role="binding"'))]` : '[1=0]'} | *[1])[1]`));
                 }
                 let stylesheet = this.getStylesheet(definition.href);
-                return stylesheet.document.documentElement && document || stylesheet.document.fetch();
+                return stylesheet; //.document.documentElement && document || stylesheet.document.fetch();
             }
 
             XMLDocument.prototype.removeStylesheet = function (definition_or_stylesheet) {
@@ -6996,7 +7013,7 @@ xover.modernize = function (targetWindow) {
 
             }
 
-            Element.prototype.setAttribute = async function (attribute, value, refresh = true, delay) {
+            Element.prototype.setAttribute = function (attribute, value, refresh = true, delay) {
                 if (attribute instanceof Attr) {
                     value = [value, attribute.value].coalesce();
                     attribute = attribute.name;
@@ -7988,7 +8005,7 @@ xover.modernize = function (targetWindow) {
                     value: async function (stylesheets) {
                         let section = this.section;
                         if (!this.documentElement) await this.fetch();
-                        xover.site.save() //TODO: Reubicar a un posición en donde se optimice más su uso, por ejemplo al scroll
+                        await xover.site.save() //TODO: Reubicar a un posición en donde se optimice más su uso, por ejemplo al scroll
                         let last_argument = [...arguments].pop();
                         let options = last_argument && typeof (last_argument) == 'object' && last_argument.constructor === {}.constructor && last_argument || undefined;
                         stylesheets = stylesheets !== options && stylesheets || this.stylesheets;
