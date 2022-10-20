@@ -6849,9 +6849,10 @@ xover.modernize = function (targetWindow) {
                 //    //        resolve(true);
                 //    //    }, 50);
                 //    //});
-                //}
                 xover.listener.dispatchEvent(new xover.listener.Event('change'), this);
                 xover.listener.dispatchEvent(new xover.listener.Event('remove'), this);
+                //}
+                !(this instanceof HTMLElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
             }
 
             Element.prototype.setAttributes = async function (attributes, refresh, delay) {
@@ -7325,10 +7326,10 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Node.prototype, 'namespaceURI',
                 {
                     get: function () {
-                        return original_node_namespaceURI.get.call(this) || "";
+                        return original_node_namespaceURI && original_node_namespaceURI.get.call(this) || "";
                     },
                     set: function (value) {
-                        return original_node_namespaceURI.set.call(this);
+                        return original_node_namespaceURI && original_node_namespaceURI.set.call(this);
 
                     }
                 }
@@ -7373,6 +7374,13 @@ xover.modernize = function (targetWindow) {
                 this.value = value;
                 let source = this.ownerDocument.source;
                 source && source.save();
+                return this;
+            }
+
+            Comment.prototype.set = function (value) {
+                if (this.textContent !== "ack:no_match") {
+                    this.textContent = value
+                }
                 return this;
             }
 
@@ -7435,6 +7443,20 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
+            Node.prototype.replace = function (new_node) {
+                new_node = (new_node.documentElement || new_node)
+                return this.parentNode && this.parentNode.replaceChild(new_node.cloneNode(true), this) || new_node;
+            }
+
+            Node.prototype.replaceBy = function (new_node) {
+                let parent_node = this.parentNode;
+                if (!parentNode) {
+                    return new_node
+                }
+                new_node = (new_node.documentElement || new_node);
+                return this.parentNode.replaceChild(new_node.cloneNode(true), this);
+            }
+
             XMLDocument.prototype.replaceBy = function (new_document) {
                 if (new_document !== this) {
                     while (this.firstChild) {
@@ -7450,6 +7472,34 @@ xover.modernize = function (targetWindow) {
                     }
                 }
                 return this;
+            }
+
+            Node.prototype.replaceChild = function (new_node, target, refresh = true) {
+                new_node = (new_node.documentElement || new_node);
+                let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this.parentElement, srcEvent: event });
+                xover.listener.dispatchEvent(beforeEvent, this.parentElement);
+                if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
+                if ((this.ownerDocument || this) instanceof XMLDocument) {
+                    let section = this.section;
+                    //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
+                    //    return;
+                    //}
+                    ////var refresh = (refresh ?? !!xover.sections.getActive()[this.ownerDocument.section.tag]);
+                    //this.ownerDocument.documentElement.setAttributeNS(xover.spaces["state"], 'state:refresh', 'true', refresh);
+                    let result = replaceChild_original.apply(this, [new_node, target]);
+                    if (this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
+                        /*Update of session variables*/
+                        let attribute = new_node;
+                        Object.values(xover.sections).map(section => {
+                            (section.documentElement || document.createElement("p")).setAttribute(attribute.getAttribute("name"), attribute.textContent.replace(/[\s]+$/, ''));
+                        });
+                    }
+                    if (refresh && section) section.render()
+                } else {
+                    replaceChild_original.apply(this, [new_node, target]);
+                }
+                xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { target: this.parentElement, srcEvent: event }), this.parentElement);
+                return new_node;
             }
 
             Attr.prototype.remove = function (refresh) {
@@ -7531,6 +7581,15 @@ xover.modernize = function (targetWindow) {
             //Element.prototype.selectFirst = Element.prototype.selectSingleNode
             //Element.prototype.select = Element.prototype.selectSingleNode
 
+            Node.prototype.filter = function (xPath) {
+                if (this.selectSingleNode(xPath)) {
+                    return this
+                } else {
+                    return this.ownerDocument.createComment("ack:no_match");
+                }
+                
+            }
+
             var insertBefore = Element.prototype.insertBefore
             Element.prototype.insertBefore = function (new_node) {
                 if ((this.ownerDocument || this) instanceof XMLDocument) {
@@ -7555,39 +7614,6 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
-            Node.prototype.replaceChild = function (new_node, target, refresh = true) {
-                new_node = (new_node.documentElement || new_node);
-                let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this.parentElement, srcEvent: event });
-                xover.listener.dispatchEvent(beforeEvent, this.parentElement);
-                if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
-                if ((this.ownerDocument || this) instanceof XMLDocument) {
-                    let section = this.section;
-                    //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
-                    //    return;
-                    //}
-                    ////var refresh = (refresh ?? !!xover.sections.getActive()[this.ownerDocument.section.tag]);
-                    //this.ownerDocument.documentElement.setAttributeNS(xover.spaces["state"], 'state:refresh', 'true', refresh);
-                    let result = replaceChild_original.apply(this, [new_node, target]);
-                    if (this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
-                        /*Update of session variables*/
-                        let attribute = new_node;
-                        Object.values(xover.sections).map(section => {
-                            (section.documentElement || document.createElement("p")).setAttribute(attribute.getAttribute("name"), attribute.textContent.replace(/[\s]+$/, ''));
-                        });
-                    }
-                    if (refresh && section) section.render()
-                } else {
-                    replaceChild_original.apply(this, [new_node, target]);
-                }
-                xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { target: this.parentElement, srcEvent: event }), this.parentElement);
-                return new_node;
-            }
-
-            Node.prototype.replace = function (new_node) {
-                new_node = (new_node.documentElement || new_node)
-                return this.parentNode.replaceChild(new_node.cloneNode(true), this);
-            }
-
             var original_append = Element.prototype.append
             Element.prototype.append = function (...args) {
                 let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this, args: args, srcEvent: event });
@@ -7595,6 +7621,7 @@ xover.modernize = function (targetWindow) {
                 if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                 original_append.apply(this, args);
                 xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { node: this }), this);
+                !(this instanceof HTMLElement || this instanceof SVGElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
                 return args;
             }
 
@@ -8095,7 +8122,7 @@ xover.modernize = function (targetWindow) {
                             //let dom = xover.xml.transform(data, (this.sources[stylesheet.href] || xover.sources[stylesheet.href] || !(document.querySelector(`[xo-section]`)) && (xover.sources.defaults[stylesheet.href] || xover.sources.defaults["shell.xslt"]) || xover.sources.defaults[stylesheet.href] || stylesheet.href));
                             if (!(dom && dom.documentElement)) { continue; }
                             if (((dom.documentElement || {}).namespaceURI || "").indexOf("http://www.mozilla.org/TransforMiix") != -1) {
-                                // TODO: Revisar esta parte
+                                // TODO: Revisar esta parte, regularmente esto sucede cuando la transformación trae más de un nodo
                                 data.selectNodes(`processing-instruction('xml-stylesheet')`).remove();
                                 if (!this.sources[stylesheet.href]) {
                                     dom = data.transform(xover.sources[stylesheet.href] || xover.sources.defaults[stylesheet.href] || xover.sources.defaults["shell.xslt"]);
@@ -8255,7 +8282,7 @@ xover.modernize = function (targetWindow) {
                             }
                             targets.push(target)
 
-                            target.flatMap(el => [...el.querySelectorAll('img')]).map(el => el.addEventListener('error', function () {
+                            target.filter(el => el).flatMap(el => [...el.querySelectorAll('img')]).map(el => el.addEventListener('error', function () {
                                 window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
                             }));
                             target.flatMap(el => [...el.querySelectorAll('textarea')]).map(el => el.addEventListener('mouseup', function () {
