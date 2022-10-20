@@ -6064,7 +6064,7 @@ xover.modernize = function (targetWindow) {
                 value: function (...args) {
                     let source = this.message && typeof (this.message) === 'string' && new String(this.message) || this;
                     if (typeof (source.alert) === 'function') {
-                        source.alert.apply(this, args)
+                        source.alert.apply(source, args)
                     } else if (source !== this && source.render) {
                         source.render.apply(source, args)
                     }
