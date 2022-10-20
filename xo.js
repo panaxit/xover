@@ -1731,10 +1731,10 @@ xover.Source = function (source, tag, manifest_key) {
                 if (e.status != 404 && document && document.render) {
                     targets = await document.render();
                     if (!targets.length) {
-                        return reject(e)
+                        return Promise.reject(e)
                     }
                 } else {
-                    return reject(e);
+                    return Promise.reject(e);
                 }
             }).finally(() => {
                 this.fetching = undefined;
@@ -4861,7 +4861,7 @@ xover.Section = function (xml, ...args) {
                 } else {
                     let message = e instanceof Error && e || e.message || e || `Couldn't render section ${tag}`
                     xover.dom.alert(message)
-                    return Promise.reject(message);
+                    return Promise.reject();
                 }
                 return;
             }).finally(async () => {
