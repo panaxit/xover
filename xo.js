@@ -6101,23 +6101,23 @@ xover.modernize = function (targetWindow) {
             });
         }
 
-        if (!Object.prototype.hasOwnProperty('filter')) {
-            Object.defineProperty(Object.prototype, 'filter', {
-                get: function () {
-                    return function (_filter_function) {
-                        var subset = {}
-                        Object.entries(this).forEach(([key, value]) => {
-                            if (_filter_function && _filter_function.apply && _filter_function.apply(this, [key, value])) {
-                                subset[key] = value;
-                            }
-                        })
-                        return subset;
-                    }
-                }, set: function (input) {
-                    return;
-                }, enumerable: false, configurable: false
-            });
-        }
+        //if (!Object.prototype.hasOwnProperty('filter')) {
+        //    Object.defineProperty(Object.prototype, 'filter', {
+        //        get: function () {
+        //            return function (_filter_function) {
+        //                var subset = {}
+        //                Object.entries(this).forEach(([key, value]) => {
+        //                    if (_filter_function && _filter_function.apply && _filter_function.apply(this, [key, value])) {
+        //                        subset[key] = value;
+        //                    }
+        //                })
+        //                return subset;
+        //            }
+        //        }, set: function (input) {
+        //            return;
+        //        }, enumerable: false, configurable: false
+        //    });
+        //}
 
         if (!Object.prototype.hasOwnProperty('merge')) {
             Object.defineProperty(Object.prototype, 'merge', {
