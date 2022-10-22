@@ -1654,7 +1654,7 @@ xover.Source = function (source, tag, manifest_key) {
                 let document;
                 let endpoint_settings;
                 xover.listener.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }), self);
-                let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || isFunction(endpoint)).map((endpoint) => {
+                let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                         Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
                     })
@@ -1685,7 +1685,7 @@ xover.Source = function (source, tag, manifest_key) {
                             try {
                                 if (endpoint.replace(/^server:/, '') in xover.server) {
                                     document = await xover.server[endpoint.replace(/^server:/, '')].apply(self, parameters);
-                                } else if (isFunction(endpoint)) {
+                                } else if (existsFunction(endpoint)) {
                                     let fn = eval(endpoint);
                                     document = await fn.apply(self, parameters.concat(args));
                                 }
@@ -4488,15 +4488,13 @@ xover.Section = function (xml, ...args) {
                             ////response = xover.xml.reseed(response);
                             /*!(response instanceof xover.Section) && node.selectNodes(`//source:*[@request="${request}"]`).map((targetNode, index, array) => {*/
                             if (response instanceof Error) {
-                                throw (response);
-                                return;
+                                return Promise.reject(response);
                             } else if (typeof (response) === 'string') {
-                                throw (new Error(response));
-                                return;
+                                return Promise.reject((new Error(response));
                             } else if (!(response instanceof Document)) {
-                                throw (new Error("Response is not a document"))
+                                return Promise.reject((new Error("Response is not a document"))
                             } else if (!response.documentElement) {
-                                throw (new Error("Response is empty"))
+                                return Promise.reject((new Error("Response is empty"))
                             }
                             let targetNode = node
                             let new_node = response.cloneNode(true).reseed();
@@ -5773,6 +5771,14 @@ function isFunction(a) {
     return typeof a == 'function';
 }
 
+function existsFunction(function_name) {
+    try {
+        return eval(`typeof ${function_name}`) === "function"
+    } catch (e) {
+        return false;
+    }
+}
+
 function isObject(a) {
     return (a && typeof a == 'object') || isFunction(a);
 }
@@ -6314,7 +6320,7 @@ xover.modernize = function (targetWindow) {
                         }
                         let buildQuerySelector = function (target, path = []) {
                             if (!(target && target.parentNode)) {
-                                return path.join(" > ");
+                                return path.filter(el => el).join(" > ");
                             } else if (target.id) {
                                 path.unshift(`${target.tagName}#${target.id}`);
                             } else if ((target.classList || []).length) {
@@ -6326,18 +6332,18 @@ xover.modernize = function (targetWindow) {
                                 path.unshift(target.tagName || '*');
                             }
 
-                            if (target.ownerDocument.querySelector(path.join(" > ")) === target) {
-                                return path.join(" > ");
-                            } else if (target.parentNode && target.parentNode.querySelector(path.join(" > "))) {
+                            if (target.ownerDocument.querySelector(path.filter(el => el).join(" > ")) === target) {
+                                return path.filter(el => el).join(" > ");
+                            } else if (target.parentNode && target.parentNode.querySelector(path.filter(el => el).join(" > "))) {
                                 let position = target.parentNode && [...target.parentNode.children].findIndex(el => el == target);
                                 if (position) {
                                     path[path.length - 1] = `${path[path.length - 1]}:nth-child(${position + 1})`;
                                 }
                                 path.unshift(buildQuerySelector(target.parentNode, []));
                             } else {
-                                return path.join(" > ");
+                                return path.filter(el => el).join(" > ");
                             }
-                            return path.flat().join(" > ");
+                            return path.filter(el => el).flat().join(" > ");
                         }
 
                         return buildQuerySelector(this);
