@@ -819,6 +819,7 @@ xover.server = new Proxy({}, {
                 args.push(settings);
                 settings = {}
             }
+            settings = Object.assign(Object.fromEntries(xo.manifest.getSettings(`server:${key}`)), settings)
             let payload = args.pop() || settings["payload"];
             let query = args.pop() || settings["query"] || {};
 
