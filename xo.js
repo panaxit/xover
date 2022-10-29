@@ -591,6 +591,8 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
             if (evt instanceof Event) {
                 window.top.dispatchEvent(evt);
             } else if (!(event.defaultPrevented || event.cancelBubble)) {
+                event.detail["target"] = event.detail["target"] || axis;
+                event.detail["srcElement"] = event.detail["srcElement"] || axis;
                 let new_event = new xover.listener.Event(evt, event.detail);
                 window.top.dispatchEvent(new_event);
                 if (new_event.defaultPrevented) {
@@ -618,7 +620,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         }, []);
         //let listeners = Object.values(xover.listener[event.type]).slice(0);
         let first_listener = listeners[0];
-        listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
+        listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.detail && (event.detail.target || event.detail.srcElement) || event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -796,7 +798,7 @@ xover.Manifest = function (manifest = {}) {
 
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
-        let tag_name = typeof (input) == 'string' && input || input.tag || "";
+        let tag_name = typeof (input) == 'string' && input || input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
         let settings = Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && (tag_name === key || key[0] === '^' && tag_name && tag_name.match(RegExp(`^${(key || '').replace(/[\\]/g, '\\$&')}$`, "i")) || !['#', '^'].includes(key[0]) && (input instanceof xover.Section || input instanceof Document) && input.selectSingleNode(key))).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
         if (config_name) {
             settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => value);
@@ -6172,73 +6174,6 @@ xover.modernize = function (targetWindow) {
 
         if (targetWindow.document.implementation.hasFeature("XPath", "3.0")) {
             if (typeof XMLDocument == "undefined") { XMLDocument = Document; }
-            Node.prototype.selectSingleNode = function (cXPathString, xNode) {
-                if (!xNode) { xNode = this; }
-                if (xNode instanceof xover.Section) {
-                    xNode = (xNode.document || xNode);
-                }
-                if (!cXPathString) {
-                    return null;
-                }
-                cXPathString = cXPathString.replace(/&quot;/gi, '"');
-                let namespace = this.resolveNS("");
-                if (!cXPathString.match(/[^\w\d\-\_]/g) && namespace) {
-                    cXPathString = `*[namespace-uri()='${namespace}' and name()='${cXPathString}']`
-                }
-                let xItems = this.selectNodes(`(${cXPathString})[1]`, xNode);
-                if (xItems.length > 0) { return xItems[0]; }
-                else { return null; }
-            }
-
-            Node.prototype.selectNodes = function (cXPathString, xNode) {
-                if (!xNode) { xNode = this; }
-                //if (xNode instanceof xover.Section) {
-                xNode = (xNode.document || xNode);
-                //}
-                if (!cXPathString.match(/[^\w\d\-\_]/g)) {
-                    cXPathString = `*[${this.resolveNS("") !== null && `namespace-uri()='${this.resolveNS("")}' and ` || ''}name()='${cXPathString}']`
-                }
-                let contextNode = xNode.documentElement || xNode;
-                let nsResolver = (function (element) {
-                    let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
-
-                    return function (prefix) {
-                        return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix];
-                    };
-                }(contextNode))
-
-                let selection = new Array;
-                try {
-                    let aItems = (xNode.ownerDocument || xNode).evaluate(cXPathString, xNode, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null)
-                    for (let i = 0; i < aItems.snapshotLength; i++) {
-                        selection[i] = aItems.snapshotItem(i);
-                        if (selection[i] instanceof ProcessingInstruction) {
-                            selection[i] = new xover.ProcessingInstruction(selection[i]);
-                        }
-                    }
-                } catch (e) {
-                    if (e.message.match(/contains unresolvable namespaces/g) && ((arguments || {}).callee || {}).caller !== XMLDocument.prototype.selectNodes && XMLDocument.prototype.selectNodes.caller !== Element.prototype.selectNodes) {
-                        let prefixes = cXPathString.match(/\w+(?=\:)/g);
-                        prefixes = [...new Set(prefixes)]; //remueve duplicados
-                        let target = xNode;
-                        let all_namespaces = xover.xml.normalizeNamespaces(target).getNamespaces();
-                        let new_namespaces = prefixes.filter(prefix => (all_namespaces[prefix] || xover.spaces[prefix]))
-
-                        if (new_namespaces.length) {
-                            new_namespaces.map(prefix => {
-                                (target.documentElement || target).setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, (all_namespaces[prefix] || xover.spaces[prefix]));
-                            });
-                            xNode.selectNodes(cXPathString);
-                        } else {
-                            throw (e);
-                        }
-                    } else {
-                        throw (e);
-                    }
-                }
-                return new xover.NodeSet(selection);
-            }
-            //XMLDocument.prototype.selectAll = XMLDocument.prototype.selectNodes
 
             if (!Node.prototype.hasOwnProperty('resolveNS')) {
                 Object.defineProperty(Node.prototype, "resolveNS", {
@@ -6251,6 +6186,87 @@ xover.modernize = function (targetWindow) {
                         };
                     }
                 });
+            }
+
+            Node.prototype.selectNodes = function (xpath, context) {
+                if (!context) { context = this; }
+                //if (context instanceof xover.Section) {
+                context = (context.document || context);
+                //}
+                if (!xpath.match(/[^\w\d\-\_]/g)) {
+                    xpath = `*[${this.resolveNS("") !== null && `namespace-uri()='${this.resolveNS("")}' and ` || ''}name()='${xpath}']`
+                }
+                let contextNode = context.documentElement || context;
+                let nsResolver = (function (element) {
+                    let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
+
+                    return function (prefix) {
+                        return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix];
+                    };
+                }(contextNode))
+
+                let selection = new Array;
+                try {
+                    let aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null)
+                    for (let i = 0; i < aItems.snapshotLength; i++) {
+                        selection[i] = aItems.snapshotItem(i);
+                        if (selection[i] instanceof ProcessingInstruction) {
+                            selection[i] = new xover.ProcessingInstruction(selection[i]);
+                        }
+                    }
+                } catch (e) {
+                    if (e.message.match(/contains unresolvable namespaces/g) && ((arguments || {}).callee || {}).caller !== XMLDocument.prototype.selectNodes && XMLDocument.prototype.selectNodes.caller !== Element.prototype.selectNodes) {
+                        let prefixes = xpath.match(/\w+(?=\:)/g);
+                        prefixes = [...new Set(prefixes)]; //remueve duplicados
+                        let target = context;
+                        let all_namespaces = xover.xml.normalizeNamespaces(target).getNamespaces();
+                        let new_namespaces = prefixes.filter(prefix => (all_namespaces[prefix] || xover.spaces[prefix]))
+
+                        if (new_namespaces.length) {
+                            new_namespaces.map(prefix => {
+                                (target.documentElement || target).setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, (all_namespaces[prefix] || xover.spaces[prefix]));
+                            });
+                            context.selectNodes(xpath);
+                        } else {
+                            throw (e);
+                        }
+                    } else {
+                        throw (e);
+                    }
+                }
+                return new xover.NodeSet(selection);
+            }
+
+            Node.prototype.selectSingleNode = function (xpath, context) {
+                if (!context) { context = this; }
+                if (context instanceof xover.Section) {
+                    context = (context.document || context);
+                }
+                if (!xpath) {
+                    return null;
+                }
+                xpath = xpath.replace(/&quot;/gi, '"');
+                let namespace = this.resolveNS("");
+                if (!xpath.match(/[^\w\d\-\_]/g) && namespace) {
+                    xpath = `*[namespace-uri()='${namespace}' and name()='${xpath}']`
+                }
+                let xItems = this.selectNodes(`(${xpath})[1]`, context);
+                if (xItems.length > 0) { return xItems[0]; }
+                else { return null; }
+            }
+            Node.prototype.select = Node.prototype.selectNodes
+            Node.prototype.selectFirst = Node.prototype.selectSingleNode
+
+            Node.prototype.filter = function (...args) {
+                if (typeof (args[0]) === 'string') {
+                    if (this.selectSingleNode(args[0])) {
+                        return this
+                    } else {
+                        return (this.ownerDocument || this).createComment("ack:no_match");
+                    }
+                } else if (typeof (args[0]) === 'function') {
+                    return args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null;
+                }
             }
 
             XMLDocument.prototype.compareTo = function (document, stop_at_first_change) {
@@ -7239,13 +7255,8 @@ xover.modernize = function (targetWindow) {
             //    xover.listener.dispatchEvent(new xover.listener.Event('remove', { target: attribute_node, element: this, attribute: attribute_node }), this);
             //}
 
-            Attr.prototype.selectSingleNode = function (cXPathString) {
-                if (this.ownerDocument.selectSingleNode) {
-                    return this.ownerDocument.selectSingleNode(cXPathString, this);
-                }
-                else {
-                    throw "For XML Elements Only";
-                }
+            Attr.prototype.selectSingleNode = function (xpath) {
+                    return this.ownerDocument.selectSingleNode(xpath, this);                
             }
 
             Attr.prototype.getPropertyValue = function (property_name) {
@@ -7580,37 +7591,6 @@ xover.modernize = function (targetWindow) {
                         return {}
                     }
 
-                }
-            }
-
-            Element.prototype.selectNodes = function (cXPathString) {
-                if (this.ownerDocument.selectNodes) { return this.ownerDocument.selectNodes(cXPathString, this); }
-                //else {
-                //    throw "For XML Elements Only";
-                //}
-            }
-            //Element.prototype.selectAll = Element.prototype.selectNodes
-
-            Element.prototype.selectSingleNode = function (cXPathString) {
-                if (this.ownerDocument.selectSingleNode) {
-                    return this.ownerDocument.selectSingleNode(cXPathString, this);
-                }
-                //else {
-                //    throw "For XML Elements Only";
-                //}
-            }
-            //Element.prototype.selectFirst = Element.prototype.selectSingleNode
-            //Element.prototype.select = Element.prototype.selectSingleNode
-
-            Node.prototype.filter = function (...args) {
-                if (typeof (args[0]) === 'string') {
-                    if (this.selectSingleNode(args[0])) {
-                        return this
-                    } else {
-                        return this.ownerDocument.createComment("ack:no_match");
-                    }
-                } else if (typeof (args[0]) === 'function') {
-                    return args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null;
                 }
             }
 
@@ -8076,6 +8056,13 @@ xover.modernize = function (targetWindow) {
                         let action;
                         let stylesheet_target = 'body';
                         let targets = []
+                        if (stylesheets instanceof Array && !Object.fromEntries(stylesheets).length) {
+                            stylesheets = Object.assign(stylesheets, Object.fromEntries(xo.manifest.getSettings(this, 'stylesheets')))
+                            let message = (this.documentElement || this).selectSingleNode("message/text()")
+                            if (message) {
+                                return Promise.reject(String(message))
+                            }
+                        }
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             action = (stylesheet.action || !stylesheet.target && "append" || action);
