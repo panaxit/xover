@@ -589,6 +589,8 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         listeners = listeners.filter(el => el).flat(Infinity);
         listeners.forEach(evt => {
             if (evt instanceof Event) {
+                evt.detail["target"] = evt.detail["target"] || axis;
+                evt.detail["srcElement"] = evt.detail["srcElement"] || axis;
                 window.top.dispatchEvent(evt);
             } else if (!(event.defaultPrevented || event.cancelBubble)) {
                 event.detail["target"] = event.detail["target"] || axis;
@@ -814,8 +816,20 @@ xover.server = new Proxy({}, {
         if (!(xover.manifest.server && xover.manifest.server[key])) {
             throw (new Error(`Endpoint "${key}" not configured`));
         }
-        let handler = (async (...args) => {
+        let return_value, request, response;
+
+        let promise = Promise;
+        const thenable = {
+            then: function (onFulfilled) {
+                () => onFulfilled(return_value, request, response)
+            }
+        };
+        let handler = (async function (...args) {
             args = args.filter(el => el);
+            let responseHandler;
+            if (typeof (args[args.length - 1]) == 'function') {
+                responseHandler = args.pop();
+            }
             let settings = args.length > 1 && args.pop() || {};
             if (settings.constructor != {}.constructor) {
                 args.push(settings);
@@ -833,7 +847,6 @@ xover.server = new Proxy({}, {
                 delete payload[key];
             })
 
-            let return_value, request, response;
             url = new xover.URL(xover.manifest.server[key], undefined, settings);
             if (payload) {
                 if (url.method === 'POST' || payload instanceof Document || !Object.entries(Object.fromEntries(new URLSearchParams(payload).entries())).length) {
@@ -849,20 +862,33 @@ xover.server = new Proxy({}, {
             } catch (e) {
                 [return_value, request, response] = [e.body, e.request, e]
             }
+
             return_value instanceof XMLDocument && settings["stylesheets"] && settings["stylesheets"].reverse().map(stylesheet => {
                 return_value.addStylesheet(stylesheet);
             });
+
             let event = new xover.listener.Event('response', { response_value: return_value });
             xover.listener.dispatchEvent(event, response);
             return_value = event.detail.response_value || return_value;
 
-            let response_value = settings["responseHandler"] && isFunction(settings["responseHandler"]) ? settings["responseHandler"](return_value, request, response) : return_value
+            responseHandler && responseHandler(return_value, request, response)
             if (response.ok) {
-                return Promise.resolve(response_value);
+                let event = new xover.listener.Event(`success::server:${key}`, { return_value });
+                xover.listener.dispatchEvent(event, [return_value, request, response]);
+                return Promise.resolve(return_value);
             } else {
+                let event = new xover.listener.Event(`failed::server:${key}`, { response });
+                xover.listener.dispatchEvent(event, [return_value, request, response]);
                 return Promise.reject(response);
             }
         })
+
+        //Object.defineProperty(handler, 'handleResponse', {
+        //    get: function (...args) {
+        //        return promise.
+        //            then(() => thenable);
+        //    }
+        //});
 
         if (self.hasOwnProperty(key)) {
             Object.defineProperty(self[key], 'fetch', {
@@ -1403,6 +1429,13 @@ Object.defineProperty(xover.site, 'update', {
     , writable: false, enumerable: false, configurable: false
 });
 
+Object.defineProperty(xover.site, 'goto', {
+    value: function (href, state) {
+        xover.site.seed = href;
+    }
+    , writable: false, enumerable: false, configurable: false
+});
+
 Object.defineProperty(xover.site, 'detectActive', {
     value: function () {
         //let active_tag = self.tag;
@@ -1669,14 +1702,14 @@ xover.Source = function (source, tag, manifest_key) {
             let url, href;
             let payload;
             let settings = Object.fromEntries(xover.manifest.getSettings(tag));
+            source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
+                Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+            }) || source;
             this.fetching = this.fetching || new Promise(async (resolve, reject) => {
                 let document;
                 let endpoint_settings;
                 xover.listener.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }), self);
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
-                    manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
-                        Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
-                    })
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value])) || parameters
                     parameters = parameters.constructor === [].constructor && parameters || [parameters];
@@ -2891,25 +2924,25 @@ xover.Response = function (response, request) {
     });
     Object.defineProperty(self, 'render', {
         value: function ({ to, stylesheet } = {}) {
-            let content = response.json ? JSON.stringify(response.json) : response.document.body.innerHTML;
-            if (response.ok) {
-                if (typeof (to) == 'function') {
-                    try {
-                        to.apply(to, [content])
-                    } catch (e) {
-                        if (e.message == 'Illegal invocation') {
-                            to.call(window, content);
-                        }
-                    }
-                } else if (to) {
-                    to.innerHTML = content;
-                } else {
-                    xover.dom.createDialog(content);
-                }
-            } else {
-                let response = this.json || this.document || this.body;
-                response.render && response.render();
-            }
+            //let content = response.json ? JSON.stringify(response.json) : response.document.body.innerHTML;
+            //if (response.ok) {
+            //    if (typeof (to) == 'function') {
+            //        try {
+            //            to.apply(to, [content])
+            //        } catch (e) {
+            //            if (e.message == 'Illegal invocation') {
+            //                to.call(window, content);
+            //            }
+            //        }
+            //    } else if (to) {
+            //        to.innerHTML = content;
+            //    } else {
+            //        xover.dom.createDialog(content);
+            //    }
+            //} else {
+            let response = this.json || this.document || this.body;
+            response.render && response.render();
+            //}
         }
     });
     Object.defineProperty(self, 'processBody', {
@@ -3074,7 +3107,7 @@ xover.URL = function (url, base, settings = {}) {
     }
     method = settings["method"] || method;
     query = settings["query"];
-    url = new URL(url, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+    url = new URL(url.replace(/\+/g, '%2B'), base || location.origin + location.pathname.replace(/[^/]+$/, ""));
     let href = url.href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '');
 
     if (query instanceof URLSearchParams) {
@@ -3280,7 +3313,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //}
     if (xover.session.debug) {
         return_value.$$(`//xsl:template/*[not(self::xsl:param or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element)]`).forEach(el => {
-            let debug_node = xover.xml.createNode(el.selectSingleNode('preceding-sibling::xsl:attribute') && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute> ` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `);
+            let debug_node = xover.xml.createNode(el.selectSingleNode('preceding-sibling::xsl:attribute') && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute> ` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name(),'::')"/></xsl:if> ${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `);
             el.appendBefore(debug_node)
         });
         return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
@@ -4407,7 +4440,7 @@ xover.Section = function (xml, ...args) {
     });
 
     Object.defineProperty(this, 'triggerBindings', {
-        value: async function () {
+        value: async function (backwards_compatibility = false) {
             var context = this;
             if (!(context.isActive)) {
                 return;
@@ -4418,76 +4451,78 @@ xover.Section = function (xml, ...args) {
             //if (!context.selectSingleNode('//@source:*') || context.selectSingleNode('.//@request:*[local-name()!="init"]')) {
             //    return;
             //}
-            let new_bindings = 0;
-            let bindings = [].concat(
-                context.stylesheets.filter(stylesheet => stylesheet.role == "binding" || stylesheet.target == "self" && stylesheet.action == 'replace').map(async function (stylesheet) {
-                    if ((await stylesheet.document || window.document.createElement('p')).selectSingleNode('//xsl:copy[not(xsl:apply-templates) and not(comment()="ack:no-apply-templates")]')) {
-                        console.warn('In a binding stylesheet a xsl:copy withow a xsl:apply-templates may cause an infinite loop. If missing xsl:apply-templates was intentional, please add an acknowledge comment <!--ack:no-apply-templates-->');
-                    };
-                    return stylesheet
-                })
-                //, (xover.manifest.getSettings(context, 'stylesheets') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
-                , ["xover/databind.xslt"]);
-            bindings = await Promise.all(bindings).then(document => document)
-            bindings = [...new Set(bindings)].filter(binding => binding);
-            //let original = xover.xml.clone(context); //Se obtiene el original si se quieren comparar cambios
-            if (!__document.documentElement.resolveNS("changed")) {
-                __document.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:changed", xover.spaces["changed"])
-            }
-            let cloned_document = __document.cloneNode(true);
-            cloned_document.section = context;
-            let some_changed = false;
-            var changed = cloned_document.selectNodes("//@changed:*");
-            var stylesheets = [];
-            for (let binding of bindings) {
-                do {
-                    changed && changed.remove(false);
-                    stylesheet = await binding;
-                    if (!stylesheets.find(doc => doc.selectSingleNode(`//xsl:import[@href="${stylesheet.href || stylesheet}"]|//xsl:import[@href="${stylesheet.href || stylesheet}"]|//comment()[contains(.,'=== Imported from "${stylesheet.href || stylesheet}" ===')]`))) {
-                        let xsl_doc = stylesheet.document || context.sources[stylesheet] || xover.sources[stylesheet]// || await xover.sources.load(stylesheet);
-                        !xsl_doc.documentElement && xsl_doc.fetch && await xsl_doc.fetch();
-                        stylesheets.push(xsl_doc);
+            if (backwards_compatibility) {
+                let new_bindings = 0;
+                let bindings = [].concat(
+                    context.stylesheets.filter(stylesheet => stylesheet.role == "binding" || stylesheet.target == "self" && stylesheet.action == 'replace').map(async function (stylesheet) {
+                        if ((await stylesheet.document || window.document.createElement('p')).selectSingleNode('//xsl:copy[not(xsl:apply-templates) and not(comment()="ack:no-apply-templates")]')) {
+                            console.warn('In a binding stylesheet a xsl:copy withow a xsl:apply-templates may cause an infinite loop. If missing xsl:apply-templates was intentional, please add an acknowledge comment <!--ack:no-apply-templates-->');
+                        };
+                        return stylesheet
+                    })
+                    //, (xover.manifest.getSettings(context, 'stylesheets') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
+                    , ["xover/databind.xslt"]);
+                bindings = await Promise.all(bindings).then(document => document)
+                bindings = [...new Set(bindings)].filter(binding => binding);
+                //let original = xover.xml.clone(context); //Se obtiene el original si se quieren comparar cambios
+                if (!__document.documentElement.resolveNS("changed")) {
+                    __document.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:changed", xover.spaces["changed"])
+                }
+                let cloned_document = __document.cloneNode(true);
+                cloned_document.section = context;
+                let some_changed = false;
+                var changed = cloned_document.selectNodes("//@changed:*");
+                var stylesheets = [];
+                for (let binding of bindings) {
+                    do {
+                        changed && changed.remove(false);
+                        stylesheet = await binding;
+                        if (!stylesheets.find(doc => doc.selectSingleNode(`//xsl:import[@href="${stylesheet.href || stylesheet}"]|//xsl:import[@href="${stylesheet.href || stylesheet}"]|//comment()[contains(.,'=== Imported from "${stylesheet.href || stylesheet}" ===')]`))) {
+                            let xsl_doc = stylesheet.document || context.sources[stylesheet] || xover.sources[stylesheet]// || await xover.sources.load(stylesheet);
+                            !xsl_doc.documentElement && xsl_doc.fetch && await xsl_doc.fetch();
+                            stylesheets.push(xsl_doc);
 
-                        if (stylesheet.target == "self") {
-                            let i = 0;
-                            do {
-                                cloned_document.selectNodes("//@binding:changed").remove(false);
-                                ++i;
-                                cloned_document = cloned_document.transform(xsl_doc);
-                            } while (i < 15 && cloned_document.selectSingleNode(stylesheet.assert || '*[1=0]') && (!xsl_doc.documentElement.getAttribute('xmlns:binding') || cloned_document.selectSingleNode("//@binding:changed")))
-                        } else {
-                            cloned_document = cloned_document.transform(xsl_doc.consolidate());
+                            if (stylesheet.target == "self") {
+                                let i = 0;
+                                do {
+                                    cloned_document.selectNodes("//@binding:changed").remove(false);
+                                    ++i;
+                                    cloned_document = cloned_document.transform(xsl_doc);
+                                } while (i < 15 && cloned_document.selectSingleNode(stylesheet.assert || '*[1=0]') && (!xsl_doc.documentElement.getAttribute('xmlns:binding') || cloned_document.selectSingleNode("//@binding:changed")))
+                            } else {
+                                cloned_document = cloned_document.transform(xsl_doc.consolidate());
+                            }
+                            cloned_document.section = context;
                         }
-                        cloned_document.section = context;
-                    }
-                    changed = cloned_document.selectNodes("//@changed:*");
-                    some_changed = (some_changed || !!changed.length);
-                } while (context && changed.length && ++new_bindings <= 15)
-            }
-            if (cloned_document.$(`//*[not(@xo:id)]`)) {
-                cloned_document.reseed();
-            }
-            //if (some_changed) { //se quita esta validación porque los bindings podrían estar modificando el documento sin marcar un cambio con changed:*
-            __document.replaceBy(cloned_document); // context.document = cloned_document; TODO: Revisar si es necesario hacer la asignación por medio de la propiedad .document
-            ////}
+                        changed = cloned_document.selectNodes("//@changed:*");
+                        some_changed = (some_changed || !!changed.length);
+                    } while (context && changed.length && ++new_bindings <= 15)
+                }
+                if (cloned_document.$(`//*[not(@xo:id)]`)) {
+                    cloned_document.reseed();
+                }
+                //if (some_changed) { //se quita esta validación porque los bindings podrían estar modificando el documento sin marcar un cambio con changed:*
+                __document.replaceBy(cloned_document); // context.document = cloned_document; TODO: Revisar si es necesario hacer la asignación por medio de la propiedad .document
+                ////}
 
-            ///* Con este código se detectan cambios. Pero es muy costoso*/
-            ////let differences = xover.xml.compare(context, original, true)
-            ////differences.selectNodes('//c:change[@c:type!="Node"]').map(change => {
-            ////    let changes = change ? [...context.selectSingleNode(`//*[@xo:id="${change.getAttributeNS("http://panax.io/xover", "id")}"]`).attributes].filter(attribute => (attribute.prefix != 'xmlns' && change.getAttribute(attribute.name) != attribute.value)) : [];
-            ////    changes.map(attribute => {
-            ////        original.section = context.section;
-            ////        original.selectSingleNode(`//*[@xo:id="${attribute.ownerElement.getAttributeNS("http://panax.io/xover", "id")}"]`).setAttributeNS(null, attribute.name, attribute.value, false);
-            ////    });
-            ////})
-            //if (!(xover.manifest.server || {}).request) {
-            //    return
-            //}
+                ///* Con este código se detectan cambios. Pero es muy costoso*/
+                ////let differences = xover.xml.compare(context, original, true)
+                ////differences.selectNodes('//c:change[@c:type!="Node"]').map(change => {
+                ////    let changes = change ? [...context.selectSingleNode(`//*[@xo:id="${change.getAttributeNS("http://panax.io/xover", "id")}"]`).attributes].filter(attribute => (attribute.prefix != 'xmlns' && change.getAttribute(attribute.name) != attribute.value)) : [];
+                ////    changes.map(attribute => {
+                ////        original.section = context.section;
+                ////        original.selectSingleNode(`//*[@xo:id="${attribute.ownerElement.getAttributeNS("http://panax.io/xover", "id")}"]`).setAttributeNS(null, attribute.name, attribute.value, false);
+                ////    });
+                ////})
+                //if (!(xover.manifest.server || {}).request) {
+                //    return
+                //}
+                if (new_bindings) {
+                    context.takeSnapshot();
+                }
+            }
 
             var requests = context.selectNodes(`//*[contains(namespace-uri(),'http://panax.io/source') and not(@state:disabled="true") and not(*)]`)//context.selectNodes('.//source:*[not(@state:disabled="true") and not(*)]|.//request:*[not(@state:disabled="true") and not(*)]');
-            if (new_bindings) {
-                context.takeSnapshot();
-            }
             var tag = context.tag;
             requests = requests.filter(req => !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag].hasOwnProperty(req.nodeType == 1 ? req.getAttribute("command") : req.value)));
             if (requests.length) {
@@ -4560,10 +4595,7 @@ xover.Section = function (xml, ...args) {
                             }
                             await context.render()
                             delete xover.data.binding.requests[self.tag][request];
-                            //xover.delay(50).then(() => {
-                            //xover.sections[tag].render(/*true*/);
-                            //});
-                            //});
+
                         };
                         let headers = new Headers({
                             "Accept": content_type.xml
@@ -6802,9 +6834,9 @@ xover.modernize = function (targetWindow) {
                 Object.defineProperty(Text.prototype, 'scope', scope_handler);
             }
 
-            if (!Element.prototype.hasOwnProperty('source')) {
-                Object.defineProperty(Element.prototype, 'source', Object.getOwnPropertyDescriptor(Element.prototype, 'scope'));
-            }
+            //if (!Element.prototype.hasOwnProperty('source')) {
+            //    Object.defineProperty(Element.prototype, 'source', Object.getOwnPropertyDescriptor(Element.prototype, 'scope'));
+            //}
             Object.defineProperty(HTMLTableCellElement.prototype, 'scope', Object.getOwnPropertyDescriptor(Element.prototype, 'scope'));
 
             const section_handler = {
@@ -7256,7 +7288,7 @@ xover.modernize = function (targetWindow) {
             //}
 
             Attr.prototype.selectSingleNode = function (xpath) {
-                    return this.ownerDocument.selectSingleNode(xpath, this);                
+                return this.ownerDocument.selectSingleNode(xpath, this);
             }
 
             Attr.prototype.getPropertyValue = function (property_name) {
@@ -8275,8 +8307,8 @@ xover.modernize = function (targetWindow) {
                                 let active_element_selector = active_element.selector
                                 if (action == "replace") {
                                     target = [target.replace(dom)];
-                                    let to_be_replaced = target[0].querySelector(active_element_selector)
-                                    to_be_replaced && to_be_replaced.replaceWith(active_element)
+                                    //let to_be_replaced = target[0].querySelector(active_element_selector)
+                                    //to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
                                     //target.append(dom.documentElement || dom);
                                     //} else {
@@ -8315,7 +8347,7 @@ xover.modernize = function (targetWindow) {
                                 }
                             }));
                             target.flatMap(el => [...el.querySelectorAll('[xo-attribute],input[type="file"]')]).map(el => el.addEventListener('change', async function () {
-                                let scope = this.source;
+                                let scope = this.scope;
                                 let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
                                 let srcElement = event.target;
                                 let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : srcElement.value;
