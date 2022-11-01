@@ -6129,6 +6129,8 @@ xover.modernize = function (targetWindow) {
                         source.alert.apply(source, args)
                     } else if (source !== this && source.render) {
                         source.render.apply(source, args)
+                    } else if (source instanceof Attr) {
+                        source.value.render()
                     }
                 },
                 writable: true, enumerable: false, configurable: false
