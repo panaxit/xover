@@ -1898,6 +1898,7 @@ xover.spaces["xsi"] = "http://www.w3.org/2001/XMLSchema-instance"
 xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
 xover.spaces["session"] = "http://panax.io/session"
+xover.spaces["html"] = "http://www.w3.org/1999/xhtml"
 xover.spaces["xhtml"] = "http://www.w3.org/1999/xhtml"
 xover.spaces["xlink"] = "http://www.w3.org/1999/xlink"
 
@@ -3313,10 +3314,10 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     //}
     if (xover.session.debug) {
         return_value.$$(`//xsl:template/*[not(self::xsl:param or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element)]`).forEach(el => {
-            let debug_node = xover.xml.createNode(el.selectSingleNode('preceding-sibling::xsl:attribute') && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute> ` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name(),'::')"/></xsl:if> ${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `);
+            let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute> ` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name(),'::')"/></xsl:if> ${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:comment> `);
             el.appendBefore(debug_node)
         });
-        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xhtml:*[not(self::xhtml:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//html:*[not(self::html:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
             el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             if (!el.getAttribute("xo-attribute")) {
                 el.set("xo-attribute", "{name(current()[not(self::*)])}")
@@ -8185,7 +8186,7 @@ xover.modernize = function (targetWindow) {
 
                             let _applyScripts = function (targetDocument, scripts = []) {
                                 for (let script of scripts) {
-                                    if (script.selectSingleNode(`self::*[self::xhtml:script[@src] or self::xhtml:link[@href] or self::xhtml:meta][not(text())]`)) {
+                                    if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta][not(text())]`)) {
                                         if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script)).length) {
                                             var new_element = targetDocument.createElement(script.tagName);
                                             [...script.attributes].map(attr => new_element.setAttributeNS(null, attr.name, attr.value));
@@ -8200,7 +8201,7 @@ xover.modernize = function (targetWindow) {
                                         }
                                     } else if (!script.getAttribute("src") && script.textContent) {
                                         script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
-                                        if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::xhtml:style`)) {
+                                        if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
                                             if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
                                                 targetDocument.documentElement.appendChild(script);
                                             }
@@ -8227,7 +8228,7 @@ xover.modernize = function (targetWindow) {
                                 }
                             }
                             //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
-                            scripts_external = dom.selectNodes('//*[self::xhtml:script[@src or @defer or @async or not(text())] or self::xhtml:link[@href] or self::xhtml:meta][not(text())]').removeAll();
+                            scripts_external = dom.selectNodes('//*[self::html:script[@src or @defer or @async or not(text())] or self::html:link[@href] or self::html:meta][not(text())]').removeAll();
                             _applyScripts(document, scripts_external);
                             dom.$$('//@xo-attribute[.="" or .="xo:id"]').removeAll()
                             if (!target) {
@@ -8296,7 +8297,7 @@ xover.modernize = function (targetWindow) {
                                     target.append(...dom.cloneNode(true).childNodes);
                                 }
                             } else {
-                                scripts = dom.selectNodes('//*[self::xhtml:script]').map(el => {
+                                scripts = dom.selectNodes('//*[self::html:script]').map(el => {
                                     !el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
                                     let cloned = el.cloneNode(true);
                                     el.textContent = ''
