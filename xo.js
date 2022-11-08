@@ -249,7 +249,7 @@ xover.sections = new Proxy({}, {
         let exists = key in self
         let same = self[xover.site.seed] === self[key]
         sessionStorage.removeItem(key);
-        xover.database.remove('sources', key);
+        xover.store.remove('sources', key);
 
         if (exists) {
             Reflect.deleteProperty(self, key);
@@ -270,7 +270,7 @@ xover.data.binding["max_subscribers"] = 30;
 xover.data.binding.sources = {};
 xover.data.binding.requests = {};
 xover.data.titles = {};
-xover.database = new Proxy({
+xover.store = new Proxy({
     config: {
         'files': { keyPath: "uid" }
         , 'sources': { autoIncrement: true }
@@ -284,9 +284,9 @@ xover.database = new Proxy({
     }
 });
 
-Object.defineProperty(xover.database, 'files', {
+Object.defineProperty(xover.store, 'files', {
     get: async function () {
-        let section = await xover.database.open('files', { keyPath: "uid" });
+        let section = await xover.store.open('files', { keyPath: "uid" });
         let _add = section.add;
         section.add = function (files) {
             let _url;
@@ -309,9 +309,9 @@ Object.defineProperty(xover.database, 'files', {
     }
 });
 
-Object.defineProperty(xover.database, 'sources', {
+Object.defineProperty(xover.store, 'sources', {
     get: async function () {
-        let section = await xover.database.open('sources');
+        let section = await xover.store.open('sources');
         let _add = section.add;
         section.add = function (source, name = '') {
             let record_key = name;
@@ -343,7 +343,7 @@ Object.defineProperty(xover.database, 'sources', {
     }
 });
 
-Object.defineProperties(xover.database, {
+Object.defineProperties(xover.store, {
     read: {
         value: async function (section_name, key) {
             let section;
@@ -369,9 +369,9 @@ Object.defineProperties(xover.database, {
     open: {
         value: function (key, config = { autoIncrement: true }, method = 'readwrite') {
             return new Promise(async (resolve, reject) => {
-                let sections = Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(xover.database)).filter(([prop, func]) => func["get"] || func["enumerable"]));
-                //let database = await indexedDB.databases().then(databases => databases.find(db => db.name == 'xover.database'));
-                let connection = indexedDB.open('xover.database', 4);
+                let sections = Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(xover.store)).filter(([prop, func]) => func["get"] || func["enumerable"]));
+                //let store = await indexedDB.stores().then(stores => stores.find(db => db.name == 'xover.store'));
+                let connection = indexedDB.open('xover.store', 4);
                 let handler = function (event) {
                     let section = event.target.result.transaction([key], method).objectStore(key);
                     section.add = function (...args) {
@@ -453,7 +453,7 @@ Object.defineProperties(xover.database, {
                     let db = event.target.result;
                     Object.entries(Object.getOwnPropertyDescriptors(sections)).filter(([prop, description]) => description.value.get).map(([section_name]) => {
                         if (!Array.from(db.objectStoreNames).includes(section_name)) {
-                            db.createObjectStore(section_name, xover.database.config[section_name]);//autoIncrement: true
+                            db.createObjectStore(section_name, xover.store.config[section_name]);//autoIncrement: true
                         }
                     });
                 };
@@ -484,7 +484,7 @@ xover.dom.controls = {};
 xover.dom.refreshTitle = function (input) {
     let document_title = (input || document.title).match(/([^\(]+)(.*)/);
     let [, title, environment] = (document_title || [, "", ""]);
-    document.title = title.replace(/\s+$/, '') + (` (${xover.session.database_id && xover.session.database_id != 'main' ? xover.session.database_id : 'v.'} ${xover.session.cache_name && xover.session.cache_name.split('_').pop() || ""})`).replace(/\((v\.)?\s+\)|\s+(?=\))/g, '');
+    document.title = title.replace(/\s+$/, '') + (` (${xover.session.store_id && xover.session.store_id != 'main' ? xover.session.store_id : 'v.'} ${xover.session.cache_name && xover.session.cache_name.split('_').pop() || ""})`).replace(/\((v\.)?\s+\)|\s+(?=\))/g, '');
 }
 xover.json = {};
 
@@ -658,7 +658,7 @@ xover.listener.on('keyup', async function (event) {
 xover.listener.on('error', async function ({ event }) {
     if (!(event && !(event.defaultPrevented))) return;
     let srcElement = event.target;
-    let section = await xover.database.files;
+    let section = await xover.store.files;
     let record = await section.get(srcElement.src);
     if (record) {
         let old_url = srcElement.src;
@@ -699,7 +699,7 @@ xover.listener.on('popstate', async function (event) {
     //function popstate() {
     //    let finished = false;
     //    let cancel = () => finished = true;
-    xover.session.database_id = xover.session.database_id;
+    xover.session.store_id = xover.session.store_id;
     xover.site.seed = (event.state || {}).seed || event.target.location.hash;
     //const promise = new Promise((resolve, reject) => {
     //    setTimeout(async () => {
@@ -1098,10 +1098,10 @@ Object.defineProperty(xover.session, 'logout', {
 });
 
 Object.defineProperty(xover.session, 'use', {
-    value: function (database_id, without_confirmation) {
-        if (!(xover.session.database_id == database_id)) {
+    value: function (store_id, without_confirmation) {
+        if (!(xover.session.store_id == store_id)) {
             if (!without_confirmation && confirm("Change connection?")) {
-                xover.session.database_id = database_id;
+                xover.session.store_id = store_id;
                 xover.session.logout();
             }
         }
@@ -1597,7 +1597,7 @@ xover.Source = function (source, tag, manifest_key) {
     // Object.defineProperty(this, 'save', {
     //    value: async function () {
     //        _async_save = _async_save || xover.delay(1).then(async () => {
-    //            xover.database.write('sources', tag, __document);
+    //            xover.store.write('sources', tag, __document);
     //            _async_save = undefined;
     //        });
     //    },
@@ -1725,7 +1725,7 @@ xover.Source = function (source, tag, manifest_key) {
                 settings = settings.merge(Object.fromEntries(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))));
                 let stored_document;
                 if (!xover.session.rebuild && !(source instanceof Document)) {
-                    let sources = await xover.database.sources;
+                    let sources = await xover.store.sources;
                     stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || document;
 
                     if (stored_document && ((Date.now() - stored_document.lastModifiedDate) / 1000 > settings["expiry"])) {
@@ -2000,17 +2000,17 @@ Object.defineProperty(xover.session, 'user_login', {
 
 Object.defineProperty(xover.session, 'connection_id', {
     get: function () {
-        return xover.session.getKey("database_id")
+        return xover.session.getKey("store_id")
     }
     , set: function (input) {
-        xover.session.database_id = input;
+        xover.session.store_id = input;
     }
 });
 
-//var __database_id_getter = function () { return xover.session.getKey("database_id") }  /*muestra de getter dinámico*/
-Object.defineProperty(xover.session, 'database_id', {
+//var __store_id_getter = function () { return xover.session.getKey("store_id") }  /*muestra de getter dinámico*/
+Object.defineProperty(xover.session, 'store_id', {
     get: function () {
-        return (xover.manifest.server && isFunction(xover.manifest.server.database_id) && xover.manifest.server.database_id() || xover.session.getKey("database_id") || xover.manifest.server.database_id)
+        return (xover.manifest.server && isFunction(xover.manifest.server.store_id) && xover.manifest.server.store_id() || xover.session.getKey("store_id") || xover.manifest.server.store_id)
     }
     , set: async function (input) {
         xover.dom.refreshTitle();
@@ -2154,7 +2154,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
             file.id = file.id || source.id;
             file.saveAs = saveAs || file.saveAs || file.name;
         } else if (source instanceof Node && source.nodeType === 2) {
-            let record = await (await xover.database.files).get(source.value);
+            let record = await (await xover.store.files).get(source.value);
             if (!(record && record.file)) {
                 source.parentNode.setAttribute(source.name, '');
                 throw (new Error('Invalid file, upload again'));
@@ -4085,7 +4085,7 @@ xover.Section = function (xml, ...args) {
     if (__document.source instanceof xover.Source && !__document.source.hasOwnProperty("save")) {
         Object.defineProperty(__document.source, 'save', {
             value: async function () {
-                xover.database.write('sources', __document.source.tag, __document.toString());
+                xover.store.write('sources', __document.source.tag, __document.toString());
             },
             writable: false, enumerable: false, configurable: false
         })
@@ -4126,7 +4126,7 @@ xover.Section = function (xml, ...args) {
                     source.save();
                 } else {
                     _async_save = _async_save || xover.delay(1).then(async () => {
-                        xover.database.write('sources', section.tag, __document);
+                        xover.store.write('sources', section.tag, __document);
                         _async_save = undefined;
                     });
                 }
@@ -5534,7 +5534,7 @@ document.onkeyup = function (e) {
 // TODO: Modificar listeners para que funcion con el método de XOVER
 xover.listener.on('beforeunload', async function (e) {
     history.replaceState(Object.assign({ position: history.length - 1 }, history.state), {}, location.pathname + location.search + (location.hash || ''));
-    //let sections = await xover.database.sources;
+    //let sections = await xover.store.sources;
     //for (let hashtag in xover.sections) {
     //    console.log("Saving " + hashtag)
     //    sections.put((xover.sections[hashtag].initiator || xover.sections[hashtag]), hashtag)
@@ -8060,9 +8060,9 @@ xover.modernize = function (targetWindow) {
             //    Object.defineProperty(XMLDocument.prototype, 'save', {
             //        value: async function () {
             //            if (this.href) {
-            //                xover.database.write('sources', this.href, this.toString());
+            //                xover.store.write('sources', this.href, this.toString());
             //            } else {
-            //                console.warn("File can't be saved on database if lacks of href property")
+            //                console.warn("File can't be saved on store if lacks of href property")
             //            }
             //        },
             //        writable: false, enumerable: false, configurable: false
@@ -8362,7 +8362,7 @@ xover.modernize = function (targetWindow) {
                                     console.log('Not modifiable')
                                 } else*/ if (srcElement.type && srcElement.type.toLowerCase() === 'file') {
                                     if (!(srcElement.files && srcElement.files[0])) return;
-                                    let section = await xover.database.files;
+                                    let section = await xover.store.files;
                                     section.add(srcElement.files).forEach(record => {
                                         [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
                                         if (scope instanceof Text || _attribute === 'text') {
