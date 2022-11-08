@@ -1703,7 +1703,11 @@ xover.Source = function (source, tag, manifest_key) {
             let payload;
             let settings = Object.fromEntries(xover.manifest.getSettings(tag));
             source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
-                Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+                if (typeof (source) == 'string') {
+                    source = tag.replace(new RegExp(manifest_key,"i"), source)
+                } else {
+                    Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+                }
             }) || source;
             this.fetching = this.fetching || new Promise(async (resolve, reject) => {
                 let document;
