@@ -5419,20 +5419,20 @@ if (window.addEventListener) {
     window.attachEvent("onstorage", xover.network.listener);
 };
 
-xover.listener.on('beforeRemoveHTMLElement', function ({ target }) {
-    let xo_section = target.getAttribute("xo-section");
-    if (xo_section) {
-        delete xover.sections[xo_section];
-    } else {
-        if (target.classList && target.classList.contains("loading") || ["alert", "alertdialog"].includes(String(target.role).toLowerCase())) {
-            let section = target.section;
-            if (section && (section.state.submitting || section.state.busy)) {
-                event.preventDefault();
-                [section.stylesheets['loading.xslt']].removeAll();
-            };
-        }
-    }
-})
+//xover.listener.on('beforeRemoveHTMLElement', function ({ target }) {
+//    let xo_section = target.getAttribute("xo-section");
+//    if (xo_section) {
+//        delete xover.sections[xo_section];
+//    } else {
+//        if (target.classList && target.classList.contains("loading") || ["alert", "alertdialog"].includes(String(target.role).toLowerCase())) {
+//            let section = target.section;
+//            if (section && (section.state.submitting || section.state.busy)) {
+//                event.preventDefault();
+//                [section.stylesheets['loading.xslt']].removeAll();
+//            };
+//        }
+//    }
+//})
 
 //xover.listener.on('remove', function ({ target }) { //Se quita para que no borre sections accidentalmente (si se borra el nodo raíz). Si la intención es borrar el section o el nodo, mejor realizar un element.scope.remove()
 //    let scope = target.scope; 
