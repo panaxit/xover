@@ -870,15 +870,14 @@ xover.server = new Proxy({}, {
             let event = new xover.listener.Event('response', { response_value: return_value });
             xover.listener.dispatchEvent(event, response);
             return_value = event.detail.response_value || return_value;
+            xover.listener.dispatchEvent(new xover.listener.Event(`response::server:${key}`, { response, payload, request }), return_value);
 
             responseHandler && responseHandler(return_value, request, response)
             if (response.ok) {
-                let event = new xover.listener.Event(`success::server:${key}`, { return_value });
-                xover.listener.dispatchEvent(event, [return_value, request, response]);
+                xover.listener.dispatchEvent(new xover.listener.Event(`success::server:${key}`, { response, payload, request }), return_value);
                 return Promise.resolve(return_value);
             } else {
-                let event = new xover.listener.Event(`failed::server:${key}`, { response });
-                xover.listener.dispatchEvent(event, [return_value, request, response]);
+                xover.listener.dispatchEvent(new xover.listener.Event(`failure::server:${key}`, { response, payload, request }), return_value);
                 return Promise.reject(response);
             }
         })
@@ -7127,6 +7126,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.setAttribute = function (attribute, value, refresh = true, delay) {
+                if (!attribute) return Promise.reject("No attribute set");
                 if (attribute instanceof Attr) {
                     value = [value, attribute.value].coalesce();
                     attribute = attribute.name;
@@ -7415,6 +7415,12 @@ xover.modernize = function (targetWindow) {
                 }
             );
 
+            Object.defineProperty(Attr.prototype, 'get', {
+                value: function (name) {
+                    return this.nodeName == (name || this.nodeName) && this.value || null;
+                }
+            });
+
             var original_node_namespaceURI = Object.getOwnPropertyDescriptor(Node.prototype, 'namespaceURI');
             Object.defineProperty(Node.prototype, 'namespaceURI',
                 {
@@ -7557,6 +7563,16 @@ xover.modernize = function (targetWindow) {
                 return this.parentNode.replaceChild(new_node.cloneNode(true), this);
             }
 
+            var original_replaceWith = Object.getOwnPropertyDescriptor(Element.prototype, 'replaceWith');
+            Object.defineProperty(Element.prototype, 'replaceWith', {
+                value: function (...args) {
+                    let new_node = args[0];
+                    if (!new_node) return;
+                    original_replaceWith.value.apply(this, [new_node])
+                    return new_node;
+                }
+            })
+
             XMLDocument.prototype.replaceBy = function (new_document) {
                 if (new_document !== this) {
                     while (this.firstChild) {
@@ -7691,8 +7707,13 @@ xover.modernize = function (targetWindow) {
                 let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this, args: args, srcEvent: event });
                 xover.listener.dispatchEvent(beforeEvent, this);
                 if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
+                let current_references = args.map(el => el.cloneNode(true))
                 original_append.apply(this, args);
                 xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { node: this }), this);
+
+                args.map(item => [item, current_references.find(ref => ref.isEqualNode(item))]).filter(([after, before]) => before && after.ownerDocument !== before.ownerDocument).forEach(([after, before]) => {
+                    xover.listener.dispatchEvent(new xover.listener.Event('remove'), after);
+                })
                 !(this instanceof HTMLElement || this instanceof SVGElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
                 return args;
             }
@@ -8165,16 +8186,16 @@ xover.modernize = function (targetWindow) {
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-section='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`) || stylesheet_target;
                             let target = stylesheet_target;
+                            let dom = await data.transform(xsl);
                             if (section) {
                                 let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
                                 xover.listener.dispatchEvent(before, section);
                                 if (before.cancelBubble || before.defaultPrevented) continue;
                             }
                             let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
-                            xover.listener.dispatchEvent(before_dom, target);
+                            xover.listener.dispatchEvent(before_dom, dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             original_append.apply(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
-                            let dom = await data.transform(xsl);
                             if (!dom.documentElement) {
                                 xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
