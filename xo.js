@@ -622,7 +622,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         }, []);
         //let listeners = Object.values(xover.listener[event.type]).slice(0);
         let first_listener = listeners[0];
-        listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.detail && (event.detail.target || event.detail.srcElement) || event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
+        listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.detail && event.detail.srcElement/*(event.detail.target || event.detail.srcElement)*/ || event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -1932,7 +1932,7 @@ xover.dom.alert = async function (message) {
     let xMessage = xover.data.createMessage(message)
     await xMessage.addStylesheet({ href: "message.xslt", role: "modal" })
     dom = await xMessage.transform();
-    document.body.appendChild(dom.documentElement)
+    document.body && document.body.appendChild(dom.documentElement)
     return dom.documentElement;
 }
 
@@ -4575,7 +4575,7 @@ xover.Section = function (xml, ...args) {
                             let fragment = document.createDocumentFragment();
                             if (response.documentElement && (response.documentElement.tagName == targetNode.tagName || response.documentElement.$('self::xo:response') || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI))) {
                                 if (!new_node.documentElement.firstElementChild) {
-                                    fragment.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
+                                    fragment.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed());
                                 } else {
                                     fragment.append(...new_node.documentElement.childNodes);
                                 }
@@ -4604,7 +4604,7 @@ xover.Section = function (xml, ...args) {
                                 //    targetNode.parentElement.replaceChild(new_node.documentElement, targetNode);
                                 //}
                             } else {
-                                targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`));
+                                targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed());
                             }
                             await context.render()
                             delete xover.data.binding.requests[self.tag][request];
@@ -6316,6 +6316,26 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
+            var original_matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
+            Object.defineProperty(Element.prototype, 'matches', {
+                value: function (...args) {
+                    try {
+                        return original_matches && original_matches.value.apply(this, args);
+                    } catch (e) {
+                        if (e.message.indexOf('not a valid selector') != -1) {
+
+                            return this.filter.apply(this, args) === this;
+                        }
+                    }
+                }
+            })
+
+            Object.defineProperty(Text.prototype, 'matches', {
+                value: function (...args) {
+                    return false;
+                }
+            })
+
             XMLDocument.prototype.compareTo = function (document, stop_at_first_change) {
                 let xsl_compare = this.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:c="http://panax.io/xml/compare" version="1.0" id="panax_xml_compare_xsl"><xsl:output method="xml"></xsl:output><xsl:strip-space elements="*"></xsl:strip-space><xsl:variable name="smallcase" select="'abcdefghijklmnopqrstuvwxyz'"></xsl:variable><xsl:variable name="uppercase" select="'ABCDEFGHIJKLMNOPQRSTUVWXYZ'"></xsl:variable><xsl:template match="/"><xsl:element name="xsl:stylesheet"><xsl:copy-of select="//namespace::*"/><xsl:attribute name="version">1.0</xsl:attribute><xsl:element name="xsl:template"><xsl:attribute name="match">/</xsl:attribute><xsl:element name="results"><xsl:element name="xsl:apply-templates"></xsl:element></xsl:element></xsl:element><xsl:element name="xsl:template"><xsl:attribute name="match">*</xsl:attribute><xsl:element name="change" namespace="http://panax.io/xml/compare"><xsl:attribute name="c:position"><xsl:value-of select="'{count(preceding-sibling::*)+1}'"></xsl:value-of></xsl:attribute><xsl:attribute name="c:namespace"><xsl:value-of select="'{namespace-uri()}'"></xsl:value-of></xsl:attribute><xsl:attribute name="c:name"><xsl:value-of select="'{name()}'"></xsl:value-of></xsl:attribute><xsl:attribute name="c:type"><xsl:text>Node</xsl:text></xsl:attribute><xsl:element name="xsl:copy-of"><xsl:attribute name="select">@*</xsl:attribute></xsl:element><xsl:element name="xsl:apply-templates"></xsl:element></xsl:element></xsl:element><xsl:element name="xsl:template"><xsl:attribute name="match">text()</xsl:attribute><xsl:element name="change" namespace="http://panax.io/xml/compare"><xsl:attribute name="c:type"><xsl:text>Text</xsl:text></xsl:attribute><xsl:attribute name="c:position"><xsl:value-of select="'{count(preceding-sibling::*)}'"></xsl:value-of></xsl:attribute><xsl:attribute name="c:text"><xsl:value-of select="'{.}'"></xsl:value-of></xsl:attribute></xsl:element></xsl:element><xsl:apply-templates></xsl:apply-templates></xsl:element></xsl:template><xsl:template name="escape-xml"><xsl:param name="wrapper">&quot;</xsl:param><xsl:param name="text"></xsl:param><xsl:if test="$text != ''"><xsl:variable name="head" select="substring($text, 1, 1)"></xsl:variable><xsl:variable name="tail" select="substring($text, 2)"></xsl:variable><xsl:choose><xsl:when test="$head = '&amp;'">&amp;amp;</xsl:when><xsl:when test="$head = '&lt;'">&amp;lt;</xsl:when><xsl:when test="$head = '&gt;'">&amp;gt;</xsl:when><xsl:when test="$head = '&quot;'">&amp;quot;</xsl:when><xsl:when test="$wrapper=&quot;'&quot; and $head = &quot;'&quot;">&amp;apos;</xsl:when><xsl:otherwise><xsl:value-of select="$head"></xsl:value-of></xsl:otherwise></xsl:choose><xsl:call-template name="escape-xml"><xsl:with-param name="text" select="$tail"></xsl:with-param></xsl:call-template></xsl:if></xsl:template><xsl:template name="escape-quot"><xsl:param name="string"></xsl:param><xsl:variable name="quot">&quot;</xsl:variable><xsl:variable name="escaped-quot">&amp;quot;</xsl:variable><xsl:text>&quot;</xsl:text><xsl:choose><xsl:when test="contains($string, $quot)"><xsl:value-of select="substring-before($string, $quot)"></xsl:value-of><xsl:text>&quot;,'&quot;',</xsl:text><xsl:call-template name="escape-quot"><xsl:with-param name="string" select="substring-after($string, $quot)"></xsl:with-param></xsl:call-template><xsl:text>,&quot;</xsl:text></xsl:when><xsl:otherwise><xsl:value-of select="$string"></xsl:value-of></xsl:otherwise></xsl:choose><xsl:text>&quot;</xsl:text></xsl:template><xsl:template name="escape-apos"><xsl:param name="string"></xsl:param><xsl:choose><xsl:when test="contains($string, &quot;'&quot;)"><xsl:value-of select="substring-before($string, &quot;'&quot;)"></xsl:value-of><xsl:text>'</xsl:text><xsl:call-template name="escape-apos"><xsl:with-param name="string" select="substring-after($string, &quot;'&quot;)"></xsl:with-param></xsl:call-template></xsl:when><xsl:otherwise><xsl:value-of select="$string"></xsl:value-of></xsl:otherwise></xsl:choose></xsl:template><xsl:template match="*|text()"><xsl:apply-templates></xsl:apply-templates><xsl:element name="xsl:template"><xsl:attribute name="match"><xsl:apply-templates select="." mode="path"></xsl:apply-templates></xsl:attribute><xsl:element name="ok" namespace="http://panax.io/xml/compare"><xsl:attribute name="c:position"><xsl:value-of select="'{count(preceding-sibling::*)+1}'"></xsl:value-of></xsl:attribute><xsl:attribute name="c:name"><xsl:value-of select="'{name()}'"></xsl:value-of></xsl:attribute><xsl:copy-of select="@*"></xsl:copy-of><xsl:element name="xsl:apply-templates"></xsl:element></xsl:element></xsl:element></xsl:template><xsl:template match="*" mode="simple-path"><xsl:param name="position"><xsl:value-of select="count(preceding-sibling::*)+1"></xsl:value-of></xsl:param><xsl:apply-templates select="ancestor::*[1]" mode="simple-path"></xsl:apply-templates><xsl:text>/*</xsl:text><xsl:text>[</xsl:text><xsl:value-of select="$position"></xsl:value-of><xsl:text>]</xsl:text></xsl:template><xsl:template match="*" mode="path"><xsl:param name="position"><xsl:value-of select="count(preceding-sibling::*)+1"></xsl:value-of></xsl:param><xsl:apply-templates select="ancestor::*[1]" mode="simple-path"></xsl:apply-templates><xsl:text>/*</xsl:text><xsl:text>[</xsl:text><xsl:value-of select="$position"></xsl:value-of><xsl:text>]</xsl:text><xsl:text>[local-name()='</xsl:text><xsl:value-of select="local-name()"></xsl:value-of><xsl:text>']</xsl:text><xsl:text>[namespace-uri()='</xsl:text><xsl:value-of select="namespace-uri()"></xsl:value-of><xsl:text>']</xsl:text><xsl:text>[1=1 </xsl:text><xsl:for-each select="@*"><xsl:variable name="value"><xsl:text>concat('',</xsl:text><xsl:call-template name="escape-quot"><xsl:with-param name="string"><xsl:value-of select="." disable-output-escaping="yes"></xsl:value-of></xsl:with-param></xsl:call-template><xsl:text>)</xsl:text></xsl:variable><xsl:value-of select="concat(' and @',name(.),'=',$value)"></xsl:value-of></xsl:for-each><xsl:text>]</xsl:text></xsl:template><xsl:template match="text()" mode="path"><xsl:param name="position"><xsl:value-of select="count(preceding-sibling::*)+1"></xsl:value-of></xsl:param><xsl:apply-templates select="ancestor::*[1]" mode="simple-path"></xsl:apply-templates><xsl:text>/text()</xsl:text><xsl:text>[</xsl:text><xsl:value-of select="$position"></xsl:value-of><xsl:text>]</xsl:text><xsl:variable name="unescaped-value"><xsl:value-of select="." disable-output-escaping="yes"></xsl:value-of></xsl:variable><xsl:variable name="value"><xsl:text>concat('',</xsl:text><xsl:call-template name="escape-quot"><xsl:with-param name="string"><xsl:value-of select="." disable-output-escaping="yes"></xsl:value-of></xsl:with-param></xsl:call-template><xsl:text>)</xsl:text></xsl:variable><xsl:value-of select="concat(&quot;[.=&quot;,$value,&quot;]&quot;)"></xsl:value-of></xsl:template></xsl:stylesheet>`));
                 if (stop_at_first_change) {
@@ -7525,7 +7545,7 @@ xover.modernize = function (targetWindow) {
 
             Node.prototype.replace = function (new_node) {
                 new_node = (new_node.documentElement || new_node)
-                return this.parentNode && this.parentNode.replaceChild(new_node.cloneNode(true), this) || new_node;
+                return this.parentNode && this.parentNode.replaceChild(new_node/*.cloneNode(true)*/, this) || new_node;
             }
 
             Node.prototype.replaceBy = function (new_node) {
@@ -7852,7 +7872,7 @@ xover.modernize = function (targetWindow) {
                             throw (new Error("Document must be a valid xml document."));
                         };
                         if (this.selectSingleNode('xsl:*') && !(xml_document && xml_document.selectSingleNode('xsl:*'))) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
-                            return (xml_document || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`)).transform(this);
+                            return (xml_document || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed()).transform(this);
                         }
                         let xsl = xml_document;
                         let xml = this.cloneNode(true);
@@ -7966,7 +7986,7 @@ xover.modernize = function (targetWindow) {
                                 }
                                 result && [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                 if (!(result && result.documentElement) && !xml.documentElement) {
-                                    xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`))
+                                    xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed())
                                     return xml.transform("empty.xslt");
                                 }
                                 if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
@@ -8041,7 +8061,7 @@ xover.modernize = function (targetWindow) {
                 let ref = this.closest("[xo-stylesheet]")
                 if (ref) {
                     let stylesheet = this.getAttribute("xo-stylesheet")
-                    return this.section.render(stylesheet || '', stylesheet && this.selector || undefined);
+                    return this.section && this.section.render(stylesheet || '', stylesheet && this.selector || undefined) || null;
                 }
             }
 
@@ -8098,7 +8118,7 @@ xover.modernize = function (targetWindow) {
                             this.copyPropertiesFrom(options);
                             this.target = options.target
                             this.action = options.action
-                            return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`)).render(this);
+                            return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed()).render(this);
                         }
                         var data = this.cloneNode(true);
                         let action;
@@ -8159,12 +8179,13 @@ xover.modernize = function (targetWindow) {
                                 xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
                             }
+                            dom = dom.documentElement
                             xover.listener.dispatchEvent(new xover.listener.Event('transform', { section: section, stylesheet: stylesheet, target: target, node: dom }), section);
-                            dom.documentElement.setAttributeNS(null, "xo-section", target.getAttribute("xo-section") || tag);
-                            dom.documentElement.setAttributeNS(null, "xo-stylesheet", target.getAttribute("xo-stylesheet"));
-                            if (dom.documentElement.id && dom.documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`)) {
+                            dom.setAttributeNS(null, "xo-section", target.getAttribute("xo-section") || tag);
+                            dom.setAttributeNS(null, "xo-stylesheet", target.getAttribute("xo-stylesheet"));
+                            if (dom.id && dom.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`)) {
                                 action = 'replace';
-                            } else if (target.nodeName.toUpperCase() == dom.documentElement.nodeName.toUpperCase() && target.getAttribute("xo-section") == dom.documentElement.getAttribute("xo-section") && target.getAttribute("xo-stylesheet") == dom.documentElement.getAttribute("xo-stylesheet")) {
+                            } else if (target.nodeName.toUpperCase() == dom.nodeName.toUpperCase() && target.getAttribute("xo-section") == dom.getAttribute("xo-section") && target.getAttribute("xo-stylesheet") == dom.getAttribute("xo-stylesheet")) {
                                 action = 'replace';
                             } else if (!action && target.matches(`[xo-section='${tag}']:not([xo-stylesheet])`)) {
                                 action = 'append';
@@ -8173,7 +8194,7 @@ xover.modernize = function (targetWindow) {
                             } else if (target.matches(`[xo-section='${tag}'][xo-stylesheet]`)) {
                                 continue;
                             }
-                            dom.documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
+                            dom.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
 
                             if (target === document.body && action === 'replace') {
                                 action = null;
@@ -8183,7 +8204,7 @@ xover.modernize = function (targetWindow) {
                                 console.warn(`There's a missing href in a processing-instruction`)
                             }
                             //let dom = xover.xml.transform(data, (this.sources[stylesheet.href] || xover.sources[stylesheet.href] || !(document.querySelector(`[xo-section]`)) && (xover.sources.defaults[stylesheet.href] || xover.sources.defaults["shell.xslt"]) || xover.sources.defaults[stylesheet.href] || stylesheet.href));
-                            if (((dom.documentElement || {}).namespaceURI || "").indexOf("http://www.mozilla.org/TransforMiix") != -1) {
+                            if (((dom || {}).namespaceURI || "").indexOf("http://www.mozilla.org/TransforMiix") != -1) {
                                 // TODO: Revisar esta parte, regularmente esto sucede cuando la transformación trae más de un nodo
                                 data.selectNodes(`processing-instruction('xml-stylesheet')`).remove();
                                 if (!this.sources[stylesheet.href]) {
@@ -8192,7 +8213,7 @@ xover.modernize = function (targetWindow) {
                                     dom = data.transform(this.sources[stylesheet.href]);
                                 }
                             }
-                            if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
+                            if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                                 data = dom;
                             }
                             let scripts_external, scripts;
@@ -8262,8 +8283,8 @@ xover.modernize = function (targetWindow) {
                                 self.render();
                                 //self.isActive = false;
                                 continue;
-                            } else if (dom.documentElement.tagName.toLowerCase() == "html") {
-                                //dom.documentElement.namespaceURI == "http://www.w3.org/1999/xhtml"
+                            } else if (dom.tagName.toLowerCase() == "html") {
+                                //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
                                 //target = document.body;
                                 xover.dom.setEncryption(dom, 'UTF-7');
                                 let iframe;
@@ -8271,7 +8292,7 @@ xover.modernize = function (targetWindow) {
                                     iframe = document.activeElement;
                                     target = (document.activeElement || {}).contentDocument.querySelector('main,table,div,span');
                                     target.parentElement.replaceChild(dom.querySelector(target.tagName.toLowerCase()), target);
-                                    //if ((dom.documentElement || dom).selectNodes) { //(dom.documentElement instanceof XMLDocument) {
+                                    //if ((dom || dom).selectNodes) { //(dom instanceof XMLDocument) {
                                     //    _applyScripts((document.activeElement || {}).contentDocument, dom);
                                     //}
                                 } else {
@@ -8291,7 +8312,7 @@ xover.modernize = function (targetWindow) {
                                         //iframe.addEventListener('change', xover.listeners.dom.onchange);
                                     }
                                     var url = xover.dom.getGeneratedPageURL({
-                                        html: xover.string.htmlDecode((dom.documentElement || dom).outerHTML),
+                                        html: xover.string.htmlDecode(dom.outerHTML),
                                         css: (dom.querySelector('style') || {}).innerHTML,
                                         js: `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; let iframe=parent.document.querySelector('iframe'); iframe.height=document.querySelector('body').scrollHeight+10; iframe.width=document.querySelector('body').scrollWidth+10; xover.modernize(iframe.contentWindow); document.querySelector('body').setAttributeNS(null, "xo-section", '${tag}');` //+ js//((dom.querySelector('script') || {}).innerHTML || "")
                                         //window.top.document.querySelector('body').setAttributeNS(null, "xo-section", window.top.location.hash)
@@ -8300,14 +8321,14 @@ xover.modernize = function (targetWindow) {
                                 }
                                 target = iframe;
                                 xover.site.restore(target);
-                            } else if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
+                            } else if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                                 dom = await dom.transform('error.xslt');
                                 target = document.querySelector('main') || document.querySelector('body')
                                 if (stylesheet.action == "replace") {
-                                    target = target.replace(dom);
+                                    target = target.replaceWith(dom);
                                 } else {
                                     xover.dom.clear(target);
-                                    target.append(...dom.cloneNode(true).childNodes);
+                                    target.append(...dom.parentElement.childNodes);
                                 }
                             } else {
                                 scripts = dom.selectNodes('//*[self::html:script]').map(el => {
@@ -8322,22 +8343,22 @@ xover.modernize = function (targetWindow) {
                                 let active_element = document.activeElement;
                                 let active_element_selector = active_element.selector
                                 if (action == "replace") {
-                                    target = [target.replace(dom)];
+                                    target.replaceWith(dom)//target = [target.replace(dom)];
                                     //let to_be_replaced = target[0].querySelector(active_element_selector)
                                     //to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
-                                    //target.append(dom.documentElement || dom);
+                                    //target.append(dom);
                                     //} else {
                                     //    xover.dom.clear(target);
                                     //target.append(...dom.cloneNode(true).childNodes);
-                                    target = target.append(...dom.childNodes);
+                                    target.append(...dom.parentNode.childNodes);
                                 }
 
                                 var lines = document.querySelectorAll(".leader-line")
                                 for (let l = 0; l < lines.length; ++l) {
                                     lines[l].remove();
                                 }
-                                if ((dom.documentElement || dom).selectNodes) { //(dom.documentElement instanceof XMLDocument) {
+                                if (dom.selectNodes) { //(dom instanceof XMLDocument) {
                                     _applyScripts(document, scripts.filter((script, index, arr) => {
                                         script = script.selectSingleNode('self::*[not(@defer or @async)]');
                                         if (script) arr.splice(index, 1);
@@ -8346,12 +8367,14 @@ xover.modernize = function (targetWindow) {
                                 }
                                 xover.site.restore(dom);
                             }
-                            targets.push(target)
+                            xover.listener.dispatchEvent(new xover.listener.Event('render', { section: section, stylesheet: stylesheet, target: target }), dom);
 
-                            target.filter(el => el).flatMap(el => [...el.querySelectorAll('img')]).map(el => el.addEventListener('error', function () {
+                            targets.push(dom)
+
+                            dom.querySelectorAll('img').forEach(el => el.addEventListener('error', function () {
                                 window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
                             }));
-                            target.flatMap(el => [...el.querySelectorAll('textarea')]).map(el => el.addEventListener('mouseup', function () {
+                            dom.querySelectorAll('textarea').forEach(el => el.addEventListener('mouseup', function () {
                                 let el = event.srcElement;
                                 let scope = el.scope;
                                 if (scope instanceof Attr) {
@@ -8362,7 +8385,7 @@ xover.modernize = function (targetWindow) {
                                     scope.set('@state:width', el.offsetWidth, false);
                                 }
                             }));
-                            target.flatMap(el => [...el.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]')]).map(el => el.addEventListener('change', async function () {
+                            dom.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]').forEach(el => el.addEventListener('change', async function () {
                                 let scope = this.scope;
                                 let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
                                 let srcElement = event.target;
@@ -8393,7 +8416,7 @@ xover.modernize = function (targetWindow) {
                             }))
                             if (window.MathJax) {
                                 MathJax.typeset && MathJax.typeset();
-                            } else if (dom.selectSingleNode('//mml:math') || ((dom.documentElement || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
+                            } else if (dom.selectSingleNode('//mml:math') || ((dom || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
                                 if (!window.MathJax) {
                                     window.MathJax = {
                                         loader: { load: ['[mml]/mml3'] }
@@ -8410,16 +8433,15 @@ xover.modernize = function (targetWindow) {
                             }
 
                             _applyScripts(document, scripts);
-                            target.flatMap(el => [...el.querySelectorAll('[xo-stylesheet]:not([xo-section]')]).forEach(el => data.render(
+                            dom.querySelectorAll('[xo-stylesheet]:not([xo-section]').forEach(el => data.render(
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
                             /*TODO: Mover este código a algún script diferido*/
-                            target.flatMap(el => [...el.querySelectorAll('[data-bs-toggle="tooltip"]')]).map(function (tooltipTriggerEl) {
+                            dom.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
                             })
-                            dependants = target.flatMap(el => [...el.querySelectorAll('*[xo-section],*[xo-stylesheet]')]);
-                            xover.listener.dispatchEvent(new xover.listener.Event('render', { section: section, stylesheet: stylesheet, target: target }), target);
-                            xover.listener.dispatchEvent(new xover.listener.Event('render', { section: section, stylesheet: stylesheet, target: target }), section);
+                            dependants = [...dom.querySelectorAll('*[xo-section],*[xo-stylesheet]')];
+                            xover.listener.dispatchEvent(new xover.listener.Event('render', { section: section, stylesheet: stylesheet, target: dom }), section);
                             dependants.forEach(el => el.render());
                         }
                         return Promise.resolve(targets);
