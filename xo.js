@@ -640,6 +640,10 @@ Object.defineProperty(xover.listener, 'on', {
     writable: true, enumerable: false, configurable: false
 });
 
+xover.listener.on('hashchange', function (new_hash, old_hash) {
+    xover.site.active = location.hash;
+});
+
 xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     new_hash = (new_hash || window.location.hash);
     if (new_hash === '#' || !(document.getElementById(new_hash) || new_hash in xover.sources)) {
@@ -1181,6 +1185,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
     set: function (self, key, new_value) {
         try {
             self[key] = new_value;
+            if (key === 'seed') xover.site['active'] = new_value
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
             history.replaceState(Object.assign({ position: history.length - 1 }, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
 
@@ -1576,7 +1581,9 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
 
 xover.Source = function (source, tag, manifest_key) {
     if (!(this instanceof xover.Source)) return new xover.Source(source, tag, manifest_key);
-    console.log(`${tag}: ${source && source.constructor == {}.constructor && JSON.stringify(source) || source}`);
+    if (xover.session.debug) {
+        console.log(`${tag}: ${source && source.constructor == {}.constructor && JSON.stringify(source) || source}`);
+    }
     let _isActive = undefined;
     let self = this;
     let __document = typeof (source) == 'string' && source[0] == '#' && source !== tag ? xover.sources[source] : xover.xml.createDocument();
@@ -7172,6 +7179,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.get = Element.prototype.getAttribute;
+            Element.prototype.getNode = Element.prototype.getAttributeNode;
 
             Element.prototype.attr = function () {
                 return this.getAttribute.apply(this, arguments)
