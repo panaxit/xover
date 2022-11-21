@@ -623,6 +623,18 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         //let listeners = Object.values(xover.listener[event.type]).slice(0);
         let first_listener = listeners[0];
         listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.detail && event.detail.srcElement/*(event.detail.target || event.detail.srcElement)*/ || event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
+
+        let event_type = event.type;
+        let node = event.detail && event.detail.node || undefined;
+        if (node) {
+            let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
+            Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
+                [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => {
+                    let listener = stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'${event_type.replace(/::@*/, '-')}')]`) || undefined;
+                    return listener && (!listener.textContent || node.matches(listener.textContent))
+                }).forEach(([el]) => el.render())
+            })
+        }
     },
     writable: true, enumerable: false, configurable: false
 });
