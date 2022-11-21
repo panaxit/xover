@@ -627,8 +627,8 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let event_type = event.type;
         let node = event.detail && event.detail.node || undefined;
         if (node) {
-            let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
-            Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
+            //let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
+            //Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
                 [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => {
                     let listener;
                     try {
@@ -638,7 +638,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                     }
                     return listener && (!listener.textContent || node.matches(listener.textContent))
                 }).forEach(([el]) => el.render())
-            })
+            //})
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -1206,11 +1206,11 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
             history.replaceState(Object.assign({ position: history.length - 1 }, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
 
-            let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
+            //let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
 
-            Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
+            //Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
                 [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render())
-            })
+            //})
         } catch (e) {
             console.error(e);
         }
@@ -4903,13 +4903,13 @@ xover.Section = function (xml, ...args) {
                 let isActive = self.isActive
                 let active_tag = xover.site.active;
                 let active_section = xover.sections.active;
-                if (active_section === self && location.hash !== self.hash) {
+                if (active_section === self && decodeURI(location.hash) !== self.hash) {
                     xover.site.active = tag;
                 }
                 //if (!isActive) {
                 //    return Promise.reject(`Section ${tag} is not active`);
                 //}
-                await self.triggerBindings();
+                self.triggerBindings();
 
                 let doc = __document.cloneNode(true);
                 _section_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
