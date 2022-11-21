@@ -1269,7 +1269,15 @@ Object.defineProperty(xover.site, 'set', {
         if (prefix) {
             state_sections[active][prefix] = (state_sections[active][prefix] || {});
         }
-        if (value instanceof Object) {
+        if (value instanceof Array) {
+            if (prefix) {
+                state_sections[active][prefix][name] = state_sections[active][prefix][name] || []
+                state_sections[active][prefix][name] = value
+            } else {
+                state_sections[active][name] = state_sections[active][name] || [];
+                state_sections[active][name] = value
+            }
+        } else if (value instanceof Object) {
             if (prefix) {
                 state_sections[active][prefix][name] = state_sections[active][prefix][name] || {}
                 state_sections[active][prefix][name].merge(value)
@@ -1278,7 +1286,7 @@ Object.defineProperty(xover.site, 'set', {
                 state_sections[active][name].merge(value)
             }
         } else {
-            value = (value !== null && value !== undefined ? value.toString() : value);
+            value = (value !== null && value !== undefined && !(value instanceof Array) ? value.toString() : value);
             if (value === undefined) {
                 if (prefix) {
                     delete state_sections[active][prefix][name]
@@ -1553,7 +1561,7 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                             return message;
                         }
                         //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
-                        sXML = sXML.replace(new RegExp(`\\b(${prefix}):([^\\s\\>]+)`), `$1:$2 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
+                        sXML = sXML.replace(new RegExp(`^(<[^\\s\/>]+)`), `$1 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
                         result = xover.xml.createDocument(sXML, options);
                         return result;
                     } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
@@ -4629,7 +4637,7 @@ xover.Section = function (xml, ...args) {
                             } else {
                                 targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed());
                             }
-                            await context.render()
+                            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(el => el.section === context).forEach(([el]) => el.render())
                             delete xover.data.binding.requests[self.tag][request];
 
                         };
@@ -4903,7 +4911,7 @@ xover.Section = function (xml, ...args) {
                 let isActive = self.isActive
                 let active_tag = xover.site.active;
                 let active_section = xover.sections.active;
-                if (active_section === self && decodeURI(location.hash) !== self.hash) {
+                if (active_section === self && decodeURI(location.hash) !== decodeURI(self.hash)) {
                     xover.site.active = tag;
                 }
                 //if (!isActive) {
@@ -8127,6 +8135,22 @@ xover.modernize = function (targetWindow) {
                 Object.defineProperty(HTMLDocument.prototype, 'render', {
                     value: function () {
                         xover.dom.createDialog(this)
+                    }
+                });
+            }
+
+            if (!Location.prototype.hasOwnProperty('tag')) {
+                Object.defineProperty(Location.prototype, 'tag', {
+                    get: function () {
+                        return '#' + xover.URL(this.hash.replace(/^#/, '')).pathname.replace(/^\//, '')
+                    }
+                });
+            }
+
+            if (!URL.prototype.hasOwnProperty('tag')) {
+                Object.defineProperty(URL.prototype, 'tag', {
+                    get: function () {
+                        return '#' + xover.URL(this.hash.replace(/^#/, '')).pathname.replace(/^\//, '')
                     }
                 });
             }
