@@ -630,7 +630,12 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
             Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
                 [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => {
-                    let listener = stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'${event_type.replace(/::@*/, '-')}')]`) || undefined;
+                    let listener;
+                    try {
+                        listener = stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'${event_type.replace(/::@*/, '-').replace(/[\/\[].*/, '')}')]`) || undefined;
+                    } catch (e) {
+                        console.warn(e)
+                    }
                     return listener && (!listener.textContent || node.matches(listener.textContent))
                 }).forEach(([el]) => el.render())
             })
