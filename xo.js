@@ -1873,7 +1873,7 @@ xover.ProcessingInstruction = function (stylesheet) {
     let attribs = xover.json.fromAttributes(stylesheet.data);
     attribs["dependencies"] = [];
     if (attribs.target) {
-        attribs["target"] = ((attribs["target"] || '').replace(new RegExp("@(#[^\\s\\[]+)", "ig"), "[xo-section='$1']") || undefined);
+        attribs["target"] = ((attribs["target"] || '').replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-section="$1"]`) || undefined);
         attribs["dependencies"] = [...attribs["target"].matchAll(new RegExp(`\\[xo-section=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []);
     } else {
         attribs["target"] = undefined;
@@ -5642,7 +5642,7 @@ xover.listener.on('change::@state:busy', function ({ target, value }) {
 xover.listener.on('remove::@state:busy', function ({ target, value }) {
     let section = target.section;
     if (section instanceof xover.Section && section.isActive) {
-        [...document.querySelectorAll(`[xo-section='${section.tag}'][xo-stylesheet='loading.xslt']`)].removeAll();
+        [...document.querySelectorAll(`[xo-section="${section.tag}"][xo-stylesheet='loading.xslt']`)].removeAll();
     }
 });
 
@@ -6454,7 +6454,7 @@ xover.modernize = function (targetWindow) {
                     value: function () {
                         let node = this;
                         if (node.nodeType !== 2) {
-                            [node instanceof HTMLElement && node || undefined, ...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-section='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].filter(el => el).map(target => target.style.outline = '#f00 solid 2px');
+                            [node instanceof HTMLElement && node || undefined, ...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-section="${node.getAttributeNS("http://panax.io/xover", "id")}"]`)].filter(el => el).map(target => target.style.outline = '#f00 solid 2px');
                         }
                     },
                     writable: false, enumerable: false, configurable: false
@@ -8233,7 +8233,7 @@ xover.modernize = function (targetWindow) {
                                     throw (new Error(`Couldn't render section ${section.tag}`));
                                 }
                             }
-                            stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-section='${tag}'][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`) || stylesheet_target;
+                            stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-section="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`) || stylesheet_target;
                             let target = stylesheet_target;
                             let dom = await data.transform(xsl);
                             if (section) {
@@ -8257,11 +8257,11 @@ xover.modernize = function (targetWindow) {
                                 action = 'replace';
                             } else if (target.nodeName.toUpperCase() == dom.nodeName.toUpperCase() && target.getAttribute("xo-section") == dom.getAttribute("xo-section") && target.getAttribute("xo-stylesheet") == dom.getAttribute("xo-stylesheet")) {
                                 action = 'replace';
-                            } else if (!action && target.matches(`[xo-section='${tag}']:not([xo-stylesheet])`)) {
+                            } else if (!action && target.matches(`[xo-section="${tag}"]:not([xo-stylesheet])`)) {
                                 action = 'append';
-                            } else if (target.matches(`[xo-section='${tag}'][xo-stylesheet='${stylesheet.href}']`)) {
+                            } else if (target.matches(`[xo-section="${tag}"][xo-stylesheet="${stylesheet.href}"]`)) {
                                 action = 'replace';
-                            } else if (target.matches(`[xo-section='${tag}'][xo-stylesheet]`)) {
+                            } else if (target.matches(`[xo-section="${tag}"][xo-stylesheet]`)) {
                                 continue;
                             }
                             dom.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
