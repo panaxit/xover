@@ -8115,7 +8115,12 @@ xover.modernize = function (targetWindow) {
                 let ref = this.closest("[xo-stylesheet]")
                 if (ref) {
                     let stylesheet = this.getAttribute("xo-stylesheet")
-                    return this.section && this.section.render(stylesheet || '', stylesheet && this.selector || undefined) || null;
+                    let target_section = this.section;
+                    if (target_section && !stylesheet) return this.section.render();
+                    let target_document = target_section && target_section.document;
+                    //return this.section && this.section.render(stylesheet || '', stylesheet && this.selector || undefined) || null;
+
+                    return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: this.selector, action: "replace" })) || null;
                 }
             }
 
