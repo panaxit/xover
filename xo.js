@@ -629,15 +629,15 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         if (node) {
             //let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
             //Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
-                [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => {
-                    let listener;
-                    try {
-                        listener = stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'${event_type.replace(/::@*/, '-').replace(/[\/\[].*/, '')}')]`) || undefined;
-                    } catch (e) {
-                        console.warn(e)
-                    }
-                    return listener && (!listener.textContent || node.matches(listener.textContent))
-                }).forEach(([el]) => el.render())
+            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => {
+                let listener;
+                try {
+                    listener = stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'${event_type.replace(/::@*/, '-').replace(/[\/\[].*/, '')}')]`) || undefined;
+                } catch (e) {
+                    console.warn(e)
+                }
+                return listener && (!listener.textContent || node.matches(listener.textContent))
+            }).forEach(([el]) => el.render())
             //})
         }
     },
@@ -659,6 +659,26 @@ Object.defineProperty(xover.listener, 'on', {
 
 xover.listener.on('hashchange', function (new_hash, old_hash) {
     xover.site.active = location.hash;
+});
+
+xover.listener.on('pushState', function ({ state }) {
+    if (typeof HashChangeEvent !== "undefined") {
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+        return;
+    }
+
+    // HashChangeEvent is not available on all browsers. Use the plain Event.
+    try {
+        window.dispatchEvent(new Event("hashchange"));
+        return;
+    } catch (error) {
+        // but that fails on ie
+    }
+
+    // IE workaround
+    const ieEvent = document.createEvent("Event");
+    ieEvent.initEvent("hashchange", true, true);
+    window.dispatchEvent(ieEvent);
 });
 
 xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
@@ -1209,7 +1229,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             //let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
 
             //Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
-                [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render())
+            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render())
             //})
         } catch (e) {
             console.error(e);
@@ -5205,7 +5225,7 @@ xover.json.toAttributes = function (json) {
 }
 
 xover.json.fromAttributes = function (attributes) {
-    return JSON.parse('{' + (attributes.match(/(\w+)=(["'])([^\2]+?)\2/ig) || []).join(", ").replace(/(\w+)=(["'])([^\2]+?)\2/ig, '"$1":$2$3$2') + '}')
+    return JSON.parse('{' + (attributes.match(/(\w+)=(["'])([^\2]*?)\2/ig) || []).join(", ").replace(/(\w+)=(["'])([^\2]*?)\2/ig, '"$1":$2$3$2') + '}')
 }
 
 //xover.json.fromAttributes = function (attributes) { //Version with createNode, witch is slower.
@@ -8112,16 +8132,21 @@ xover.modernize = function (targetWindow) {
             }
 
             let html_node_render_handler = async function () {
-                let ref = this.closest("[xo-stylesheet]")
-                if (ref) {
-                    let stylesheet = this.getAttribute("xo-stylesheet")
-                    let target_section = this.section;
-                    if (target_section && !stylesheet) return this.section.render();
-                    let target_document = target_section && target_section.document;
-                    //return this.section && this.section.render(stylesheet || '', stylesheet && this.selector || undefined) || null;
+                this._render_manager = this._render_manager || xover.delay(1).then(async () => {
+                    let selector = this.selector;
+                    let ref = selector && this.closest("[xo-stylesheet]");
+                    if (ref) {
+                        let stylesheet = this.getAttribute("xo-stylesheet");
+                        let target_section = this.section;
+                        if (target_section && !stylesheet) return this.section.render();
+                        let target_document = target_section && target_section.document;
 
-                    return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: this.selector, action: "replace" })) || null;
-                }
+                        return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector, action: "replace" })) || null;
+                    }
+                }).finally(async () => {
+                    this._render_manager = undefined;
+                });
+                return this._render_manager;
             }
 
             if (!HTMLElement.prototype.hasOwnProperty('render')) {
@@ -8143,6 +8168,18 @@ xover.modernize = function (targetWindow) {
                     }
                 });
             }
+
+            var original_pushState = Object.getOwnPropertyDescriptor(History.prototype, 'pushState');
+            Object.defineProperty(History.prototype, 'pushState', {
+                value: function (...args) {
+                    let before = new xover.listener.Event('beforePushState', { state: args[0] })
+                    xover.listener.dispatchEvent(before, this);
+                    if (before.cancelBubble || before.defaultPrevented) return;
+                    let response = original_pushState.value.apply(this, args);
+                    xover.listener.dispatchEvent(new xover.listener.Event('pushState', { state: args[0] }), this);
+                    return response;
+                }
+            });
 
             if (!Location.prototype.hasOwnProperty('tag')) {
                 Object.defineProperty(Location.prototype, 'tag', {
@@ -8196,6 +8233,7 @@ xover.modernize = function (targetWindow) {
                             return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed()).render(this);
                         }
                         var data = this.cloneNode(true);
+                        data.reseed();
                         let action;
                         let stylesheet_target = 'body';
                         let targets = []
