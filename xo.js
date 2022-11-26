@@ -692,6 +692,12 @@ xover.listener.on('keyup', async function (event) {
     }
 })
 
+//Continue here
+//xover.listener.on('change::@source:*', async function () {
+//    let source = this.source;
+//    console.log(source.fetch());
+//})
+
 xover.listener.on('error', async function ({ event }) {
     if (!(event && !(event.defaultPrevented))) return;
     let srcElement = event.target;
@@ -1419,7 +1425,7 @@ Object.defineProperty(xover.site, 'active', {
     },
     set: function (input) {
         /* No debe ser modificable */
-        //Object.defineProperty(this, "active", { value: input });
+        //Object.defineProperty(this, 'active', { value: input });
         //xover.sections.active.render(/*true*/);
         //let hash = [xover.sections[input].hash, (window.top || window).location.hash].coalesce();
         //xover.dom.navigateTo(hashtag)
@@ -2460,7 +2466,7 @@ content_type["xml"] = "text/xml";
 //    writable: true, enumerable: false
 //});
 
-Object.defineProperty(xover.sources, "xover/normalize_namespaces.xslt", {
+Object.defineProperty(xover.sources, 'xover/normalize_namespaces.xslt', {
     get: function () {
         return xover.xml.createDocument(`
         <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
@@ -2476,7 +2482,7 @@ Object.defineProperty(xover.sources, "xover/normalize_namespaces.xslt", {
     }
 })
 
-Object.defineProperty(xover.sources, "xover/databind.xslt", {
+Object.defineProperty(xover.sources, 'xover/databind.xslt', {
     get: function () {
         return xover.xml.createDocument(`
 <xsl:stylesheet
@@ -2604,7 +2610,7 @@ Object.defineProperty(xover.sources, "xover/databind.xslt", {
     }
 })
 
-Object.defineProperty(xover.sections, "#", {
+Object.defineProperty(xover.sections, '#', {
     get: function () {
         return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Section(xover.sources["#"], { tag: xover.manifest.sources["#"] })) || xover.sections['#shell']; //new xover.Section(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
     }
@@ -6134,7 +6140,7 @@ xover.modernize = function (targetWindow) {
             };
             var proxy = new Proxy(base, handler);
             descriptor.value = proxy;
-            Object.defineProperty(base.prototype, "constructor", descriptor);
+            Object.defineProperty(base.prototype, 'constructor', descriptor);
             return proxy;
         }
 
@@ -6270,7 +6276,7 @@ xover.modernize = function (targetWindow) {
             if (typeof XMLDocument == "undefined") { XMLDocument = Document; }
 
             if (!Node.prototype.hasOwnProperty('resolveNS')) {
-                Object.defineProperty(Node.prototype, "resolveNS", {
+                Object.defineProperty(Node.prototype, 'resolveNS', {
                     get: function () {
                         let element = this;
                         let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
@@ -7385,6 +7391,12 @@ xover.modernize = function (targetWindow) {
             Attr.prototype.setPropertyValue = function (property_name, value) {
                 this.value = this.value.replace(new RegExp(`\\b(${property_name}):([^;]+)`, 'g'), (match, property) => `${property}:${value}`)
             }
+
+            Object.defineProperty(Attr.prototype, 'source', {
+                get: function () {
+                    return xover.sources[this.nodeName]
+                }
+            })
 
             //var original_document_documentElement = Object.getOwnPropertyDescriptor(Document.prototype, 'documentElement');
             //Object.defineProperty(Document.prototype, 'documentElement', {
