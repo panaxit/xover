@@ -743,7 +743,7 @@ xover.listener.on('popstate', async function (event) {
     //    let finished = false;
     //    let cancel = () => finished = true;
     xover.session.store_id = xover.session.store_id;
-    xover.site.seed = (event.state || {}).seed || event.target.location.hash;
+    xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
     //const promise = new Promise((resolve, reject) => {
     //    setTimeout(async () => {
     if (event.state) delete event.state.active;
@@ -1004,14 +1004,13 @@ xover.session = new Proxy({}, {
             let render_promises = [];
             var key = key, new_value = new_value;
             window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }));
-            if (["status"].includes(key)) {
-                xover.sections.active.render();
-            }
-            let active_sections = xover.sections.getActive();
-            let stylesheets = await Promise.all([...Object.values(active_sections), ...Object.values(active_sections.getInitiators())].map(section => section.stylesheets.getDocuments()).flat(Infinity))
-            stylesheets.filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(stylesheet => stylesheet.section.render());
+            //let active_sections = xover.sections.getActive();
+            //let stylesheets = await Promise.all([...Object.values(active_sections), ...Object.values(active_sections.getInitiators())].map(section => section.stylesheets.getDocuments()).flat(Infinity))
+            //stylesheets.filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(stylesheet => stylesheet.section.render());
 
-            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.section && el.section.sources[el.get("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render())
+            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.section && el.section.sources[el.get("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
+
+            ["status"].includes(key) && await xover.sections.active.render();
 
             if (xover.session.network_id) {
                 xover.storage.setKey(key, new_value);
@@ -7768,15 +7767,26 @@ xover.modernize = function (targetWindow) {
                 let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this, args: args, srcEvent: event });
                 xover.listener.dispatchEvent(beforeEvent, this);
                 if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
-                let current_references = args.map(el => el.cloneNode(true))
+                let appending_nodes = args.map(el => {
+                    let cloned = el.cloneNode(true);
+                    Object.defineProperty(cloned, 'parentNode', {
+                        value: el.parentNode
+                    });
+                    return cloned;
+                })
                 original_append.apply(this, args);
                 xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { node: this }), this);
 
-                args.map(item => [item, current_references.find(ref => ref.isEqualNode(item))]).filter(([after, before]) => before && after.ownerDocument !== before.ownerDocument).forEach(([after, before]) => {
-                    xover.listener.dispatchEvent(new xover.listener.Event('remove'), after);
+                args.map(item => [item, appending_nodes.find(ref => ref.isEqualNode(item))]).filter(([after, before]) => before && after.ownerDocument !== before.ownerDocument).forEach(([after, before]) => {
+                    xover.listener.dispatchEvent(new xover.listener.Event('remove'), before);
                 })
                 !(this instanceof HTMLElement || this instanceof SVGElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
                 return args;
+            }
+
+            var original_isEqualNode = Element.prototype.isEqualNode
+            Element.prototype.isEqualNode = function (ref) {
+                return original_isEqualNode.apply(this, [ref]) || this.get("xo:id") && ref && this.get("xo:id") == ref.get("xo:id");
             }
 
             Node.prototype.appendAfter = function (new_node) {
