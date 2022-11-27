@@ -6983,9 +6983,9 @@ xover.modernize = function (targetWindow) {
                 //}
                 original_remove.apply(this, arguments);
 
-                let descriptor = Object.getPropertyDescriptor(this, 'parentNode') || { writable: true };
+                let descriptor = Object.getPropertyDescriptor(this, 'previousParentNode') || { writable: true };
                 if (!this.parentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
-                    Object.defineProperty(this, 'parentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
+                    Object.defineProperty(this, 'previousParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                 }
                 let source = this.ownerDocument.source
                 source && source.save && source.save();
@@ -7769,7 +7769,7 @@ xover.modernize = function (targetWindow) {
                 if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                 let appending_nodes = args.map(el => {
                     let cloned = el.cloneNode(true);
-                    Object.defineProperty(cloned, 'parentNode', {
+                    Object.defineProperty(cloned, 'previousParentNode', {
                         value: el.parentNode
                     });
                     return cloned;
