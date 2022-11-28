@@ -3159,6 +3159,7 @@ xover.Response = function (response, request) {
 }
 xover.Response.prototype = Object.create(Response.prototype);
 
+var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 xover.URL = function (url, base, settings = {}) {
     if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
     let method;
@@ -3169,7 +3170,6 @@ xover.URL = function (url, base, settings = {}) {
     method = settings["method"] || method;
     query = settings["query"];
     url = new URL(url.replace(/\+/g, '%2B'), base || location.origin + location.pathname.replace(/[^/]+$/, ""));
-    let href = url.href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '');
 
     if (query instanceof URLSearchParams) {
         [...query.entries()].map(([key, value]) => url.searchParams.set(key, value));
@@ -3181,14 +3181,16 @@ xover.URL = function (url, base, settings = {}) {
             return method = input;
         }
     })
-    Object.defineProperty(url, 'href', {
-        get: function () {
-            return href;
-        }
-    })
     Object.setPrototypeOf(url, URL.prototype);
     return url;
 }
+
+Object.defineProperty(URL.prototype, 'href', {
+    get: function (...args) {
+        let href = original_href.get.apply(this, args);
+        return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '');
+    }
+});
 
 xover.Request = function (request, settings = {}) {
     if (!(this instanceof xover.Request)) return new xover.Request(request, settings);
@@ -4938,7 +4940,7 @@ xover.Section = function (xml, ...args) {
                 //if (!isActive) {
                 //    return Promise.reject(`Section ${tag} is not active`);
                 //}
-                self.triggerBindings();
+                //self.triggerBindings();
 
                 let doc = __document.cloneNode(true);
                 _section_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
@@ -7447,6 +7449,10 @@ xover.modernize = function (targetWindow) {
                         }
 
                         let return_value;
+                        let set_event = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value });
+                        xover.listener.dispatchEvent(set_event, this);
+                        if (set_event.cancelBubble || set_event.defaultPrevented) return;
+
                         if (value === null || value === undefined) {
                             this.nil = true;
                             this.ownerElement && this.remove()
@@ -7616,7 +7622,7 @@ xover.modernize = function (targetWindow) {
 
             Node.prototype.replaceBy = function (new_node) {
                 let parent_node = this.parentNode;
-                if (!parentNode) {
+                if (!parent_node) {
                     return new_node
                 }
                 new_node = (new_node.documentElement || new_node);
