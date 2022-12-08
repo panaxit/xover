@@ -7786,6 +7786,7 @@ xover.modernize = function (targetWindow) {
                 args.map(item => [item, appending_nodes.find(ref => ref.isEqualNode(item))]).filter(([after, before]) => before && after.ownerDocument !== before.ownerDocument).forEach(([after, before]) => {
                     xover.listener.dispatchEvent(new xover.listener.Event('remove'), before);
                 })
+                args.filter(el => !el.selectSingleNode("@xo:id") && el.parentNode.selectSingleNode("@xo:id")).forEach(el => el.reseed());
                 !(this instanceof HTMLElement || this instanceof SVGElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
                 return args;
             }
