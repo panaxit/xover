@@ -6986,7 +6986,7 @@ xover.modernize = function (targetWindow) {
                 original_remove.apply(this, arguments);
 
                 let descriptor = Object.getPropertyDescriptor(this, 'previousParentNode') || { writable: true };
-                if (!this.parentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
+                if (!this.previousParentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
                     Object.defineProperty(this, 'previousParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                 }
                 let source = this.ownerDocument.source
