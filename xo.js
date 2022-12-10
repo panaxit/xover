@@ -1811,7 +1811,12 @@ xover.Source = function (source, tag, manifest_key) {
                             resolve(document);
                         }));
                     })
-                    let documents = await Promise.all(promises).then(document => document);
+                    let documents;
+                    try {
+                        documents = await Promise.all(promises).then(document => document);
+                    } catch (e) {
+                        return reject(e);
+                    }
                     document = documents[0];
                 } else if (source[0] !== '#') {
                     document = await xover.fetch.xml(source);
@@ -1828,6 +1833,7 @@ xover.Source = function (source, tag, manifest_key) {
                 xover.listener.dispatchEvent(new xover.listener.Event('fetch', { document: __document, tag: tag, section: __document.section }), self);
                 return resolve(__document);
             }).catch(async (e) => {
+                xover.listener.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }), self);
                 if (!e) {
                     return reject(e);
                 }
@@ -1973,7 +1979,7 @@ xover.spaces["source_value"] = "http://panax.io/source/request/value"
 xover.spaces["source_filters"] = "http://panax.io/source/request/filters"
 xover.spaces["source_fields"] = "http://panax.io/source/request/fields"
 /* Values */
-xover.spaces["confirmed"] = "http://panax.io/state/confirmed"
+xover.spaces["confirmation"] = "http://panax.io/state/confirmation"
 xover.spaces["readonly"] = "http://panax.io/state/readonly"
 xover.spaces["suggested"] = "http://panax.io/state/suggested"
 xover.spaces["initial"] = "http://panax.io/state/initial"
@@ -4854,14 +4860,20 @@ xover.Section = function (xml, ...args) {
     });
     Object.defineProperty(this, 'fetch', {
         value: async function () {
-            let event = new xover.listener.Event('beforeFetch', { tag: _tag, document: __document });
-            xover.listener.dispatchEvent(event, self);
-            __document = event.detail.document || __document;
+            let before = new xover.listener.Event('beforeFetch', { tag: _tag, document: __document });
+            xover.listener.dispatchEvent(before, self);
+            if (before.cancelBubble || before.defaultPrevented) return;
+            //__document = event.detail.document || __document;
             if (__document.fetch) {
                 __document.section = section;
-                await __document.fetch()
+                try {
+                    await __document.fetch()
+                } catch (e) {
+                    xover.listener.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: _tag, document: __document, response: e }), self);
+                    return Promise.reject(e);
+                }
             }
-            event = new xover.listener.Event('fetch', { tag: _tag, document: __document });
+            let event = new xover.listener.Event('fetch', { tag: _tag, document: __document });
             xover.listener.dispatchEvent(event, self);
             __document = event.detail.document || __document;
             await this.initialize();
@@ -4920,7 +4932,11 @@ xover.Section = function (xml, ...args) {
                     if (!window.document.querySelector('[xo-section]')) {
                         await xover.sources['loading.xslt'].render();
                     }
-                    await section.fetch();
+                    try {
+                        await section.fetch();
+                    } catch (e) {
+                        return Promise.reject(e);
+                    }
                     if (!__document.documentElement) {
                         return Promise.reject(`No document body for ${tag}`);
                     }
@@ -4967,9 +4983,9 @@ xover.Section = function (xml, ...args) {
                         xover.dom.alert(e.statusText)
                     }
                 } else {
-                    let message = e instanceof Error && e || e.message || e || `Couldn't render section ${tag}`
-                    xover.dom.alert(message)
-                    return Promise.reject();
+                    console.log(`Couldn't render section ${tag}`)
+                    //e = e instanceof Error && e || e.message || e || `Couldn't render section ${tag}`
+                    return Promise.reject(e);
                 }
                 return;
             }).finally(async () => {
@@ -6659,6 +6675,8 @@ xover.modernize = function (targetWindow) {
                     }).finally(() => {
                         this.fetching = undefined;
                     });
+                }).catch(async (e) => {
+                    return Promise.reject(e);
                 });
                 return this.fetching;
             }
