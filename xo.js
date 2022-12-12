@@ -1755,6 +1755,7 @@ xover.Source = function (source, tag, manifest_key) {
             let url, href;
             let payload;
             let settings = Object.fromEntries(xover.manifest.getSettings(tag));
+            let qrl = xo.qrl(tag.substr(1));
             source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                 if (typeof (source) == 'string') {
                     source = tag.replace(new RegExp(manifest_key, "i"), source)
@@ -1769,10 +1770,11 @@ xover.Source = function (source, tag, manifest_key) {
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value])) || parameters
-                    parameters = parameters.constructor === [].constructor && parameters || [parameters];
+                    parameters && {}.constructor === parameters.constructor && parameters.merge(qrl.predicate);
                     if (tag === xover.site.active) {
                         parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
                     }
+                    parameters = parameters.constructor === [].constructor && parameters || [parameters];
                     return [endpoint, parameters]
                 })
                 settings = settings.merge(Object.fromEntries(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))));
@@ -1858,7 +1860,6 @@ xover.Source = function (source, tag, manifest_key) {
     return this
 }
 
-
 xover.sources = new Proxy({}, {
     get: function (self, key) {
         let _manifest = xover.manifest.sources;
@@ -1869,7 +1870,7 @@ xover.sources = new Proxy({}, {
         if (key in self) {
             return self[key];
         }
-        let manifest_key = Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key).pop();
+        let manifest_key = Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key || key[0] == '#' && manifest_key === '#' + xover.URL(key.substring(1)).pathname.substring(1)).pop();
         let source;
         source = _manifest[manifest_key] || key;
         source = manifest_key !== key && JSON.parse(JSON.stringify(source)) || source;
@@ -3199,6 +3200,24 @@ Object.defineProperty(URL.prototype, 'href', {
         return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '');
     }
 });
+
+xover.qrl = function (href) {
+    if (!(this instanceof xover.qrl)) return new xover.qrl(href);
+    let fields, schema, name, mode, identity_value, primary_values, predicate, settings;
+    if (href && typeof (href.value || href) == 'string') {
+        let url = xover.URL(href);
+        predicate = url.searchParams;
+        ({ searchParams: settings, hash: fields = '' } = xover.URL(url.hash.replace(/^#/, '')));
+        fields = fields.replace(/^#/, '');
+        let pathname = url.pathname.replace(/^\//, '');
+        [pathname, mode] = pathname.split(/~/);
+        [pathname, identity_value] = pathname.split(/:/);
+        [schema, name, ...primary_values] = pathname.split(/\//);
+        settings = Object.fromEntries(settings.entries());
+        predicate = Object.fromEntries(predicate.entries());
+    }
+    return { fields, schema, name, mode, identity_value, primary_values, predicate, settings }
+}
 
 xover.Request = function (request, settings = {}) {
     if (!(this instanceof xover.Request)) return new xover.Request(request, settings);
@@ -4973,7 +4992,7 @@ xover.Section = function (xml, ...args) {
                     source && source.save && source.save();
                 }
                 if (!(_section_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
-                    section.addStylesheet({ href: section.tag.substring(1) + '.xslt', target: "@#shell main" })
+                    section.addStylesheet({ href: section.tag.substring(1).split(/\?/, 1).shift() + '.xslt', target: "@#shell main" })
                 }
                 await section.sources.load();
                 let isActive = self.isActive
@@ -6307,7 +6326,7 @@ xover.modernize = function (targetWindow) {
                                     self[key] = Object.prototype.merge.call(self[key] || {}, object[key]);
                                 } else {
                                     let new_value = object[key];
-                                    new_value = new_value instanceof Attr? new_value.value : new_value;
+                                    new_value = new_value instanceof Attr ? new_value.value : new_value;
                                     self[key] = (new_value !== undefined ? new_value : self[key]) //Sólo sobreescribe si es un valor diferente a undefined (incluyendo null);
                                 }
                             }
@@ -7260,7 +7279,7 @@ xover.modernize = function (targetWindow) {
                         }
                     } else if (args[1] !== undefined) {
                         this.setAttribute(args[0], args[1])
-                    } 
+                    }
                 } else if (args[0] instanceof Attr) {
                     if (typeof (args[args.length - 1]) === 'string') {
                         this.setAttributeNodeNS(args[args.length - 1], args[0])
@@ -8392,8 +8411,10 @@ xover.modernize = function (targetWindow) {
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-section="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`) || stylesheet_target;
                             let target = stylesheet_target;
-                            try { target.style.cursor = 'wait' } catch (e) { }
+                            let current_cursor_style = target.style.cursor;
+                            try { target.style.cursor = 'wait' } catch (e) { console.log(e) }
                             let dom = await data.transform(xsl);
+                            try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
                             if (section) {
                                 let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
