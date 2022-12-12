@@ -8392,6 +8392,7 @@ xover.modernize = function (targetWindow) {
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-section="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-section])`) || stylesheet_target;
                             let target = stylesheet_target;
+                            try { target.style.cursor = 'wait' } catch (e) { }
                             let dom = await data.transform(xsl);
                             if (section) {
                                 let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
