@@ -8394,6 +8394,7 @@ xover.modernize = function (targetWindow) {
                             let target = stylesheet_target;
                             try { target.style.cursor = 'wait' } catch (e) { }
                             let dom = await data.transform(xsl);
+                            dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
                             if (section) {
                                 let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
                                 xover.listener.dispatchEvent(before, section);
