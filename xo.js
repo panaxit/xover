@@ -4510,6 +4510,25 @@ xover.Section = function (xml, ...args) {
             } else {
                 __document = input;
             }
+            const config = { attributes: true, childList: true, subtree: true };
+            let section = self;
+            const callback = (mutationList, observer) => {
+                mutationList = mutationList.filter(mutation => !["http://panax.io/xover"].includes(mutation.attributeNamespace));
+                for (const mutation of mutationList) {
+                    /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
+                    if (mutation.type === 'childList') {
+                        [...mutation.addedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }), el));
+                        [...mutation.removedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('removed', { target: mutation.target }), el));
+                    } else if (mutation.type === 'attributes') {
+                        //console.log(`The ${mutation.attributeName} attribute was modified.`);
+                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self && (el.querySelector(`[xo-attribute="${(mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName) || {}).name}"]`) || (mutation.attributeNamespace || "").indexOf('http://panax.io/state') == 0 && el.querySelector(`[xo-attribute="${(mutation.target.getAttributeNode(mutation.attributeName) || {}).name}"]`))).forEach(el => el.render())
+                    }
+                    xover.listener.dispatchEvent(new xover.listener.Event('change', { target: mutation.target, node: mutation.target, section: section }), section.documentElement);
+                }
+            };
+
+            const observer = new MutationObserver(callback);
+            observer.observe(__document, config);
         }
     })
 
@@ -4911,26 +4930,6 @@ xover.Section = function (xml, ...args) {
     });
     Object.defineProperty(this, 'initialize', {
         value: async function () {
-            const config = { attributes: true, childList: true, subtree: true };
-            let section = self;
-            const callback = (mutationList, observer) => {
-                mutationList = mutationList.filter(mutation => !["http://panax.io/xover"].includes(mutation.attributeNamespace));
-                for (const mutation of mutationList) {
-                    /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
-                    if (mutation.type === 'childList') {
-                        [...mutation.addedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }), el));
-                        [...mutation.removedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('removed', { target: mutation.target }), el));
-                    } else if (mutation.type === 'attributes') {
-                        //console.log(`The ${mutation.attributeName} attribute was modified.`);
-                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self && (el.querySelector(`[xo-attribute="${(mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName) || {}).name}"]`) || (mutation.attributeNamespace || "").indexOf('http://panax.io/state') == 0 && el.querySelector(`[xo-attribute="${(mutation.target.getAttributeNode(mutation.attributeName) || {}).name}"]`))).forEach(el => el.render())
-                    }
-                    xover.listener.dispatchEvent(new xover.listener.Event('change', { target: mutation.target, node: mutation.target, section: section }), section.documentElement);
-                }
-            };
-
-            const observer = new MutationObserver(callback);
-            observer.observe(__document, config);
-
             _section_stylesheets.filter(stylesheet => stylesheet.role == 'init' && !__document.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(async stylesheet => {
                 let _document_stylesheet = __document.stylesheets[stylesheet.href];
                 if (_document_stylesheet) {
