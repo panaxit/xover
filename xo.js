@@ -551,7 +551,7 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         let { prefix, constructor = "", name, value } = { prefix: axis.prefix, constructor: (axis.constructor || {}).name, name: (axis.nodeName || axis.name), value: event.detail["value"] }
         let axes = [];
         if (axis instanceof Attr) {
-            name = '@' + name
+            name = '@' + (prefix ? ':' : '') + name
         } else if (axis instanceof xover.Source) {
             name = axis.tag
         } else if (axis instanceof xover.Section) {
@@ -565,7 +565,7 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
             xover.listener[`${event.type}::${prefix}:*`] && listeners.push(`${event.type}::${prefix}:*`);
         }
         try {
-            let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
+            let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? (node.parentNode || node.previousParentNode) : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
 
             listeners = listeners.concat(matching_listeners);
         } catch (e) {
@@ -991,32 +991,20 @@ xover.session = new Proxy({}, {
         return item;
     },
     set: async function (self, key, new_value) {
-        let refresh;
         let old_value = xover.session.getKey(key);
-        if (new_value instanceof Array) {
-            refresh = !old_value && !!new_value || old_value.length === new_value.length && old_value.every((value, index) => value === new_value[index]);
-        } else if (xover.json.isValid(new_value)) {
-            refresh = JSON.stringify(new_value) != JSON.stringify(old_value);
-        } else {
-            refresh = old_value !== new_value;
-        }
+        let before = new xover.listener.Event('beforeChange::session:${key}', { attribute: key, value: new_value, old: old_value });
+        xover.listener.dispatchEvent(before, new_value);
+        if (before.cancelBubble || before.defaultPrevented) return;
         xover.session.setKey(key, new_value);
-        if (refresh) {
-            let render_promises = [];
-            var key = key, new_value = new_value;
-            window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }));
-            //let active_sections = xover.sections.getActive();
-            //let stylesheets = await Promise.all([...Object.values(active_sections), ...Object.values(active_sections.getInitiators())].map(section => section.stylesheets.getDocuments()).flat(Infinity))
-            //stylesheets.filter(stylesheet => stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(stylesheet => stylesheet.section.render());
+        var key = key, new_value = new_value;
+        window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }));
+        [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.section && el.section.sources[el.getAttribute("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
 
-            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.section && el.section.sources[el.getAttribute("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
+        ["status"].includes(key) && await xover.sections.active.render();
 
-            ["status"].includes(key) && await xover.sections.active.render();
-
-            if (xover.session.network_id) {
-                xover.storage.setKey(key, new_value);
-                xover.storage.setKey(key, undefined);
-            }
+        if (xover.session.network_id) {
+            xover.storage.setKey(key, new_value);
+            xover.storage.setKey(key, undefined);
         }
         return self[key];
     },
@@ -4517,11 +4505,30 @@ xover.Section = function (xml, ...args) {
                 for (const mutation of mutationList) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
                     if (mutation.type === 'childList') {
+                        if (mutation.removedNodes.length) {
+                            if (!mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && !(mutation.target.firstElementChild || mutation.target.textContent)) {
+                                mutation.target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
+                            }
+                        }
                         [...mutation.addedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }), el));
-                        [...mutation.removedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('removed', { target: mutation.target }), el));
+                        [...mutation.removedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { target: mutation.target }), el));
                     } else if (mutation.type === 'attributes') {
                         //console.log(`The ${mutation.attributeName} attribute was modified.`);
-                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self && (el.querySelector(`[xo-attribute="${(mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName) || {}).name}"]`) || (mutation.attributeNamespace || "").indexOf('http://panax.io/state') == 0 && el.querySelector(`[xo-attribute="${(mutation.target.getAttributeNode(mutation.attributeName) || {}).name}"]`))).forEach(el => el.render())
+                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+
+                        if (!attr) {
+                            observer.disconnect();
+                            mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName)
+                            attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                            xover.listener.dispatchEvent(new xover.listener.Event('remove', { target: mutation.target }), attr);
+                            mutation.target.removeAttributeNS(mutation.attributeNamespace, mutation.attributeName)
+                            observer.observe(__document, config);
+                        }
+                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self && (el.querySelector(`[xo-attribute="${attr.name}"]`) || (mutation.attributeNamespace || "").indexOf('http://panax.io/state') == 0 && el.querySelector(`[xo-attribute="${attr.name}"]`))).forEach(el => el.render())
+
+                    }
+                    if (mutation.target instanceof Element && mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (mutation.target.firstElementChild || mutation.target.textContent)) {
+                        mutation.target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                     }
                     xover.listener.dispatchEvent(new xover.listener.Event('change', { target: mutation.target, node: mutation.target, section: section }), section.documentElement);
                 }
