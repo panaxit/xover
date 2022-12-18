@@ -1219,7 +1219,9 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             //let pending_stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
 
             //Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
-            [...top.document.querySelectorAll('[xo-stylesheet]')].map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render())
+            if (['active'].includes(key)) {
+                [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.closest('[xo-section="active"]')).forEach(el => el.render());
+            }
             //})
         } catch (e) {
             console.error(e);
@@ -3191,7 +3193,7 @@ Object.defineProperty(URL.prototype, 'href', {
 
 xover.qrl = function (href) {
     if (!(this instanceof xover.qrl)) return new xover.qrl(href);
-    let fields, schema, name, mode, identity_value, primary_values, predicate, settings;
+    let fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings;
     if (href && typeof (href.value || href) == 'string') {
         let url = xover.URL(href);
         predicate = url.searchParams;
@@ -3200,11 +3202,12 @@ xover.qrl = function (href) {
         let pathname = url.pathname.replace(/^\//, '');
         [pathname, mode] = pathname.split(/~/);
         [pathname, identity_value] = pathname.split(/:/);
+        [pathname, ref_node] = pathname.split(/@/);
         [schema, name, ...primary_values] = pathname.split(/\//);
         settings = Object.fromEntries(settings.entries());
         predicate = Object.fromEntries(predicate.entries());
     }
-    return { fields, schema, name, mode, identity_value, primary_values, predicate, settings }
+    return { fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings }
 }
 
 xover.Request = function (request, settings = {}) {
@@ -6429,6 +6432,12 @@ xover.modernize = function (targetWindow) {
             Node.prototype.select = Node.prototype.selectNodes
             Node.prototype.selectFirst = Node.prototype.selectSingleNode
 
+            Element.prototype.createNode = function (node_description) {
+                let node = xover.xml.createNode(node_description)
+                this.append(node);
+                return node;
+            }
+
             Node.prototype.filter = function (...args) {
                 if (typeof (args[0]) === 'string') {
                     if (this.selectSingleNode(args[0])) {
@@ -6449,7 +6458,7 @@ xover.modernize = function (targetWindow) {
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
 
-                            return this.filter.apply(this, args) === this;
+                            return this.ownerDocument.selectNodes.apply(this, args).concat(this.selectSingleNode.apply(this, args)).includes(this);
                         }
                     }
                 }
@@ -7274,6 +7283,8 @@ xover.modernize = function (targetWindow) {
                 if (!args.length) return Promise.reject("Nothing to set");
                 if (args[0] instanceof Text) {
                     this.textContent = args[0];
+                } else if (typeof (args[0]) === 'function') {
+                    args[0].apply(this, [this]);
                 } else if (typeof (args[0]) === 'string') {
                     if (typeof (args[2]) === 'string') {
                         this.setAttributeNS(args[2], args[0], args[1])
@@ -7283,7 +7294,14 @@ xover.modernize = function (targetWindow) {
                         } else {
                             this.textContent = args[0];
                         }
-                    } else if (args[1] !== undefined) {
+                    } else if (typeof (args[1]) === 'function') {
+                        if (this.hasAttribute(args[0])) {
+                            this.setAttribute(args[0], args[1])
+                        } else {
+                            let attribute = this.createAttribute(args[0], null);
+                            attribute.value = args[1]
+                        }
+                    } else {
                         this.setAttribute(args[0], args[1])
                     }
                 } else if (args[0] instanceof Attr) {
@@ -7525,7 +7543,17 @@ xover.modernize = function (targetWindow) {
                         if (event && (event.type || "").split(/::/, 1).shift() == 'beforeChange' && this.name == ((event.detail || {}).target || {}).name) {
                             event.preventDefault();
                         }
-                        value = value instanceof Attr && value.value || typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                        if (typeof value === 'function') {
+                            value = value.apply(this, [{ el: this.parentNode, attr: this }])
+                        }
+                        if (value instanceof Attr) {
+                            value = value.value
+                        } else if (value && value.constructor === {}.constructor) {
+                            value = JSON.stringify(value)
+                        }
+                        if (value != null) {
+                            value = String(value)
+                        };
 
                         if (!this.ownerElement && value !== undefined && value !== null) {
                             original_attr_value.set.call(this, value);
