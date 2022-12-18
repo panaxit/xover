@@ -1979,12 +1979,20 @@ xover.spaces["initial"] = "http://panax.io/state/initial"
 xover.spaces["prev"] = "http://panax.io/state/previous"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
 
+xover.alertManager = {};
 xover.dom.alert = async function (message) {
-    let xMessage = xover.data.createMessage(message)
-    await xMessage.addStylesheet({ href: "message.xslt", role: "modal" })
-    dom = await xMessage.transform();
-    document.body && document.body.appendChild(dom.documentElement)
-    return dom.documentElement;
+    let message_id = message.toString()
+
+    xover.alertManager[message_id] = xover.alertManager[message_id] || xover.delay(1).then(async () => {
+        let xMessage = xover.data.createMessage(message)
+        await xMessage.addStylesheet({ href: "message.xslt", role: "modal" })
+        dom = await xMessage.transform();
+        document.body && document.body.appendChild(dom.documentElement)
+        return dom.documentElement;
+    }).finally(async () => {
+        delete xover.alertManager[message_id];
+    })
+    return xover.alertManager[message_id];
 }
 
 xover.dom.createDialog = function (message) {
