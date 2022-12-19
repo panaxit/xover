@@ -512,6 +512,9 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         }
         //if (event.srcEvent instanceof StorageEvent) return;
         let node, listeners = [];
+        if (event.detail.listeners) {
+            listeners = listeners.concat(event.detail.listeners);
+        }
         if (axis instanceof Node) {
             event.detail["node"] = event.detail["node"] || axis;
             event.detail["target"] = event.detail["target"] || axis;
@@ -565,7 +568,8 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
             xover.listener[`${event.type}::${prefix}:*`] && listeners.push(`${event.type}::${prefix}:*`);
         }
         try {
-            let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? (node.parentNode || node.previousParentNode) : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
+            let event_type = event.type;
+            let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
 
             listeners = listeners.concat(matching_listeners);
         } catch (e) {
@@ -4546,11 +4550,11 @@ xover.Section = function (xml, ...args) {
                             if (mutation.target instanceof Element && mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (mutation.target.firstElementChild || mutation.target.textContent)) {
                                 mutation.target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                             }
-                        };
-                        [...mutation.removedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { section: section, target: mutation.target }), el));
+                        }
                         if (mutation.removedNodes.length) {
+                            //[...mutation.removedNodes].forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { section: section, target: mutation.target }), el));
                             xover.listener.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }), mutation.target)
-                        };
+                        }
                         xover.listener.dispatchEvent(new xover.listener.Event('change', { section: section, target: mutation.target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes }), mutation.target);
                         [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self).forEach(el => el.render())
                     } else if (mutation.type === 'attributes') {
@@ -4570,6 +4574,7 @@ xover.Section = function (xml, ...args) {
 
                     }
                 }
+                self.save && self.save();
             };
 
             const observer = new MutationObserver(callback);
@@ -7100,14 +7105,15 @@ xover.modernize = function (targetWindow) {
                 //if (context_section) {
                 //    context_section.save();
                 //}
+                let event_type = 'remove', node = this;
+                let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? (node.parentNode || node.previousParentNode) : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
+
                 original_remove.apply(this, arguments);
 
                 let descriptor = Object.getPropertyDescriptor(this, 'previousParentNode') || { writable: true };
                 if (!this.previousParentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
                     Object.defineProperty(this, 'previousParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                 }
-                let source = this.ownerDocument.source
-                source && source.save && source.save();
                 //if (this.ownerDocument.selectSingleNode && section) {
                 //    //let refresh = !parent.selectSingleNode('//@state:refresh');
                 //    //if (refresh) {
@@ -7131,8 +7137,7 @@ xover.modernize = function (targetWindow) {
                 //    //        resolve(true);
                 //    //    }, 50);
                 //    //});
-                xover.listener.dispatchEvent(new xover.listener.Event('change'), this);
-                xover.listener.dispatchEvent(new xover.listener.Event('remove'), this);
+                xover.listener.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }), this);
                 //}
                 !(this instanceof HTMLElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
                 return this;
@@ -7635,8 +7640,8 @@ xover.modernize = function (targetWindow) {
                                 if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xover.site.get(this.name) || {}).length) {
                                     xover.site.set(this.name, new Object.push(this.parentNode.getAttribute("xo:id"), value))
                                 }
-                                let source = this.ownerDocument.source;
-                                source && source.save && source.save();
+                                //let source = this.ownerDocument.source;
+                                //source && source.save && source.save();
 
                                 ////let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || section;
                                 ////context && context.render();
