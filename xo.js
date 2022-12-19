@@ -1230,7 +1230,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
 })
 
 Object.defineProperty(xover.site, 'reference', {
-    get() { return (history.state['reference'] || []) }
+    get() { return (history.state['reference'] || {}) }
     , set() { throw `State "reference" is readonly` }
     , enumerable: true
 });
@@ -4504,6 +4504,7 @@ xover.Section = function (xml, ...args) {
             //    //__document.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
             //}
             //xover.sections[this.tag] = self;
+            input.reseed();
             if (input instanceof Document) {
                 __document.replaceBy(input)
             } else {
@@ -4511,8 +4512,23 @@ xover.Section = function (xml, ...args) {
             }
             const config = { attributes: true, childList: true, subtree: true };
             let section = self;
+            const distinctMutations = function (mutations) {
+                return mutations.filter((mutation, index, self) => {
+                    const matchingMutation = self.find((otherMutation) => {
+                        return (
+                            otherMutation.type === mutation.type &&
+                            otherMutation.target === mutation.target &&
+                            otherMutation.attributeName === mutation.attributeName &&
+                            otherMutation.attributeNamespace === mutation.attributeNamespace
+                        );
+                    });
+                    return matchingMutation === mutation;
+                });
+            }
+
             const callback = (mutationList, observer) => {
                 mutationList = mutationList.filter(mutation => !["http://panax.io/xover"].includes(mutation.attributeNamespace));
+                mutationList = distinctMutations(mutationList);
                 for (const mutation of mutationList) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
                     if (mutation.type === 'childList') {
@@ -4521,27 +4537,38 @@ xover.Section = function (xml, ...args) {
                                 mutation.target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
                             }
                         }
-                        [...mutation.addedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }), el));
-                        [...mutation.removedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { target: mutation.target }), el));
+                        [...mutation.addedNodes].filter(el => el.parentElement).forEach(el => {
+                            xover.listener.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }), el);
+                            el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.reseed());
+                        });
+                        if (mutation.addedNodes.length) {
+                            xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }), mutation.target);
+                            if (mutation.target instanceof Element && mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (mutation.target.firstElementChild || mutation.target.textContent)) {
+                                mutation.target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
+                            }
+                        };
+                        [...mutation.removedNodes].filter(el => el.parentElement).forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { section: section, target: mutation.target }), el));
+                        if (mutation.removedNodes.length) {
+                            xover.listener.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }), mutation.target)
+                        };
+                        xover.listener.dispatchEvent(new xover.listener.Event('change', { section: section, target: mutation.target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes }), mutation.target);
+                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self).forEach(el => el.render())
                     } else if (mutation.type === 'attributes') {
                         //console.log(`The ${mutation.attributeName} attribute was modified.`);
                         let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-
                         if (!attr) {
                             observer.disconnect();
                             mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName)
                             attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                            xover.listener.dispatchEvent(new xover.listener.Event('remove', { target: mutation.target }), attr);
+                            xover.listener.dispatchEvent(new xover.listener.Event('remove', { section: section, target: mutation.target, attr: attr }), attr);
                             mutation.target.removeAttributeNS(mutation.attributeNamespace, mutation.attributeName)
                             observer.observe(__document, config);
                         }
-                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self && (el.querySelector(`[xo-attribute="${attr.name}"]`) || (mutation.attributeNamespace || "").indexOf('http://panax.io/state') == 0 && el.querySelector(`[xo-attribute="${attr.name}"]`))).forEach(el => el.render())
+                        //xover.listener.dispatchEvent(new xover.listener.Event('change', { section: section, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, target: mutation.target }), attr); //Is triggered on the attribute, because at this point we lost reference of the previous value
+                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self && (el.querySelector(`[xo-attribute="${attr.name}"]`) || (mutation.attributeNamespace || "").indexOf('http://panax.io/state') == 0 && el.querySelector(`[xo-attribute="${attr.name}"]`))).forEach(el => el.render());
+                        [...top.document.querySelectorAll('xo-listener')].filter(el => el => el.section === self && mutation.target.selectSingleNode(`@${el.get("xo-attribute").value}`)).map(el => el.closest("[xo-stylesheet]")).forEach(stylesheet => stylesheet && stylesheet.render())
 
                     }
-                    if (mutation.target instanceof Element && mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (mutation.target.firstElementChild || mutation.target.textContent)) {
-                        mutation.target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
-                    }
-                    xover.listener.dispatchEvent(new xover.listener.Event('change', { target: mutation.target, node: mutation.target, section: section }), section.documentElement);
                 }
             };
 
@@ -4570,10 +4597,10 @@ xover.Section = function (xml, ...args) {
         }
     });
 
-    let _render_manager = {};
+    let _render_manager;
     Object.defineProperty(this, 'isRendering', {
         get: function () {
-            return !!Object.values(_render_manager).find(el => el instanceof Promise);
+            return !!(_render_manager instanceof Promise);
         }
     });
 
@@ -4986,12 +5013,12 @@ xover.Section = function (xml, ...args) {
     }
 
     Object.defineProperty(this, 'render', {
-        value: async function (stylesheet = '', target) {
+        value: async function () {
             //let before = new xover.listener.Event('beforeRender', this);
             //xover.listener.dispatchEvent(before, this);
             //if (before.cancelBubble || before.defaultPrevented) return;
 
-            _render_manager[stylesheet] = _render_manager[stylesheet] || xover.delay(1).then(async () => {
+            _render_manager = _render_manager || xover.delay(1).then(async () => {
                 let tag = self.tag;
                 if (!__document.documentElement) {
                     if (!window.document.querySelector('[xo-section]')) {
@@ -5026,7 +5053,7 @@ xover.Section = function (xml, ...args) {
                 let doc = __document.cloneNode(true);
                 _section_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
                 doc.section = section;
-                await doc.render(stylesheet && doc.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: target }) || undefined);
+                await doc.render();
                 return Promise.resolve(self);
             }).then(async () => {
                 let tag = self.tag;
@@ -5056,9 +5083,9 @@ xover.Section = function (xml, ...args) {
             }).finally(async () => {
                 let loading = window.document.querySelector('[xo-stylesheet="loading.xslt"]')
                 loading && loading.remove();
-                _render_manager[stylesheet] = undefined;
+                _render_manager = undefined;
             });
-            return _render_manager[stylesheet];
+            return _render_manager;
         },
         writable: true, enumerable: false, configurable: false
     });
@@ -7915,29 +7942,12 @@ xover.modernize = function (targetWindow) {
                 args.forEach(el => {
                     let beforeEvent = new xover.listener.Event('beforeAppend', { target: this, args: args });
                     xover.listener.dispatchEvent(beforeEvent, el);
-                    //if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) el.remove(); //Should it remove on defaultPrevented?
+                    if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) el.remove();
                 })
                 let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this, args: args, srcEvent: event });
                 xover.listener.dispatchEvent(beforeEvent, this);
                 if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
-                let appending_nodes = args.filter(el => el instanceof Node).map(el => {
-                    let cloned = el.cloneNode(true);
-                    Object.defineProperty(cloned, 'previousParentNode', {
-                        value: el.parentNode
-                    });
-                    return cloned;
-                })
                 original_append.apply(this, args);
-                args.forEach(el => {
-                    xover.listener.dispatchEvent(beforeEvent, new xover.listener.Event('append', { target: this, args: args }));
-                })
-                xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { node: this }), this);
-
-                args.map(item => [item, appending_nodes.find(ref => ref.isEqualNode(item))]).filter(([after, before]) => before && after.ownerDocument !== before.ownerDocument).forEach(([after, before]) => {
-                    xover.listener.dispatchEvent(new xover.listener.Event('remove'), before);
-                })
-                args.filter(el => !el.selectSingleNode("@xo:id") && el.parentNode.selectSingleNode("@xo:id")).forEach(el => el.reseed());
-                !(this instanceof HTMLElement || this instanceof SVGElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
                 return args;
             }
 
