@@ -8237,6 +8237,7 @@ xover.modernize = function (targetWindow) {
                                 ////if (!xml.documentElement) {
                                 ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                 ////}
+                                xover.listener.dispatchEvent(new xover.listener.Event('beforeTransform', { document: xml, section: xml.section, stylesheet: xsl }), xml);
                                 if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                     console.time(xsl.href || "Transform");
                                 }
