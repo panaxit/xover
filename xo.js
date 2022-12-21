@@ -8579,7 +8579,7 @@ xover.modernize = function (targetWindow) {
                             //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
                             scripts_external = dom.selectNodes('//*[self::html:script[@src or @defer or @async or not(text())] or self::html:link[@href] or self::html:meta][not(text())]').removeAll();
                             _applyScripts(document, scripts_external);
-                            dom.$$('//@xo-attribute[.="" or .="xo:id"]').removeAll()
+                            dom.$$('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el))
                             if (!target) {
                                 if (xover.debug.enabled) {
                                     if (stylesheet_target) {
