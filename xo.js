@@ -505,6 +505,13 @@ xover.listener.Event = function (event_name, params = {}) {
 }
 xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
+Object.defineProperty(xover.listener, 'matches', {
+    value: function (node, event_type) {
+        return Object.keys(xover.listener).filter((key) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)))
+    },
+    writable: false, enumerable: false, configurable: false
+})
+
 Object.defineProperty(xover.listener, 'dispatchEvent', {
     value: async function (event, axis = {}) {
         if (xover.init.status != 'initialized') {
@@ -569,7 +576,7 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         }
         try {
             let event_type = event.type;
-            let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
+            let matching_listeners = xover.listener.matches(node, event_type);
 
             listeners = listeners.concat(matching_listeners);
         } catch (e) {
@@ -613,7 +620,7 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
 
         /*listeners.reverse().forEach((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));*/
     },
-    writable: true, enumerable: false, configurable: false
+    writable: false, enumerable: false, configurable: false
 });
 
 Object.defineProperty(xover.listener, 'dispatcher', {
@@ -4531,7 +4538,7 @@ xover.Section = function (xml, ...args) {
             }
 
             const callback = (mutationList, observer) => {
-                mutationList = mutationList.filter(mutation => !["http://panax.io/xover"].includes(mutation.attributeNamespace));
+                mutationList = mutationList.filter(mutation => !["http://panax.io/xover","http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace));
                 mutationList = distinctMutations(mutationList);
                 for (const mutation of mutationList) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
@@ -4541,7 +4548,7 @@ xover.Section = function (xml, ...args) {
                                 mutation.target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
                             }
                         }
-                        [...mutation.addedNodes].filter(el => el.parentElement).forEach(el => {
+                        [...mutation.addedNodes].forEach(el => {
                             xover.listener.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }), el);
                             el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.reseed());
                         });
@@ -4561,16 +4568,14 @@ xover.Section = function (xml, ...args) {
                         //console.log(`The ${mutation.attributeName} attribute was modified.`);
                         let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
                         if (!attr) {
-                            observer.disconnect();
-                            mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName)
-                            attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                            xover.listener.dispatchEvent(new xover.listener.Event('remove', { section: section, target: mutation.target, attr: attr }), attr);
-                            mutation.target.removeAttributeNS(mutation.attributeNamespace, mutation.attributeName)
-                            observer.observe(__document, config);
+                            //let target_copy = mutation.target.cloneNode();
+                            //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
+                            //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
                         }
-                        //xover.listener.dispatchEvent(new xover.listener.Event('change', { section: section, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, target: mutation.target }), attr); //Is triggered on the attribute, because at this point we lost reference of the previous value
-                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self && (el.querySelector(`[xo-attribute="${attr.name}"]`) || (mutation.attributeNamespace || "").indexOf('http://panax.io/state') == 0 && el.querySelector(`[xo-attribute="${attr.name}"]`))).forEach(el => el.render());
-                        [...top.document.querySelectorAll('xo-listener')].filter(el => el => el.section === self && mutation.target.selectSingleNode(`@${el.get("xo-attribute").value}`)).map(el => el.closest("[xo-stylesheet]")).forEach(stylesheet => stylesheet && stylesheet.render())
+                        //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.section == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
+                        [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self).filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());
+                        [...top.document.querySelectorAll('xo-listener')].filter(el => el.section === self && (mutation.target.getAttributeNode(el.getAttribute("xo-attribute")) || mutation.target.createAttribute(el.getAttribute("xo-attribute"), null)).isEqualNode(attr)).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
 
                     }
                 }
@@ -5203,7 +5208,7 @@ xover.Section.prototype.generateTag = function (document) {
     return (document.documentElement && (document.documentElement.getAttributeNS("http://panax.io/xover", "tag") || document.documentElement.getAttributeNS("http://panax.io/xover", "id") || document.documentElement.localName.toLowerCase())).split(/^#/).pop();
 }
 
-xover.xml.getAttributeParts = function (attribute) {
+xover.xml.getAttributeParts = function (attribute = "") {
     let name, prefix;
     if (attribute instanceof Attr) {
         prefix = attribute.prefix;
@@ -7026,9 +7031,8 @@ xover.modernize = function (targetWindow) {
                                 [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
                                 return [...node.childNodes].filter(el => el instanceof Text).pop();
                             }
-                            else if (node.getAttribute(attribute) === null) {
+                            else if (!node.getAttributeNode(attribute)) {
                                 attribute_node = node.createAttribute(attribute, null);
-
                             }
                             attribute_node = attribute_node || node.getAttributeNode(attribute);
                             return attribute_node;
@@ -7106,7 +7110,7 @@ xover.modernize = function (targetWindow) {
                 //    context_section.save();
                 //}
                 let event_type = 'remove', node = this;
-                let matching_listeners = Object.keys(xover.listener).filter((key) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? (node.parentNode || node.previousParentNode) : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)));
+                let matching_listeners = xover.listener.matches(node, event_type);
 
                 original_remove.apply(this, arguments);
 
@@ -7419,46 +7423,47 @@ xover.modernize = function (targetWindow) {
 
             Element.prototype.createAttribute = function (attribute, value = '') {
                 attribute = attribute.replace(/^@/, "");
+                let node = (value === null && this.cloneNode() || this)
                 let parentNode = this;
                 let new_attribute_node;
                 let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
                 let namespace = this.resolveNS(prefix) || xover.spaces[prefix];
                 if (!namespace) {
-                    original_setAttribute.call(this, attribute, value);
+                    original_setAttribute.call(node, attribute, value);
                 } else {
-                    original_setAttributeNS.call(this, namespace, attribute, value);
+                    original_setAttributeNS.call(node, namespace, attribute, value);
                 }
-                new_attribute_node = original_getAttributeNode.call(this, attribute);
+                new_attribute_node = original_getAttributeNode.call(node, attribute);
                 if (value === null) {
-                    original_removeAttribute.call(this, attribute);
+                    original_removeAttribute.call(node, attribute);
                     let descriptor = Object.getPropertyDescriptor(new_attribute_node, 'parentNode') || { writable: true };
                     if (descriptor.hasOwnProperty("writable") ? descriptor.writable : true) {
                         Object.defineProperty(new_attribute_node, 'parentNode', { get: function () { return parentNode } });
                     }
                 }
-                new_attribute_node = new_attribute_node || original_getAttributeNode.call(this, attribute);
                 Object.defineProperty(new_attribute_node, 'nil', { value: true, writable: true, editable: true });
                 return new_attribute_node;
             }
 
             Element.prototype.createAttributeNS = function (namespace_URI, attribute, value = '') {
                 attribute = attribute.replace(/^@/, "");
+                let node = (value === null && this.cloneNode() || this)
                 let parentNode = this;
                 let new_attribute_node;
                 if (namespace_URI) {
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
                     if (!this.hasAttributeNS(namespace_URI, attribute_name)/* && (this.namespaceURI || '').indexOf("http://www.w3.org") !== 0*/) {
-                        original_setAttributeNS.call(this, namespace_URI, attribute, value);
+                        original_setAttributeNS.call(node, namespace_URI, attribute, value);
                     }
-                    new_attribute_node = original_getAttributeNodeNS.call(this, namespace_URI, attribute_name);
+                    new_attribute_node = original_getAttributeNodeNS.call(node, namespace_URI, attribute_name);
                 } else {
-                    if (!this.hasAttribute(attribute)/* && (this.namespaceURI || '').indexOf("http://www.w3.org") !== 0*/) {
-                        original_setAttribute.call(this, attribute, value);
+                    if (!node.hasAttribute(attribute)/* && (node.namespaceURI || '').indexOf("http://www.w3.org") !== 0*/) {
+                        original_setAttribute.call(node, attribute, value);
                     }
-                    new_attribute_node = original_getAttributeNode.call(this, attribute);
+                    new_attribute_node = original_getAttributeNode.call(node, attribute);
                 }
                 if (value === null) {
-                    original_removeAttribute.call(this, attribute);
+                    original_removeAttribute.call(node, attribute);
                     let descriptor = Object.getPropertyDescriptor(new_attribute_node, 'parentNode') || { writable: true };
                     if (descriptor.hasOwnProperty("writable") ? descriptor.writable : true) {
                         Object.defineProperty(new_attribute_node, 'parentNode', { get: function () { return parentNode } });
@@ -7602,25 +7607,25 @@ xover.modernize = function (targetWindow) {
                         let target = this;
                         let target_node = this.parentNode;
                         let attribute_name = this.localName;
-                        let section = /*this.section || */this.ownerDocument.section;
-                        let source = section && section.source || null;
+                        //let section = /*this.section || */this.ownerDocument.section;
+                        //let source = section && section.source || null;
                         let old_value = this.value;
 
                         let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
                         event && event && (event.type || "").split(/::/, 1).shift() == 'change' && xover.listener.dispatchEvent(before, this);
                         if (before.cancelBubble || before.defaultPrevented) return;
-                        if (old_value !== value) {
-                            if (section) {
-                                if (!target_node.resolveNS("state")) {
-                                    original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
-                                }
+                        //if (old_value !== value) {
+                        //    if (section) {
+                        //        if (!target_node.resolveNS("state")) {
+                        //            original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
+                        //        }
 
-                                if (!(this.ownerDocument.section)) {
-                                    let scope = this.source;
-                                    scope && scope.set(value)
-                                }
-                            }
-                        }
+                        //        if (!(this.ownerDocument.section)) {
+                        //            let scope = this.source;
+                        //            scope && scope.set(value)
+                        //        }
+                        //    }
+                        //}
 
                         let return_value;
                         let set_event = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value });
@@ -7711,8 +7716,8 @@ xover.modernize = function (targetWindow) {
                 //this.ownerElement.section && this.ownerElement.section.render();
                 //}
                 this.value = value;
-                let source = this.ownerDocument.source;
-                source && source.save();
+                //let source = this.ownerDocument.source;
+                //source && source.save();
                 return this;
             }
 
@@ -7864,6 +7869,8 @@ xover.modernize = function (targetWindow) {
                 let ownerElement = this.ownerElement;
                 if (ownerElement) {
                     let return_value;
+                    let event_type = 'remove', node = this;
+                    let matching_listeners = xover.listener.matches(node, event_type);
                     if (this.namespaceURI) {
                         return_value = original_removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
                     } else {
@@ -7874,6 +7881,7 @@ xover.modernize = function (targetWindow) {
                         Object.defineProperty(this, 'parentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de ownerElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                     }
                     this.value = null;
+                    xover.listener.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }), this);
                     //if (refresh) {
                     //    let section = this.section;
                     //    section && section.render(((event || {}).target || {}).stylesheet)
