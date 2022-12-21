@@ -4575,7 +4575,12 @@ xover.Section = function (xml, ...args) {
                         }
                         //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.section == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
                         [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self).filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());
-                        [...top.document.querySelectorAll('xo-listener')].filter(el => el.section === self && (mutation.target.getAttributeNode(el.getAttribute("xo-attribute")) || mutation.target.createAttribute(el.getAttribute("xo-attribute"), null)).isEqualNode(attr)).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
+                        [...top.document.querySelectorAll('xo-listener')].filter(el => el.section === self && (mutation.target.getAttributeNode(el.getAttribute("xo-attribute")) || mutation.target.createAttribute(el.getAttribute("xo-attribute"), null)).isEqualNode(attr)).reduce((stylesheets, listener) => {
+                            let stylesheet = listener.closest('[xo-stylesheet]');
+                            if (!stylesheets.includes(stylesheet)) {
+                                stylesheets.push(stylesheet)
+                            }; return stylesheets
+                        }, []).forEach(stylesheet => stylesheet.render());
 
                     }
                 }
