@@ -4576,7 +4576,7 @@ xover.Section = function (xml, ...args) {
                         //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.section == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
                         [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section === self).filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());
                         [...top.document.querySelectorAll('xo-listener')].filter(el => el.section === self).filter(el => {
-                            let attrib = el.getAttribute("xo-attribute");
+                            let attrib = el.getAttribute("xo-attribute") || el.getAttribute("attribute");
                             let attrib_node = mutation.target.getAttributeNode(attrib);
                             if (attrib && !attrib_node) {
                                 try {
