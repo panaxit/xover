@@ -3210,14 +3210,20 @@ Object.defineProperty(URL.prototype, 'href', {
     }
 });
 
-xover.qrl = function (href) {
-    if (!(this instanceof xover.qrl)) return new xover.qrl(href);
-    let fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings;
-    if (href && typeof (href.value || href) == 'string') {
+xover.QRL = function (href) {
+    if (!(this instanceof xover.QRL)) return new xover.QRL(href);
+    //let target = href instanceof Attr && href || {};
+    let target = {};
+    let fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings = new URLSearchParams();
+    href = href.value || href;
+    if (typeof (href) == 'string') {
         let url = xover.URL(href);
         predicate = url.searchParams;
-        ({ searchParams: settings, hash: fields = '' } = xover.URL(url.hash.replace(/^#/, '')));
-        fields = fields.replace(/^#/, '');
+        fields = url.hash.replace(/^#/, '');
+        if (fields.indexOf("?") != -1 && fields.indexOf("?") < fields.indexOf("#")) {
+            ({ searchParams: settings, hash: fields = '' } = xover.URL(fields));
+            fields = fields.replace(/^#/, '');
+        }
         let pathname = url.pathname.replace(/^\//, '');
         [pathname, mode] = pathname.split(/~/);
         [pathname, identity_value] = pathname.split(/:/);
@@ -3226,7 +3232,24 @@ xover.qrl = function (href) {
         settings = Object.fromEntries(settings.entries());
         predicate = Object.fromEntries(predicate.entries());
     }
-    return { fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings }
+    target["fields"] = fields;
+    target["schema"] = schema;
+    target["name"] = name;
+    target["mode"] = mode;
+    target["identity_value"] = identity_value;
+    target["primary_values"] = primary_values;
+    target["ref_node"] = ref_node;
+    target["predicate"] = predicate;
+    target["settings"] = settings;
+    Object.defineProperties(target, {
+        toString: {
+            value: function () {
+                return `${schema}/${name}?${new URLSearchParams(predicate).toString()}#?${new URLSearchParams(settings).toString()}#${fields}`;
+            }, enumerable: false, writable:false, configurable: false
+        }
+    });
+    //return { fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings }
+    return target;
 }
 
 xover.Request = function (request, settings = {}) {
