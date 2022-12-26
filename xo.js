@@ -1989,6 +1989,7 @@ xover.spaces["suggested"] = "http://panax.io/state/suggested"
 xover.spaces["initial"] = "http://panax.io/state/initial"
 xover.spaces["prev"] = "http://panax.io/state/previous"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
+xover.spaces["text"] = "http://panax.io/state/text"
 
 xover.alertManager = {};
 xover.dom.alert = async function (message) {
@@ -8768,6 +8769,9 @@ xover.modernize = function (targetWindow) {
                                             delete metadata["file"];
                                             scope.set(_attribute, record.uid);
                                             scope.set(`metadata:${attribute_name}`, metadata);
+                                            if (metadata.name) {
+                                                scope.set(`text:${attribute_name}`, metadata.name);
+                                            }
                                         }
                                     });
                                 } else if (scope instanceof Attr || scope instanceof Text) {
