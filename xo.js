@@ -5169,6 +5169,7 @@ xover.Section = function (xml, ...args) {
     //this.reseed();
     xover.manifest.getSettings(this, 'stylesheets').flat().forEach(stylesheet => section.addStylesheet(stylesheet, false));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { section: this }));
+    xo.sections[_tag] = this;
     return this;
 }
 
