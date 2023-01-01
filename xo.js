@@ -4582,7 +4582,7 @@ xover.Section = function (xml, ...args) {
             }
 
             const callback = (mutationList, observer) => {
-                mutationList = mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)).filter(mutation => !(mutation.target instanceof Document) );
+                mutationList = mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)).filter(mutation => !(mutation.target instanceof Document));
                 mutationList = distinctMutations(mutationList);
                 let stylesheets_to_render = [];
 
@@ -6596,15 +6596,26 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
-            var original_matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
+            var original_element_matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
             Object.defineProperty(Element.prototype, 'matches', {
                 value: function (...args) {
                     try {
-                        return original_matches && original_matches.value.apply(this, args);
+                        return original_element_matches && original_element_matches.value.apply(this, args);
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
-
-                            return this.ownerDocument.selectNodes.apply(this, args).concat(this.selectSingleNode.apply(this, args)).includes(this);
+                            return this.parentNode.selectNodes.apply(this.parentNode, args).includes(this);
+                        }
+                    }
+                }
+            })
+            var original_attr_matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
+            Object.defineProperty(Attr.prototype, 'matches', {
+                value: function (...args) {
+                    try {
+                        return original_attr_matches && original_attr_matches.value.apply(this, args);
+                    } catch (e) {
+                        if (e.message.indexOf('not a valid selector') != -1) {
+                            return this.parentNode.selectNodes.apply(this.parentNode, args).includes(this);
                         }
                     }
                 }
