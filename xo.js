@@ -8019,7 +8019,7 @@ xover.modernize = function (targetWindow) {
                 </xsl:stylesheet>
                 `));
                     try {
-                        return JSON.parse('{' + xsltProcessor.transformToDocument(this).documentElement.textContent.replace(/(xmlns)=(["'])([^\2]+?)\2/ig, '').replace(/xmlns:(\w+)=(["'])([^\2]+?)\2/ig, ',"$1":$2$3$2').replace(/^[\s,]+/, '') + '}');
+                        return JSON.parse('{' + xsltProcessor.transformToDocument(this).documentElement.textContent.replace(/(xmlns)=(["'])([^\2]+?)\2/ig, '').replace(/xmlns:([\w-]+)=(["'])([^\2]+?)\2/ig, ',"$1":$2$3$2').replace(/^[\s,]+/, '') + '}');
                     } catch (e) {
                         return {}
                     }
