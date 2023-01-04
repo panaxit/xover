@@ -4630,7 +4630,8 @@ xover.Section = function (xml, ...args) {
                     let attrs = [...stylesheet.select('.//@xo-attribute')].filter(el => el.parentNode.section === self && el.parentNode.closest('[xo-stylesheet]') === stylesheet);
                     attrs.forEach(attr => mutationList.forEach(mutation => {
                         if (!stylesheets_to_render.find(el => el === stylesheet)) {
-                            if (attr.parentNode.closest('[xo-scope]').getAttribute("xo-scope") == mutation.target.getAttribute("xo:id") && (mutation.type !== 'attributes' || mutation.type === 'attributes' && (attr.value.indexOf(':') == -1 && mutation.attributeName == attr.value))) {
+                            let scoped_element = attr.parentNode.closest('[xo-scope]');
+                            if (scoped_element && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id") && (mutation.type !== 'attributes' || mutation.type === 'attributes' && (attr.value.indexOf(':') == -1 && mutation.attributeName == attr.value || attr.value.indexOf(':') != -1 && mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName)))) {
                                 stylesheets_to_render.push(stylesheet)
                             }
                         }
