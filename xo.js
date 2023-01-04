@@ -717,7 +717,8 @@ xover.listener.on('error', async function ({ event }) {
     if (!(event && !(event.defaultPrevented))) return;
     let srcElement = event.target;
     let section = await xover.store.files;
-    let record = await section.get(srcElement.src);
+    let src = srcElement.getAttribute("src") || "";
+    let record = await section.get(src);
     if (record) {
         let old_url = srcElement.src;
         if (record.file.type.indexOf('image') !== -1) {
@@ -727,20 +728,18 @@ xover.listener.on('error', async function ({ event }) {
             section.put(record);
             srcElement.source && srcElement.source.selectNodes(`.//@*[.='${old_url}']`).forEach(node => node.value = new_url);
             section.delete(old_url);
-        } else {
-            if ([...document.querySelectorAll('script[src]')].find(node => node.getAttribute("src").indexOf('bootstrap') !== -1)) { //
-                let new_element = targetDocument.createElement("i");
-                new_element.className = `bi bi-filetype bi-filetype-${record.extension}`;
-                if (srcElement.closest('picture')) {
-                    srcElement.closest('picture').replace(new_element);
-                } else {
-                    srcElement.replace(new_element);
-                }
-            }
+            return;
         }
-    } /*else {
-        srcElement.src = ''
-    }*/
+    }
+    if ([...document.querySelectorAll('script[src]')].find(node => node.getAttribute("src").indexOf('bootstrap') !== -1)) { //
+        let new_element = targetDocument.createElement("i");
+        new_element.className = `bi bi-filetype bi-filetype-${record ? record.extension : src.split(".").pop()}`;
+        if (srcElement.closest('picture')) {
+            srcElement.closest('picture').replace(new_element);
+        } else {
+            srcElement.replaceWith(new_element);
+        }
+    }
 })
 
 xover.listener.on('popstate', async function (event) {
@@ -2707,7 +2706,7 @@ Object.defineProperty(xover.sections, 'find', {
         Object.entries(sessionStorage).filter(([key]) => key.match(/^#/) && !xover.sections.hasOwnProperty(key)).map(([hashtag, value]) => {
             let restored_document = xover.session.getKey(hashtag)
             if (restored_document) {
-                restored_document = new xover.Section(new xover.Source(restored_document), { tag: hashtag });
+                restored_document = new xover.Section(new xover.Source(restored_document.source).document, { tag: hashtag });
                 if (restored_document.find(ref)) {
                     return_array.push(xover.sections[hashtag].find(ref));
                 }
