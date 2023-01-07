@@ -1958,7 +1958,6 @@ xover.spaces["site"] = "http://panax.io/site"
 xover.spaces["state"] = "http://panax.io/state"
 xover.spaces["height"] = "http://panax.io/state/height"
 xover.spaces["width"] = "http://panax.io/state/width"
-xover.spaces["search"] = "http://panax.io/search"
 xover.spaces["context"] = "http://panax.io/context"
 xover.spaces["temp"] = "http://panax.io/temp"
 xover.spaces["xmlns"] = "http://www.w3.org/2000/xmlns/"
@@ -1993,6 +1992,7 @@ xover.spaces["confirmation"] = "http://panax.io/state/confirmation"
 xover.spaces["readonly"] = "http://panax.io/state/readonly"
 xover.spaces["suggested"] = "http://panax.io/state/suggested"
 xover.spaces["initial"] = "http://panax.io/state/initial"
+xover.spaces["search"] = "http://panax.io/state/search"
 xover.spaces["prev"] = "http://panax.io/state/previous"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
 xover.spaces["text"] = "http://panax.io/state/text"
@@ -7724,7 +7724,9 @@ xover.modernize = function (targetWindow) {
                         let old_value = this.value;
 
                         let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value });
-                        event && event && (event.type || "").split(/::/, 1).shift() == 'change' && xover.listener.dispatchEvent(before, this);
+                        if (!(event && (event.type || "").split(/::/, 1).shift() == 'beforeChange')) {
+                            (old_value != value || event && (event.type || "").split(/::/, 1).shift() == 'change') && xover.listener.dispatchEvent(before, this);
+                        }
                         if (before.cancelBubble || before.defaultPrevented) return;
                         //if (old_value !== value) {
                         //    if (section) {
