@@ -4587,6 +4587,9 @@ xover.Section = function (xml, ...args) {
                 let stylesheets_to_render = [];
 
                 [...top.document.querySelectorAll('[xo-stylesheet]')].filter(stylesheet => stylesheet.section === self).forEach(stylesheet => {
+                    if (!stylesheet.stylesheet.documentElement) {
+                        stylesheet.render()
+                    }
                     let listeners = [...stylesheet.querySelectorAll('xo-listener')].filter(el => el.section === self && el.closest('[xo-stylesheet]') === stylesheet);
                     listeners.forEach(listener => {
                         mutationList.forEach(mutation => {
