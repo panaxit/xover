@@ -4583,6 +4583,7 @@ xover.Section = function (xml, ...args) {
             const callback = (mutationList, observer) => {
                 mutationList = mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)).filter(mutation => !(mutation.target instanceof Document));
                 mutationList = distinctMutations(mutationList);
+                if (!mutationList.length) return;
                 let stylesheets_to_render = [];
 
                 [...top.document.querySelectorAll('[xo-stylesheet]')].filter(stylesheet => stylesheet.section === self).forEach(stylesheet => {
