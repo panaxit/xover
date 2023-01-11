@@ -4581,7 +4581,7 @@ xover.Section = function (xml, ...args) {
             }
 
             const callback = (mutationList, observer) => {
-                mutationList = mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)).filter(mutation => !(mutation.target instanceof Document));
+                mutationList = mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
                 mutationList = distinctMutations(mutationList);
                 if (!mutationList.length) return;
                 let stylesheets_to_render = [];
@@ -4632,7 +4632,7 @@ xover.Section = function (xml, ...args) {
                     attrs.forEach(attr => mutationList.forEach(mutation => {
                         if (!stylesheets_to_render.find(el => el === stylesheet)) {
                             let scoped_element = attr.parentNode.closest('[xo-scope]');
-                            if (scoped_element && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id") && (mutation.type !== 'attributes' || mutation.type === 'attributes' && (attr.value.indexOf(':') == -1 && mutation.attributeName == attr.value || attr.value.indexOf(':') != -1 && mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName)))) {
+                            if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id") && (mutation.type !== 'attributes' || mutation.type === 'attributes' && (attr.value.indexOf(':') == -1 && mutation.attributeName == attr.value || attr.value.indexOf(':') != -1 && mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName)))) {
                                 stylesheets_to_render.push(stylesheet)
                             }
                         }
