@@ -4679,6 +4679,7 @@ xover.Section = function (xml, ...args) {
                         /*sections.filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());*/
                     }
                 }
+                xover.listener.dispatchEvent(new xover.listener.Event('change', { section: section/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }), section);
                 self.save && self.save();
             };
 
