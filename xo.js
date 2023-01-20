@@ -694,7 +694,7 @@ xover.listener.on('pushState', function ({ state }) {
 
 xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     new_hash = (new_hash || window.location.hash);
-    if (new_hash === '#' || !(document.getElementById(new_hash) || new_hash in xover.sources)) {
+    if (new_hash === '#' || !(document.getElementById(new_hash.substr(1)) || new_hash in xover.sources)) {
         event.preventDefault();
     }
     //xdom.sections.active = (xdom.sections[new_hash] || xdom.sections.active);
