@@ -1915,9 +1915,19 @@ xover.ProcessingInstruction = function (stylesheet) {
         attribs["target"] = undefined;
     }
     for (let prop in attribs) {
+        if (stylesheet.hasOwnProperty(prop)) continue;
         Object.defineProperty(stylesheet, prop, {
-            value: attribs[prop],
-            writable: true, enumerable: true, configurable: false
+            get: function () {
+                return attribs[prop];
+            },
+            set: function (input) {
+                attribs[prop] = input
+                let current_attributes = xover.json.fromAttributes(stylesheet.data);
+                let new_attributes = Object.assign({}, attribs);
+                delete new_attributes["target"];
+                delete new_attributes["dependencies"];
+                stylesheet.data = xover.json.toAttributes(Object.assign(current_attributes, new_attributes));
+            }
         });
     }
     if (!stylesheet.hasOwnProperty("document")) {
@@ -3474,14 +3484,18 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
         el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
         el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
     });
-    return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").map(async node => {
-        let href = node.getAttribute("href");
+    return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").map(async node => {
+        let href = node.href || node.getAttribute("href");
         if (!href.match(/^\//)) {
             let new_href = new URL(href, response.url || response.href).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
-            node.setAttributeNS(null, "href", new_href);
+            if (node instanceof ProcessingInstruction) {
+                node.href = new_href;
+            } else {
+                node.setAttributeNS(null, "href", new_href);
+            }
         }
     });
-    let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include").reduce((arr, item) => { arr.push(item.getAttribute("href")); return arr; }, []) || [];
+    let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.getAttribute("href")); return arr; }, []) || [];
     if (imports.length) {
         await Promise.all(imports.map(href => xover.sources[href].fetch()));
         return_value = return_value.consolidate();
