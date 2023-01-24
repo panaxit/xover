@@ -4609,7 +4609,7 @@ xover.Section = function (xml, ...args) {
                         mutationList.forEach(mutation => {
                             if (!stylesheets_to_render.find(el => el === stylesheet)) {
                                 if (mutation.type === 'childList' && listener.getAttribute("node")) {
-                                    if (mutation.target.selectSingleNode(`self::${listener.getAttribute("node")}`) || [...mutation.removedNodes].find(el => el.selectSingleNode(`self::${listener.getAttribute("node")}`))) {
+                                    if (mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes].find(el => el.matches(listener.getAttribute("node")))) {
                                         stylesheets_to_render.push(stylesheet)
                                     }
                                 }
