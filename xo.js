@@ -277,13 +277,13 @@ xover.store = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.store, 'files', {
     get: async function () {
@@ -4608,54 +4608,91 @@ xover.Section = function (xml, ...args) {
                     listeners.forEach(listener => {
                         mutationList.forEach(mutation => {
                             if (!stylesheets_to_render.find(el => el === stylesheet)) {
-                                if (mutation.type === 'childList' && listener.getAttribute("node")) {
-                                    if (mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes].find(el => el.matches(listener.getAttribute("node")))) {
-                                        stylesheets_to_render.push(stylesheet)
+                                let render = false;
+                                if (listener.getAttribute("node")) {
+                                    if (mutation.target instanceof Element && mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes, ...mutation.addedNodes].find(el => el.matches(listener.getAttribute("node")))) {
+                                        render = true;
                                     }
                                 }
-                                if (mutation.type === 'attributes' && listener.getAttribute("attribute")) {
-                                    let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                                    if (!attr) {
-                                        //let target_copy = mutation.target.cloneNode();
-                                        //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
-                                        //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                                        attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                                    }
-                                    let attrib = listener.getAttribute("xo-attribute") || listener.getAttribute("attribute");
-                                    let attrib_node = mutation.target.getAttributeNode(attrib);
-                                    if (attrib && !attrib_node) {
-                                        try {
-                                            attrib_node = mutation.target.createAttribute(attrib, null)
-                                        } catch (e) {
-                                            let { prefix, name } = xover.xml.getAttributeParts(attrib)
-                                            if (prefix && name == '*') {
-                                                let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
-                                                if (attr.namespaceURI == ns) {
-                                                    stylesheets_to_render.push(stylesheet)
+                                if (mutation.type === 'attributes') {
+                                    let attrib = listener.getAttributeNode("attribute");
+                                    if (attrib) {
+                                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                                        if (!attr) {
+                                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                                        }
+                                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
+                                        if (attrib && !attrib_node) {
+                                            try {
+                                                attrib_node = mutation.target.createAttribute(attrib.value, null)
+                                            } catch (e) {
+                                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
+                                                if (prefix && name == '*') {
+                                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
+                                                    if (attr.namespaceURI == ns) {
+                                                        render = true;
+                                                    }
                                                 }
+                                                return;
                                             }
-                                            return;
+                                        }
+                                        if (attrib_node.isEqualNode(attr)) {
+                                            render = true;
+                                        } else {
+                                            render = false;
                                         }
                                     }
-                                    if (attrib_node.isEqualNode(attr)) {
-                                        stylesheets_to_render.push(stylesheet)
-                                    }
+                                }
+                                if (render) {
+                                    stylesheets_to_render.push(stylesheet)
                                 }
                             }
                         })
                     })
 
                     let attrs = [...stylesheet.select('.//@xo-attribute')].filter(el => el.parentNode.section === self && el.parentNode.closest('[xo-stylesheet]') === stylesheet);
-                    attrs.forEach(attr => mutationList.forEach(mutation => {
+                    attrs.forEach(attrib => mutationList.forEach(mutation => {
                         if (!stylesheets_to_render.find(el => el === stylesheet)) {
-                            let scoped_element = attr.parentNode.closest('[xo-scope]');
-                            if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id") && (mutation.type !== 'attributes' || mutation.type === 'attributes' && (attr.value.indexOf(':') == -1 && mutation.attributeName == attr.value || attr.value.indexOf(':') != -1 && mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName)))) {
-                                stylesheets_to_render.push(stylesheet)
+                            let scoped_element = attrib.parentNode.closest('[xo-scope]');
+                            if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id")) {
+                                //&& (mutation.type !== 'attributes' || mutation.type === 'attributes' &&
+                                let render = false;
+                                if (attrib.value.indexOf(':') != -1) {
+                                    let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                                    if (!attr) {
+                                        attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                                    }
+                                    let attrib_node = mutation.target.getAttributeNode(attrib.value);
+                                    if (attrib && !attrib_node) {
+                                        try {
+                                            attrib_node = mutation.target.createAttribute(attrib.value, null)
+                                        } catch (e) {
+                                            let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
+                                            if (prefix && name == '*') {
+                                                let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
+                                                if (attr.namespaceURI == ns) {
+                                                    render = true;
+                                                }
+                                            }
+                                            return;
+                                        }
+                                    }
+                                    if (attrib_node.isEqualNode(attr)) {
+                                        render = true;
+                                    } else {
+                                        render = false;
+                                    }
+                                } else if (mutation.attributeName == attr.value) {
+                                    render = true
+                                }
+                                if (render) {
+                                    stylesheets_to_render.push(stylesheet)
+                                }
                             }
                         }
-
                     }))
                 })
+
                 stylesheets_to_render.forEach(stylesheet => stylesheet.render());
                 for (const mutation of mutationList) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
