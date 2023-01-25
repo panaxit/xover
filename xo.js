@@ -1790,7 +1790,7 @@ xover.Source = function (source, tag, manifest_key) {
                     let sources = await xover.store.sources;
                     stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || document;
 
-                    if (stored_document && ((Date.now() - stored_document.lastModifiedDate) > settings["expiry"])) {
+                    if (stored_document && ((Date.now() - stored_document.lastModifiedDate) / 1000 > (settings["expiry"] || 0))) {
                         stored_document = null;
                     }
                 }
