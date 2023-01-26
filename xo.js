@@ -4682,7 +4682,7 @@ xover.Section = function (xml, ...args) {
                                     } else {
                                         render = false;
                                     }
-                                } else if (mutation.attributeName == attr.value) {
+                                } else if (mutation.attributeName == attrib.value) {
                                     render = true
                                 }
                                 if (render) {
@@ -6664,7 +6664,7 @@ xover.modernize = function (targetWindow) {
                     }
                 }
             })
-            var original_attr_matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
+            var original_attr_matches = Object.getOwnPropertyDescriptor(Attr.prototype, 'matches');
             Object.defineProperty(Attr.prototype, 'matches', {
                 value: function (...args) {
                     try {
@@ -6678,6 +6678,12 @@ xover.modernize = function (targetWindow) {
             })
 
             Object.defineProperty(Text.prototype, 'matches', {
+                value: function (...args) {
+                    return false;
+                }
+            })
+
+            Object.defineProperty(Comment.prototype, 'matches', {
                 value: function (...args) {
                     return false;
                 }
