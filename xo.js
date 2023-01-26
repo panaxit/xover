@@ -2006,6 +2006,7 @@ xover.spaces["search"] = "http://panax.io/state/search"
 xover.spaces["prev"] = "http://panax.io/state/previous"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
 xover.spaces["text"] = "http://panax.io/state/text"
+xover.spaces["env"] = "http://panax.io/state/environment"
 
 xover.alertManager = {};
 xover.dom.alert = async function (message) {
@@ -8655,6 +8656,8 @@ xover.modernize = function (targetWindow) {
                             let target = stylesheet_target;
                             let current_cursor_style = target.style.cursor;
                             try { target.style.cursor = 'wait' } catch (e) { console.log(e) }
+                            original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:section", tag);
+                            original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
                             let dom = await data.transform(xsl);
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
