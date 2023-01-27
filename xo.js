@@ -1785,6 +1785,8 @@ xover.Source = function (source, tag, manifest_key) {
                     return [endpoint, parameters]
                 })
                 settings = settings.merge(Object.fromEntries(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))));
+                self["endpoints"] = endpoints;
+                self["settings"] = settings;
                 let stored_document;
                 if (!xover.session.rebuild && !(source instanceof Document)) {
                     let sources = await xover.store.sources;
@@ -1837,6 +1839,7 @@ xover.Source = function (source, tag, manifest_key) {
                 if (!(document instanceof Document)) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
+                settings.stylesheets && settings.stylesheets.forEach(stylesheet => document.addStylesheet(stylesheet));
                 __document.url = document.url || url;
                 __document.href = document.href || href;
                 __document.replaceBy(document);
@@ -4735,8 +4738,30 @@ xover.Section = function (xml, ...args) {
                 self.save && self.save();
             };
 
-            const observer = new MutationObserver(callback);
-            observer.observe(__document, config);
+            const mutation_observer = new MutationObserver(callback);
+            mutation_observer.observe(__document, config);
+            const _observer = {}
+            Object.defineProperty(self, 'observer', {
+                get: function () {
+                    return _observer;
+                }
+            })
+            if (!self.observer.hasOwnProperty('disconnect')) {
+                Object.defineProperty(self.observer, 'disconnect', {
+                    value: function () {
+                        mutation_observer.disconnect()
+                    },
+                    writable: false, enumerable: false, configurable: false
+                });
+            }
+            if (!self.observer.hasOwnProperty('connect')) {
+                Object.defineProperty(self.observer, 'connect', {
+                    value: function () {
+                        mutation_observer.observe(__document, config);
+                    },
+                    writable: false, enumerable: false, configurable: false
+                });
+            }
         }
     })
 
@@ -8214,7 +8239,11 @@ xover.modernize = function (targetWindow) {
                 //if (navigator.userAgent.indexOf("Safari") == -1) {
                 //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                 //}
-                this.$$(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.parentNode || {}).nodeName || this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
+                try {
+                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => original_setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${(node.parentNode || {}).nodeName || node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
+                } catch (e) { 
+                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.parentNode || {}).nodeName || this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
+                }
                 return this;
             }
 
