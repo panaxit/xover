@@ -1634,6 +1634,20 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
 }
 
 xover.Source = function (source, tag, manifest_key) {
+    let expiration_ms = function (expiry) {
+        if (expiry == null) return null;
+        let ms = 0;
+        if (typeof (expiry) == 'object') {
+            ms += (expiry["d"] || 0) * 1000 * 60 * 60 * 24
+            ms += (expiry["h"] || 0) * 1000 * 60 * 60
+            ms += (expiry["m"] || 0) * 1000 * 60
+            ms += (expiry["s"] || 0) * 1000
+            ms += (expiry["ms"] || 0)
+        } else {
+            ms += expiry * 1000
+        }
+        return ms
+    }
     if (!(this instanceof xover.Source)) return new xover.Source(source, tag, manifest_key);
     if (xover.session.debug) {
         console.log(`${tag}: ${source && source.constructor == {}.constructor && JSON.stringify(source) || source}`);
@@ -1792,7 +1806,8 @@ xover.Source = function (source, tag, manifest_key) {
                     let sources = await xover.store.sources;
                     stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || document;
 
-                    if (stored_document && ((Date.now() - stored_document.lastModifiedDate) / 1000 > (settings["expiry"] || 0))) {
+                    let expiry = expiration_ms(settings["expiry"])
+                    if (stored_document && ((Date.now() - stored_document.lastModifiedDate) > (expiry || 0))) {
                         stored_document = null;
                     }
                 }
@@ -6710,6 +6725,12 @@ xover.modernize = function (targetWindow) {
             })
 
             Object.defineProperty(Comment.prototype, 'matches', {
+                value: function (...args) {
+                    return false;
+                }
+            })
+
+            Object.defineProperty(ProcessingInstruction.prototype, 'matches', {
                 value: function (...args) {
                     return false;
                 }
