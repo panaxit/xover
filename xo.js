@@ -1678,14 +1678,16 @@ xover.Source = function (source, tag, manifest_key) {
     //    writable: false, enumerable: false, configurable: false
     //})
 
-    if (!__document.hasOwnProperty("tag")) {
+    let _progress = 0;
+
+    if (!this.hasOwnProperty("tag")) {
         Object.defineProperty(this, 'tag', {
             value: tag,
             writable: false, enumerable: false, configurable: false
         });
     }
 
-    if (!__document.hasOwnProperty("manifest_key")) {
+    if (!this.hasOwnProperty("manifest_key")) {
         Object.defineProperty(this, 'manifest_key', {
             value: manifest_key,
             writable: false, enumerable: false, configurable: false
@@ -1703,6 +1705,15 @@ xover.Source = function (source, tag, manifest_key) {
         enumerable: true,
         get: function () {
             return __document;
+        }
+    });
+
+    Object.defineProperty(this, 'progress', {
+        get: function () {
+            return _progress
+        }, set: function (input) {
+            _progress = input;
+            xover.listener.dispatchEvent(new xover.listener.Event('progress', { percent: _progress, document: __document, source: self }), self);
         }
     });
 
@@ -3408,6 +3419,25 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
             console.log(e);
             return Promise.reject([e, req, { bodyType: 'text' }]);
         }
+    }
+    let source = settings["source"] instanceof xover.Source && settings["source"] || undefined;
+    if (source) {
+        let res = original_response.clone();
+        const contentLength = res.headers.get('content-length');
+        let receivedLength = 0;
+        const stream = res.body.getReader();
+        const progress = () => {
+            stream.read().then(({ done, value }) => {
+                if (done) {
+                    source.progress = 100;
+                    return;
+                }
+                receivedLength += value.byteLength;
+                source.progress = (receivedLength / contentLength) * 100;
+                progress();
+            });
+        };
+        progress();
     }
     let response = new xover.Response(original_response, req);
     let document = await response.processBody();
@@ -8262,7 +8292,7 @@ xover.modernize = function (targetWindow) {
                 //}
                 try {
                     this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => original_setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${(node.parentNode || {}).nodeName || node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
-                } catch (e) { 
+                } catch (e) {
                     this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.parentNode || {}).nodeName || this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
                 }
                 return this;
