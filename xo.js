@@ -918,6 +918,11 @@ xover.server = new Proxy({}, {
                 [return_value, request, response] = await xover.fetch(url, settings).then(response => [response.body, response.request, response]);
             } catch (e) {
                 [return_value, request, response] = [e.body, e.request, e]
+                if (e instanceof DOMException) {
+                    if (e.name == 'AbortError') {
+                        response = new Response(response.message, { status: 499, statusText: "Client Closed Request" })
+                    }
+                }
             }
 
             return_value instanceof XMLDocument && settings["stylesheets"] && settings["stylesheets"].reverse().map(stylesheet => {
@@ -3405,8 +3410,10 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
     }
     let req = new xover.Request(request, settings);
     var original_response;
+    const controller = new AbortController();
+    const signal = controller.signal;
     try {
-        original_response = await fetch(req.clone());
+        original_response = await fetch(req.clone(), { signal })
     } catch (e) {
         try {
             if (!original_response && req.method == 'POST') {
@@ -3416,18 +3423,21 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
                 original_response = await fetch(req.url, init);
             }
         } catch (e) {
-            console.log(e);
+            //console.log(e);
             return Promise.reject([e, req, { bodyType: 'text' }]);
         }
     }
+
     let source = settings["source"] instanceof xover.Source && settings["source"] || undefined;
     if (source) {
+        source.abortFetch = function () { controller.abort() };
         let res = original_response.clone();
         const contentLength = res.headers.get('content-length');
         let receivedLength = 0;
         const stream = res.body.getReader();
         const progress = () => {
             stream.read().then(({ done, value }) => {
+                //source.abortFetch = null;
                 if (done) {
                     source.progress = 100;
                     return;
@@ -3435,6 +3445,8 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
                 receivedLength += value.byteLength;
                 source.progress = (receivedLength / contentLength) * 100;
                 progress();
+            }).catch(e => {
+                console.log(e)
             });
         };
         progress();
@@ -6562,7 +6574,7 @@ xover.modernize = function (targetWindow) {
         if (!Response.prototype.hasOwnProperty('render')) {
             Object.defineProperty(Response.prototype, 'render', {
                 value: function (target) {
-                    let source = this.json || this.document || this.body;
+                    let source = typeof (this.json) != 'function' && this.json || this.document || !(this.body instanceof ReadableStream) && this.body || this.statusText || {};
                     source.render && source.render()
                 },
                 writable: true, enumerable: false, configurable: false
