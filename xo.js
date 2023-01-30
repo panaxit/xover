@@ -1791,7 +1791,6 @@ xover.Source = function (source, tag, manifest_key) {
         value: async function (...args) {
             let url, href;
             let payload;
-            let settings = Object.fromEntries(xover.manifest.getSettings(tag));
             let qrl = xover.QRL(tag.substr(1));
             source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                 if (typeof (source) == 'string') {
@@ -1814,20 +1813,21 @@ xover.Source = function (source, tag, manifest_key) {
                     parameters = parameters.constructor === [].constructor && parameters || [parameters];
                     return [endpoint, parameters]
                 })
-                settings = settings.merge(Object.fromEntries(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))));
-                self["endpoints"] = endpoints;
+                let settings;
+                settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})));
+                self["endpoints"] = Object.fromEntries(endpoints);
                 self["settings"] = settings;
                 let stored_document;
                 if (!xover.session.rebuild && !(source instanceof Document)) {
                     let sources = await xover.store.sources;
                     stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || document;
 
-                    let expiry = expiration_ms(settings["expiry"])
+                    let expiry = expiration_ms(self["settings"]["expiry"])
                     if (stored_document && ((Date.now() - stored_document.lastModifiedDate) > (expiry || 0))) {
                         stored_document = null;
                     }
                 }
-                if (stored_document instanceof Document) {
+                if (stored_document instanceof Document && stored_document.documentElement) {
                     document = stored_document
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
@@ -1853,7 +1853,7 @@ xover.Source = function (source, tag, manifest_key) {
                             }
                             resolve(document);
                         }));
-                    })
+                    });
                     let documents;
                     try {
                         documents = await Promise.all(promises).then(document => document);
@@ -3399,6 +3399,9 @@ xover.Request = function (request, settings = {}) {
 xover.Request.prototype = Object.create(Request.prototype);
 
 xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
+    if (settings.progress instanceof HTMLElement) {
+        settings.progress.value = 0;
+    }
     let payload = settings.payload || settings.body;
     if (payload) {
         settings["method"] = 'POST';
@@ -3429,7 +3432,7 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
     }
 
     let source = settings["source"] instanceof xover.Source && settings["source"] || undefined;
-    if (source) {
+    if (source || settings.progress) {
         source.abortFetch = function () { controller.abort() };
         let res = original_response.clone();
         const contentLength = res.headers.get('content-length');
@@ -3440,10 +3443,17 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
                 //source.abortFetch = null;
                 if (done) {
                     source.progress = 100;
+                    if (settings.progress) {
+                        settings.progress.value = 100;
+                    }
                     return;
                 }
                 receivedLength += value.byteLength;
-                source.progress = (receivedLength / contentLength) * 100;
+                let percent = (receivedLength / contentLength) * 100
+                source.progress = percent;
+                if (settings.progress) {
+                    settings.progress.value = percent;
+                }
                 progress();
             }).catch(e => {
                 console.log(e)
@@ -4061,7 +4071,8 @@ xover.sources.defaults["loading.xslt"] = xover.xml.createDocument(`
             <div id="no-freeze-spinner">
               <div>
                 <i class="icon">
-                  <img src="{$js:icon}" class="ring_image" onerror="this.remove()"/>
+                    <img src="{$js:icon}" class="ring_image" onerror="this.remove()"/>
+                    <progress style="display:none; width: 100%;" max="100" value="0">0%</progress>
                 </i>
                 <div>
                 </div>
@@ -4759,7 +4770,7 @@ xover.Section = function (xml, ...args) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
                     if (mutation.type === 'childList') {
                         if (mutation.removedNodes.length) {
-                            if (!mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && !(mutation.target.firstElementChild || mutation.target.textContent)) {
+                            if (typeof (mutation.target.getAttributeNS) === 'function' && !mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && !(mutation.target.firstElementChild || mutation.target.textContent)) {
                                 mutation.target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
                             }
                         }
@@ -6742,7 +6753,8 @@ xover.modernize = function (targetWindow) {
                         return original_element_matches && original_element_matches.value.apply(this, args);
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
-                            return this.parentNode.selectNodes.apply(this.parentNode, args).includes(this);
+                            let parentNode = this.parentNode || this.previousParentNode;
+                            return parentNode.selectNodes.apply(this.parentNode, args).includes(this);
                         }
                     }
                 }
@@ -6754,7 +6766,8 @@ xover.modernize = function (targetWindow) {
                         return original_attr_matches && original_attr_matches.value.apply(this, args);
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
-                            return this.parentNode.selectNodes.apply(this.parentNode, args).includes(this);
+                            let parentNode = this.parentNode || this.previousParentNode;
+                            return parentNode.selectNodes.apply(this.parentNode, args).includes(this);
                         }
                     }
                 }
@@ -7408,6 +7421,17 @@ xover.modernize = function (targetWindow) {
                 //}
                 !(this instanceof HTMLElement) && [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === this.section).forEach((el) => el.render())
                 return this;
+            }
+
+            var original_removeChild = Node.prototype.removeChild;
+            Node.prototype.removeChild = function (child) {
+                let parentNode = this;
+                original_removeChild.call(this, child);
+                let descriptor = Object.getPropertyDescriptor(child, 'previousParentNode') || { writable: true };
+                if (!child.parentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
+                    Object.defineProperty(child, 'previousParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
+                }
+                return child;
             }
 
             Element.prototype.setAttributes = async function (attributes, refresh, delay) {
@@ -8217,6 +8241,15 @@ xover.modernize = function (targetWindow) {
 
             var original_append = Element.prototype.append
             Element.prototype.append = function (...args) {
+                if (!args.length) return;
+                let settings = {};
+                if (args[args.length - 1].constructor === {}.constructor) {
+                    settings = args.pop();
+                }
+                if (settings.silent) {
+                    original_append.apply(this, args);
+                    return args;
+                }
                 args.forEach(el => {
                     let beforeEvent = new xover.listener.Event('beforeAppend', { target: this, args: args });
                     xover.listener.dispatchEvent(beforeEvent, el);
