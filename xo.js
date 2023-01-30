@@ -9196,12 +9196,12 @@ xover.dom.toExcel = (function (table, name) {
     table = table.cloneNode(true);
     [...table.querySelectorAll('.non_printable,input,select,textarea')].forEach(el => el.remove());
     // from https://stackoverflow.com/questions/60483757/aboutblankblocked-error-when-export-table-in-excel
-    var myBlob = new Blob([table.outerHTML], { type: 'application/vnd.ms-excel' });
+    var myBlob = new Blob(["\ufeff" + table.outerHTML], { type: 'application/vnd.ms-excel;charset=utf-8' });
     var url = window.URL.createObjectURL(myBlob);
     var a = document.createElement("a");
     document.body.appendChild(a);
     a.href = url;
-    a.download = name;
+    a.download = name.replace(/^[^\d\w]/,'');
     a.click();
     //adding some delay in removing the dynamically created link solved the problem in FireFox
     setTimeout(function () { window.URL.revokeObjectURL(url); }, 0);
