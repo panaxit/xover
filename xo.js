@@ -860,7 +860,8 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
         let tag_name = typeof (input) == 'string' && input || input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
         let settings = Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && (tag_name === key || key[0] === '^' && tag_name && tag_name.match(RegExp(key, "i")) || !['#', '^'].includes(key[0]) && (input instanceof xover.Section || input instanceof Document) && input.selectSingleNode(key))).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
         if (config_name) {
-            settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => value);
+            settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => Object.entries(value));
+            settings = settings.flat();
         }
         return settings;
     },
