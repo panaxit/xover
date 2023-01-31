@@ -4072,7 +4072,7 @@ xover.sources.defaults["loading.xslt"] = xover.xml.createDocument(`
               <div>
                 <i class="icon">
                     <img src="{$js:icon}" class="ring_image" onerror="this.remove()"/>
-                    <progress style="display:none; width: 100%;" max="100" value="0">0%</progress>
+                    <progress style="display:none; width: 100%; accent-color: var(--progress-color, green);" max="100" value="0" aria-label="Loading…">0%</progress>
                 </i>
                 <div>
                 </div>
@@ -5309,7 +5309,13 @@ xover.Section = function (xml, ...args) {
                 let doc = __document.cloneNode(true);
                 _section_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
                 doc.section = section;
-                await doc.render();
+                let stylesheets = [...top.document.querySelectorAll('[xo-stylesheet]')].filter(el => el.section && el.section === self);
+                //if (stylesheets.length) {
+                stylesheets.forEach((el) => el.render());
+
+                await (async (pending_stylesheets) => pending_stylesheets.length && await doc.render(pending_stylesheets))(((stylesheets) => doc.stylesheets.filter(stylesheet => !stylesheets.includes(stylesheet.href)))(stylesheets.map(el => el.getAttribute("xo-stylesheet"))));
+                //} else {
+                //}
                 return Promise.resolve(self);
             }).then(async () => {
                 let tag = self.tag;
@@ -7369,7 +7375,11 @@ xover.modernize = function (targetWindow) {
                 return this;
             }
 
-            Element.prototype.remove = function () {
+            Element.prototype.remove = function (settings = {}) {
+                if (settings.silent) {
+                    original_remove.apply(this);
+                    return this;
+                }
                 let beforeRemove = new xover.listener.Event('beforeRemove', { target: this, srcEvent: event });
                 xover.listener.dispatchEvent(beforeRemove, this);
                 if (beforeRemove.cancelBubble || beforeRemove.defaultPrevented) return;
@@ -7577,36 +7587,43 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
-            Element.prototype.setAttributeNS = function (namespace_URI, attribute, value, refresh = false) {
+            Element.prototype.setAttributeNS = function (namespace, attribute, value, settings = {}) {
+                if (settings.silent) {
+                    original_setAttributeNS.call(node, namespace, attribute, value);
+                    return this;
+                }
                 let target = this;
                 let attribute_node;
-                if (namespace_URI) {
+                if (namespace) {
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                    attribute_node = target.getAttributeNodeNS(namespace_URI, attribute_name)
+                    attribute_node = target.getAttributeNodeNS(namespace, attribute_name)
                 } else {
                     attribute_node = target.getAttributeNode(attribute)
                 }
 
-                attribute_node = attribute_node || this.createAttributeNS(namespace_URI, attribute, value);
-
+                attribute_node = attribute_node || this.createAttributeNS(namespace, attribute, value);
                 attribute_node.value = value;
                 return this;
             }
 
-            Element.prototype.setAttribute = function (attribute, value, refresh = true, delay) {
+            Element.prototype.setAttribute = function (attribute, value, settings = {}) {
                 if (!attribute) return Promise.reject("No attribute set");
                 if (attribute instanceof Attr) {
                     value = [value, attribute.value].coalesce();
                     attribute = attribute.name;
                 }
-                if (this.ownerDocument && this.ownerDocument.section) {
-                    attribute = attribute.replace(/^@/, "");
+                let target = this;
+                if (attribute.indexOf(':') != -1) {
+                    let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
+                    namespace = this.resolveNS(prefix) || xover.spaces[prefix];
+                    target.setAttributeNS(namespace, attribute, value, settings);
+                } else {
+                    if (settings.silent) {
+                        original_setAttribute.call(node, attribute, value);
+                    } else {
+                        target.setAttributeNS("", attribute, value, settings);
+                    }
                 }
-                let target = (this.ownerDocument && this.ownerDocument.section && this.ownerDocument.section.find(this) || this);
-
-                let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                namespace_URI = this.resolveNS(prefix) || xover.spaces[prefix];
-                target.setAttributeNS(namespace_URI, attribute, value, refresh);
                 return this;
             }
 
@@ -7633,7 +7650,7 @@ xover.modernize = function (targetWindow) {
                             attribute.value = args[1]
                         }
                     } else {
-                        this.setAttribute(args[0], args[1])
+                        this.setAttribute.apply(this, [args.shift(), args.shift(), ...args])
                     }
                 } else if (args[0] instanceof Attr) {
                     if (typeof (args[args.length - 1]) === 'string') {
@@ -8247,7 +8264,19 @@ xover.modernize = function (targetWindow) {
                     settings = args.pop();
                 }
                 if (settings.silent) {
-                    original_append.apply(this, args);
+                    try {
+                        original_append.apply(this, args);
+                    } catch (e) {
+                        if (e.name == 'RangeError') {
+                            let array = args
+                            let chunkSize = 9999;
+                            let index = 0;
+                            while (index < array.length) {
+                                original_append.apply(this, (array.slice(index, index + chunkSize)));
+                                index += chunkSize;
+                            }
+                        }
+                    }
                     return args;
                 }
                 args.forEach(el => {
@@ -8737,14 +8766,14 @@ xover.modernize = function (targetWindow) {
                         data.reseed();
                         let action;
                         let stylesheet_target = 'body';
-                        let targets = []
-                        if (stylesheets instanceof Array && !Object.fromEntries(stylesheets).length) {
-                            stylesheets = Object.assign(stylesheets, Object.fromEntries(xo.manifest.getSettings(this, 'stylesheets')))
-                            let message = (this.documentElement || this).selectSingleNode("message/text()")
-                            if (message) {
-                                return Promise.reject(String(message))
-                            }
-                        }
+                        let targets = [];
+                        //if (stylesheets instanceof Array && !Object.fromEntries(stylesheets).length) {
+                        //    stylesheets = Object.assign(stylesheets, Object.fromEntries(xo.manifest.getSettings(this, 'stylesheets')))
+                        //    let message = (this.documentElement || this).selectSingleNode("message/text()")
+                        //    if (message) {
+                        //        return Promise.reject(String(message))
+                        //    }
+                        //}
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             action = (stylesheet.action || !stylesheet.target && "append" || action);
@@ -9192,25 +9221,18 @@ xover.modernize = function (targetWindow) {
 xover.modernize();
 
 xover.dom.toExcel = (function (table, name) {
-    if (!table.nodeType) table = document.getElementById(table)
+    if (!table.nodeType) table = document.getElementById(table);
     table = table.cloneNode(true);
     [...table.querySelectorAll('.non_printable,input,select,textarea')].forEach(el => el.remove());
-    // from https://stackoverflow.com/questions/60483757/aboutblankblocked-error-when-export-table-in-excel
     var myBlob = new Blob(["\ufeff" + table.outerHTML], { type: 'application/vnd.ms-excel;charset=utf-8' });
     var url = window.URL.createObjectURL(myBlob);
     var a = document.createElement("a");
     document.body.appendChild(a);
     a.href = url;
-    a.download = name.replace(/^[^\d\w]/,'');
+    a.download = name.replace(/^[^\d\w]/, '');
     a.click();
-    //adding some delay in removing the dynamically created link solved the problem in FireFox
     setTimeout(function () { window.URL.revokeObjectURL(url); }, 0);
-
 });
-
-//addEventListener("error", (event) => {
-//    return Promise.reject(event);
-//});
 
 addEventListener("unhandledrejection", (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
