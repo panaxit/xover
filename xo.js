@@ -6759,7 +6759,7 @@ xover.modernize = function (targetWindow) {
                     try {
                         return original_element_matches && original_element_matches.value.apply(this, args);
                     } catch (e) {
-                        if (e.message.indexOf('not a valid selector') != -1) {
+                        if (e.message.indexOf('not a valid selector') != -1 && this.ownerDocument instanceof XMLDocument) {
                             let parentNode = this.parentNode || this.previousParentNode;
                             return parentNode.selectNodes.apply(this.parentNode, args).includes(this);
                         }
@@ -7296,8 +7296,10 @@ xover.modernize = function (targetWindow) {
                     if (!section) {
                         return null;
                     } else {
-                        let ref = this.parentElement && this.closest && this || this.parentNode || this
-                        let dom_scope = ref.closest("[xo-scope]") || section.find(this.id) && this || undefined;
+                        //let ref = this.parentElement && this.closest && this || this.parentNode || this
+                        let ref = this instanceof Element ? this : this.parentNode;
+                        let id = ref.id;
+                        let dom_scope = !(ref.hasAttribute("[xo-scope]")) && section.find(id) && ref || ref.closest("[xo-scope]") || undefined;
                         let attribute = ref.closest("[xo-attribute]");
                         if (!dom_scope) {
                             return null;
@@ -7306,7 +7308,7 @@ xover.modernize = function (targetWindow) {
                         } else {
                             attribute = null;
                         }
-                        let node = /*section.find(this.id) || */section.find(dom_scope.getAttribute("xo-scope") || dom_scope.getAttribute("xo-source"));
+                        let node = section.find(dom_scope.getAttribute("xo-scope") || id);
 
                         if (node && attribute) {
                             let attribute_node;
@@ -7314,10 +7316,10 @@ xover.modernize = function (targetWindow) {
                                 [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
                                 return [...node.childNodes].filter(el => el instanceof Text).pop();
                             }
-                            else if (!node.getAttributeNode(attribute)) {
-                                attribute_node = node.createAttribute(attribute, null);
+                            else {
+                                attribute_node = node.getAttributeNode(attribute);
+                                attribute_node = attribute_node || node.createAttribute(attribute, null);
                             }
-                            attribute_node = attribute_node || node.getAttributeNode(attribute);
                             return attribute_node;
                         }
                         //Implementar para Text $0.$$('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.$('self::xo:r')).pop().getAttributeNode($0.scope.value)
