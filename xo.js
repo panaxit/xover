@@ -2864,7 +2864,7 @@ xover.NodeSet = function (nodeSet = []) {
     });
     Object.defineProperty(nodeSet, 'setAttribute', {
         value: function (attribute, value, refresh) {
-            attribute = attribute.replace(/^@/, "");
+            //attribute = attribute.replace(/^@/, "");
             nodeSet.map((target) => {
                 if (target instanceof Element || target.nodeType == 1) {
                     target.setAttribute(attribute, value, refresh);
@@ -2883,7 +2883,7 @@ xover.NodeSet = function (nodeSet = []) {
     });
     Object.defineProperty(nodeSet, 'setAttributeNS', {
         value: async function (namespaceURI, attribute, value, refresh) {
-            attribute = attribute.replace(/^@/, "");
+            //attribute = attribute.replace(/^@/, "");
             nodeSet.map((target) => {
                 if (target instanceof Element || target.nodeType == 1) {
                     target.setAttributeNS(namespaceURI, attribute, value, refresh);
@@ -2894,7 +2894,7 @@ xover.NodeSet = function (nodeSet = []) {
     });
     Object.defineProperty(nodeSet, 'getAttribute', {
         value: function (attribute) {
-            attribute = attribute.replace(/^@/, "");
+            //attribute = attribute.replace(/^@/, "");
             return nodeSet.reduce((arr, item) => { arr.push(item.getAttribute(attribute)); return arr; }, []);
         },
         writable: false, enumerable: false, configurable: false
@@ -2922,7 +2922,7 @@ xover.NodeSet = function (nodeSet = []) {
     });
     Object.defineProperty(nodeSet, 'removeAttribute', {
         value: function (attribute, refresh, delay) {
-            attribute = attribute.replace(/^@/, "");
+            //attribute = attribute.replace(/^@/, "");
             var sections = [];
             nodeSet.map((target) => {
                 if (target.ownerDocument.section && !sections.find(section => section === target.ownerDocument.section)) {
@@ -7703,9 +7703,9 @@ xover.modernize = function (targetWindow) {
             var original_getAttributeNode = Element.prototype.getAttributeNode;
             var original_getAttributeNodeNS = Element.prototype.getAttributeNodeNS;
             Element.prototype.getAttributeNode = function (attribute, namespace) { //TODO: Implement namespace parameter
-                if (typeof (attribute) == 'string') {
-                    attribute = attribute.replace(/^@/, "");
-                }
+                //if (typeof (attribute) == 'string') {
+                //    attribute = attribute.replace(/^@/, "");
+                //}
                 attribute = (attribute instanceof Attr ? attribute.value : attribute);
 
                 if (this.hasAttribute(attribute)) {
@@ -7727,7 +7727,7 @@ xover.modernize = function (targetWindow) {
             Element.prototype.getNode = function () { alert("getNode method is deprecated") } //TODO: Deprecate this method
 
             Element.prototype.createAttribute = function (attribute, value = '') {
-                attribute = attribute.replace(/^@/, "");
+                //attribute = attribute.replace(/^@/, "");
                 let node = (value === null && this.cloneNode() || this)
                 let parentNode = this;
                 let new_attribute_node;
@@ -7751,7 +7751,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.createAttributeNS = function (namespace_URI, attribute, value = '') {
-                attribute = attribute.replace(/^@/, "");
+                //attribute = attribute.replace(/^@/, "");
                 let node = (value === null && this.cloneNode() || this)
                 let parentNode = this;
                 let new_attribute_node;
@@ -7820,9 +7820,9 @@ xover.modernize = function (targetWindow) {
                 //    attribute = attribute.name;
                 //} else {
 
-                if (this.ownerDocument && this.ownerDocument.section) {
-                    attribute = attribute.replace(/^@/, "");
-                }
+                //if (this.ownerDocument && this.ownerDocument.section) {
+                //    attribute = attribute.replace(/^@/, "");
+                //}
                 let attribute_node = this.getAttributeNode(attribute);
                 attribute_node && attribute_node.remove();
             }
