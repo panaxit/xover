@@ -277,13 +277,13 @@ xover.store = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.store, 'files', {
     get: async function () {
@@ -8802,8 +8802,10 @@ xover.modernize = function (targetWindow) {
                             let target = stylesheet_target;
                             let current_cursor_style = target.style.cursor;
                             try { target.style.cursor = 'wait' } catch (e) { console.log(e) }
-                            original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:section", tag);
-                            original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
+                            if ((data.documentElement || data) instanceof Element) {
+                                original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:section", tag);
+                                original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
+                            }
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
                             let dom = await data.transform(xsl);
                             //target.select("xhtml:div[@class='loading']").remove()
