@@ -7592,7 +7592,7 @@ xover.modernize = function (targetWindow) {
 
             Element.prototype.setAttributeNS = function (namespace, attribute, value, settings = {}) {
                 if (settings.silent) {
-                    original_setAttributeNS.call(node, namespace, attribute, value);
+                    original_setAttributeNS.call(this, namespace, attribute, value);
                     return this;
                 }
                 let target = this;
@@ -7622,7 +7622,7 @@ xover.modernize = function (targetWindow) {
                     target.setAttributeNS(namespace, attribute, value, settings);
                 } else {
                     if (settings.silent) {
-                        original_setAttribute.call(node, attribute, value);
+                        original_setAttribute.call(this, attribute, value);
                     } else {
                         target.setAttributeNS("", attribute, value, settings);
                     }
@@ -7923,23 +7923,11 @@ xover.modernize = function (targetWindow) {
                             (old_value != value || event && (event.type || "").split(/::/, 1).shift() == 'change') && xover.listener.dispatchEvent(before, this);
                         }
                         if (before.cancelBubble || before.defaultPrevented) return;
-                        //if (old_value !== value) {
-                        //    if (section) {
-                        //        if (!target_node.resolveNS("state")) {
-                        //            original_setAttributeNS.call(target_node.ownerDocument.documentElement, xover.spaces["xmlns"], "xmlns:state", xover.spaces["state"]);
-                        //        }
-
-                        //        if (!(this.ownerDocument.section)) {
-                        //            let scope = this.source;
-                        //            scope && scope.set(value)
-                        //        }
-                        //    }
-                        //}
 
                         let return_value;
-                        let set_event = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value });
-                        xover.listener.dispatchEvent(set_event, this);
-                        if (set_event.cancelBubble || set_event.defaultPrevented) return;
+                        let beforeset_event = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: value, old: old_value });
+                        xover.listener.dispatchEvent(beforeset_event, this);
+                        if (beforeset_event.cancelBubble || beforeset_event.defaultPrevented) return;
 
                         if (value === null || value === undefined) {
                             this.nil = true;
@@ -7948,6 +7936,7 @@ xover.modernize = function (targetWindow) {
                             this.nil = false;
                             original_attr_value.set.call(this, value);
                         }
+                        xover.listener.dispatchEvent(new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
                         if (old_value !== value) {
                             if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
                                 xover.listener.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }), this);
@@ -8647,7 +8636,7 @@ xover.modernize = function (targetWindow) {
                         }
                         try {
                             if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                                window.top.dispatchEvent(new xover.listener.Event('xmlTransformed', { original: xml, transformed: result }));
+                                window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, transformed: result }));
                             }
                         } catch (e) { }
                         return result
@@ -9038,7 +9027,7 @@ xover.modernize = function (targetWindow) {
                                     scope.set('@state:width', el.offsetWidth, false);
                                 }
                             }));
-                            dom.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]').forEach(el => el.addEventListener('change', async function () {
+                            [...dom.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]')].filter(el => !el.getAttribute("onchange")).forEach(el => el.addEventListener('change', async function () {
                                 let scope = this.scope;
                                 let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
                                 let srcElement = event.target;
