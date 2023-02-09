@@ -574,6 +574,9 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         }
         //xover.listener[`${event.type}::${name}[${value}]`] && listeners.push(`${event.type}::${name}[${value}]`);
         xover.listener[`${event.type}::${name}`] && listeners.push(`${event.type}::${name}`);
+        if (axis.section) {
+            listeners.push(`${event.type}::${axis.section.tag}`);
+        }
         if (prefix) {
             xover.listener[`${event.type}::${prefix}:*`] && listeners.push(`${event.type}::${prefix}:*`);
         }
@@ -731,9 +734,9 @@ xover.listener.on('error', async function ({ event }) {
             return;
         }
     }
-    if ([...document.querySelectorAll('script[src]')].find(node => node.getAttribute("src").indexOf('bootstrap') !== -1)) { //
+    if ([...document.querySelectorAll('link[href]')].find(node => node.getAttribute("href").indexOf('bootstrap-icons') !== -1)) { //
         let new_element = targetDocument.createElement("i");
-        new_element.className = `bi bi-filetype bi-filetype-${record ? record.extension : src.split(".").pop()}`;
+        new_element.className = `bi bi-filetype bi-filetype-${record ? record.extension : (xo.URL(src).pathname.match(/(?<=\.)\w{1,3}$/) || [])[0]}`;
         if (srcElement.closest('picture')) {
             srcElement.closest('picture').replace(new_element);
         } else {
@@ -2230,9 +2233,11 @@ function setDefaultDate(control) {
     return new_string_date;
 }
 
-function isValidDate(sDate) {
-    var full_pattern = /\b(\d{1,2})(?:(\/)(\d{1,2})(?:\2(\d{2,4})))/
-    return (sDate.match(full_pattern) && Date.parse(sDate) != 'NaN');
+function isValidDate(date_string) {
+    //var full_pattern = /\b(\d{1,2})(?:(\/)(\d{1,2})(?:\2(\d{2,4})))/
+    //return (sDate.match(full_pattern) && Date.parse(sDate) != 'NaN');
+    var date = new Date(date_string);
+    return !isNaN(date.getTime());
 }
 
 function isValidISODate(sDate) {
@@ -2280,7 +2285,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
             file = source;
             file.id = file.id || source.id;
             file.saveAs = saveAs || file.saveAs || file.name;
-        } else if (source instanceof Node && source.nodeType === 2) {
+        } else if (source instanceof Attr) {
             let record = await (await xover.store.files).get(source.value);
             if (!(record && record.file)) {
                 source.parentNode.setAttribute(source.name, '');
@@ -2330,7 +2335,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
                     //var request = new XMLHttpRequest();
                     let request = new xover.Request(xover.manifest.server["uploadFile"] + `?UploadID=${file.id}&saveAs=${file.saveAs}&parentFolder=${(file.parentFolder || '').replace(/\//g, '\\')}`, { method: 'POST', body: formData });
                     fetch(request).then(async response => {
-                        let file_name = response.headers.get("File-Name");
+                        let file_name = response.headers.get("File-Name") + `?name=${file.name.normalize()}`;
                         if (!file_name) throw (new Error("Cound't get file name"));
                         if (source && source instanceof Node) {
                             let temp_value = source.value;
@@ -2342,7 +2347,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
                                 source = source.scope;
                             }
                             //}
-                            [source, ...xover.sections.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node instanceof Attr ? node.parentNode.setAttribute(node.name, file_name) : node.setAttribute("value", file_name));
+                            [source, ...xover.sections.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node instanceof Attr ? node.set(file_name) : node.setAttribute("value", file_name));
                         }
                         var progress_bar = document.getElementById('_progress_bar_' + file.id);
                         if (progress_bar) {
@@ -3408,7 +3413,7 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         settings["method"] = 'POST';
         let pending = [];
         if (payload instanceof XMLDocument) {
-            payload.$$("//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
+            payload.$$(".//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
         }
         await Promise.all(pending);
     }
@@ -4673,7 +4678,7 @@ xover.Section = function (xml, ...args) {
                 if (!mutationList.length) return;
                 let stylesheets_to_render = [];
 
-                [...top.document.querySelectorAll('[xo-stylesheet]')].filter(stylesheet => stylesheet.section === self).forEach(stylesheet => {
+                for (let stylesheet of [...top.document.querySelectorAll('[xo-stylesheet]')].filter(stylesheet => stylesheet.section === self)) {
                     if (!stylesheet.stylesheet.documentElement) {
                         stylesheet.render()
                     }
@@ -4764,7 +4769,7 @@ xover.Section = function (xml, ...args) {
                             }
                         }
                     }))
-                })
+                }
 
                 stylesheets_to_render.forEach(stylesheet => stylesheet.render());
                 for (const mutation of mutationList) {
@@ -5518,7 +5523,7 @@ xover.xml.fromJSON = function (json) {
             , '<l>([^<]+)</l>', '<l>$1</l>', 1)
     );
 
-    let reformated_xson = raw_xson.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns="" version="1.0" id="raw_json_compatibility"><xsl:variable name="node_name">olsc</xsl:variable><xsl:variable name="translate-o">{[ ,</xsl:variable><xsl:variable name="translate-c">}] </xsl:variable><xsl:template match="/"><xsl:apply-templates></xsl:apply-templates></xsl:template><xsl:template match="*" mode="value"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="o|l|c" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="translate(name(),$node_name,$translate-o)"></xsl:value-of><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:value-of select="translate(name(),$node_name,$translate-c)"></xsl:value-of><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="s" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="' '"></xsl:value-of><xsl:if test="$is_string"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="r|f" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text></xsl:text><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="e" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text>\</xsl:text><xsl:value-of select="text()"></xsl:value-of><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="text()" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="$is_string and not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="text()[substring(.,1,1)='&quot;']" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="true()"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="l"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates select="o"></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="o"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates select="a"></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="a"><xsl:variable name="following" select="(following-sibling::text()|following-sibling::*[not(self::f or self::r or self::c or self::s)])[1]"></xsl:variable><xsl:copy><xsl:element name="n"><xsl:value-of select="text()"></xsl:value-of></xsl:element><xsl:choose><xsl:when test="$following/self::o or $following/self::l"><xsl:apply-templates select="$following"></xsl:apply-templates></xsl:when><xsl:otherwise><xsl:element name="v"><xsl:apply-templates select="$following" mode="value"></xsl:apply-templates></xsl:element></xsl:otherwise></xsl:choose></xsl:copy></xsl:template></xsl:stylesheet>`));
+    let reformated_xson = raw_xson.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns="" version="1.0" id="raw_json_compatibility"><xsl:variable name="node_name">olsc</xsl:variable><xsl:variable name="translate-o">{[ ,</xsl:variable><xsl:variable name="translate-c">}] </xsl:variable><xsl:template match="/"><xsl:apply-templates></xsl:apply-templates></xsl:template><xsl:template match="*" mode="value"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="o|l|c" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="translate(name(),$node_name,$translate-o)"></xsl:value-of><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:value-of select="translate(name(),$node_name,$translate-c)"></xsl:value-of><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="s" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="' '"></xsl:value-of><xsl:if test="$is_string"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="r|f" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text></xsl:text><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="e" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text>\</xsl:text><xsl:value-of select="text()"></xsl:value-of><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="text()" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="$is_string and not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="text()[substring(.,1,1)='&quot;']" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="true()"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="l/text()"><xsl:element name="v"><xsl:value-of select="."/></xsl:element></xsl:template><xsl:template match="l"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates select="o|text()"></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="o"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates select="a"></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="a"><xsl:variable name="following" select="(following-sibling::text()|following-sibling::*[not(self::f or self::r or self::c or self::s)])[1]"></xsl:variable><xsl:copy><xsl:element name="n"><xsl:value-of select="text()"></xsl:value-of></xsl:element><xsl:choose><xsl:when test="$following/self::o or $following/self::l"><xsl:apply-templates select="$following"></xsl:apply-templates></xsl:when><xsl:otherwise><xsl:element name="v"><xsl:apply-templates select="$following" mode="value"></xsl:apply-templates></xsl:element></xsl:otherwise></xsl:choose></xsl:copy></xsl:template></xsl:stylesheet>`));
 
     let xson = reformated_xson.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xson="http://panax.io/xson" xmlns="" version="1.0" id="PrettifyJSON"><xsl:variable name="invalidChars" select="'$:/@ '"></xsl:variable><xsl:template match="/"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:template><xsl:template match="*" mode="raw-to-xson"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:template><xsl:template match="o|l" mode="raw-to-xson"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:template><xsl:template match="l/v" mode="raw-to-xson"><xsl:element name="xson:item"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template><xsl:template match="a" mode="raw-to-xson"><xsl:variable name="name"><xsl:choose><xsl:when test="number(translate(n,'&quot;',''))=translate(n,'&quot;','')"><xsl:value-of select="concat('@',translate(n,'&quot;',''))"></xsl:value-of></xsl:when><xsl:otherwise><xsl:value-of select="translate(translate(n,'&quot;',''),$invalidChars,'@@@@@')"></xsl:value-of></xsl:otherwise></xsl:choose></xsl:variable><xsl:element name="{translate($name,'@','_')}"><xsl:if test="contains($name,'@')"><xsl:attribute name="xson:originalName"><xsl:value-of select="translate(n,'&quot;','')"></xsl:value-of></xsl:attribute></xsl:if><xsl:if test="l"><xsl:attribute name="xsi:type">xson:array</xsl:attribute></xsl:if><xsl:apply-templates select="*" mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template><xsl:template match="text()" mode="raw-to-xson"><xsl:value-of select="."></xsl:value-of></xsl:template><xsl:template match="text()[starts-with(.,'&quot;')]" mode="raw-to-xson"><xsl:value-of select="substring(.,2,string-length(.)-2)"></xsl:value-of></xsl:template><xsl:template match="text()[.='null']|*[.='']" mode="raw-to-xson"></xsl:template><xsl:template match="text()[.='null']" mode="raw-to-xson"><xsl:attribute name="xsi:nil">true</xsl:attribute></xsl:template><xsl:template match="n" mode="raw-to-xson"></xsl:template><xsl:template match="a[v='true' or v='false']/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">boolean</xsl:attribute></xsl:template><xsl:template match="e" mode="raw-to-xson"><xsl:value-of select="@v"></xsl:value-of></xsl:template><xsl:template match="a[number(v)=v]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">numeric</xsl:attribute></xsl:template><xsl:template match="a[starts-with(v,'&quot;')]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">string</xsl:attribute></xsl:template><xsl:template match="a[l]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">xson:array</xsl:attribute></xsl:template><xsl:template match="a[o]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">xson:object</xsl:attribute></xsl:template><xsl:template match="o[not(preceding-sibling::n)]" mode="raw-to-xson"><xsl:element name="xson:object"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template><xsl:template match="l[not(preceding-sibling::n)]" mode="raw-to-xson"><xsl:element name="xson:array"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template></xsl:stylesheet>`));
 
@@ -8356,11 +8361,11 @@ xover.modernize = function (targetWindow) {
                 //if (navigator.userAgent.indexOf("Safari") == -1) {
                 //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                 //}
-                try {
-                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => original_setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${(node.parentNode || {}).nodeName || node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
-                } catch (e) {
-                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.parentNode || {}).nodeName || this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
-                }
+                //try {
+                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => original_setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
+                //} catch (e) {
+                //    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
+                //}
                 return this;
             }
 
@@ -8807,18 +8812,18 @@ xover.modernize = function (targetWindow) {
                                 original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
                             }
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
+                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
+                            xover.listener.dispatchEvent(before_dom, data);
+                            if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             let dom = await data.transform(xsl);
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
-                            if (section) {
-                                let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
-                                xover.listener.dispatchEvent(before, section);
-                                if (before.cancelBubble || before.defaultPrevented) continue;
-                            }
-                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
-                            xover.listener.dispatchEvent(before_dom, dom);
-                            if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
+                            //if (section) {
+                            //    let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data })
+                            //    xover.listener.dispatchEvent(before, section);
+                            //    if (before.cancelBubble || before.defaultPrevented) continue;
+                            //}
                             if (!dom.documentElement) {
                                 xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
@@ -9022,14 +9027,15 @@ xover.modernize = function (targetWindow) {
                                 let el = event.srcElement;
                                 let scope = el.scope;
                                 if (scope instanceof Attr) {
-                                    scope.parentNode.set(`@height:${scope.localName}`, el.offsetHeight, false);
-                                    scope.parentNode.set(`@width:${scope.localName}`, el.offsetWidth, false);
+                                    scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight);
+                                    scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth);
                                 } else {
-                                    scope.set('@state:height', el.offsetHeight, false);
-                                    scope.set('@state:width', el.offsetWidth, false);
+                                    scope.set('state:height', el.offsetHeight, false);
+                                    scope.set('state:width', el.offsetWidth, false);
                                 }
                             }));
                             [...dom.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]')].filter(el => !el.getAttribute("onchange")).forEach(el => el.addEventListener('change', async function () {
+                                if (this.type === 'date' && !isValidISODate(this.value)) return;
                                 let scope = this.scope;
                                 let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
                                 let srcElement = event.target;
