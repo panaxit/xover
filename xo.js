@@ -507,7 +507,17 @@ xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
 Object.defineProperty(xover.listener, 'matches', {
     value: function (node, event_type) {
-        return Object.keys(xover.listener).filter((key) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)))
+        event_type = [event_type].flat();
+
+        let listeners = [];
+        //Object.entries(xover.listener).filter(([key]) => key == event_type).reduce((new_array, [key, fns]) => {
+        //    Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array
+        //}, listeners);
+        Object.entries(xover.listener).filter(([key]) => event_type.includes(key) || event_type.includes(key.split(/::/g, 1)[0]) && node instanceof Node && node.matches(key.replace(/^\w+::/g, ''))).reduce((new_array, [key, fns]) => {
+            Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array
+        }, listeners);
+        //Object.entries(xover.listener).filter(([key]) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).select('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.select(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument))).reduce((new_array, [key, fns]) => {Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array}, listeners);
+        return listeners;
     },
     writable: false, enumerable: false, configurable: false
 })
@@ -580,14 +590,6 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         if (prefix) {
             xover.listener[`${event.type}::${prefix}:*`] && listeners.push(`${event.type}::${prefix}:*`);
         }
-        try {
-            let event_type = event.type;
-            let matching_listeners = xover.listener.matches(node, event_type);
-
-            listeners = listeners.concat(matching_listeners);
-        } catch (e) {
-            console.log(e)
-        }
 
         let constructors = [constructor];
         if (axis instanceof HTMLElement) {
@@ -603,17 +605,29 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
                 xover.listener[`${event.type}${constructor}`] && listeners.push(`${event.type}${constructor}`);
             }
         })
-        listeners.push(event);
-        listeners = listeners.filter(el => el).flat(Infinity);
-        listeners.forEach(evt => {
+        //listeners.push(event);
+        //listeners = listeners.filter(el => el).flat(Infinity);
+
+        //try {
+            listeners.push(event.type);
+            matching_listeners = xover.listener.matches(node, listeners)//.map(([key]) => key); /*Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)))*/
+
+        //    //listeners = listeners.concat(matching_listeners);
+        //} catch (e) {
+        //    console.log(e)
+        //}
+        for (evt of matching_listeners.reverse()) {
+            if (event.defaultPrevented || event.cancelBubble) return;
+            event.detail = event.detail || {};
+            event.detail["target"] = event.detail["target"] || axis;
+            event.detail["srcElement"] = event.detail["srcElement"] || axis;
             if (evt instanceof Event) {
-                evt.detail["target"] = evt.detail["target"] || axis;
-                evt.detail["srcElement"] = evt.detail["srcElement"] || axis;
                 window.top.dispatchEvent(evt);
             } else if (!(event.defaultPrevented || event.cancelBubble)) {
                 event.detail["target"] = event.detail["target"] || axis;
                 event.detail["srcElement"] = event.detail["srcElement"] || axis;
-                let new_event = new xover.listener.Event(evt, event.detail);
+                let new_event = new xover.listener.Event(evt[0], event.detail);
+                new_event.detail.fn = evt[1];
                 window.top.dispatchEvent(new_event);
                 if (new_event.defaultPrevented) {
                     event.preventDefault();
@@ -622,7 +636,7 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
                     event.stopPropagation();
                 }
             }
-        })
+        }
 
         /*listeners.reverse().forEach((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));*/
     },
@@ -635,9 +649,12 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             await xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
-        let listeners = Object.entries(xover.listener).filter(([key]) => key == event.type).reduce((new_array, [key, fn]) => {
-            new_array.push(...Object.values(fn).flat(Infinity)); return new_array
-        }, []);
+        let listeners;
+        if ((event.detail || {}).fn) {
+            listeners = [event.detail.fn];
+        } else {
+            listeners = xover.listener.matches(event.srcElement, event.type).map(([,value])=>value);
+        }
         //let listeners = Object.values(xover.listener[event.type]).slice(0);
         let first_listener = listeners[0];
         listeners.reverse().map((handler) => !(event.cancelBubble || event.defaultPrevented && first_listener === handler) && handler.apply(event.detail && event.detail.srcElement/*(event.detail.target || event.detail.srcElement)*/ || event.target, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments));
@@ -1402,7 +1419,7 @@ Object.defineProperty(xover.site, 'seed', {
         if (!history.state['seed']) {
             history.state['seed'] = input;
             //xover.site.active = input;
-        } else if (history.state['seed'] != input) {
+        } else if (new xo.URL(history.state['seed']).hash != new xo.URL(input).hash) {
             xover.site.next = input;
             var prev = [...this["prev"]];
             prev.unshift(history.state.seed);
@@ -1877,8 +1894,8 @@ xover.Source = function (source, tag, manifest_key) {
                 settings.stylesheets && settings.stylesheets.forEach(stylesheet => document.addStylesheet(stylesheet));
                 __document.url = document.url || url;
                 __document.href = document.href || href;
-                __document.replaceBy(document);
                 xover.listener.dispatchEvent(new xover.listener.Event('fetch', { document: __document, tag: tag, section: __document.section }), self);
+                __document.replaceBy(document);
                 return resolve(__document);
             }).catch(async (e) => {
                 xover.listener.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }), self);
@@ -4682,19 +4699,60 @@ xover.Section = function (xml, ...args) {
                     if (!stylesheet.stylesheet.documentElement) {
                         stylesheet.render()
                     }
+                    //if (!stylesheets_to_render.find(el => el === stylesheet)) {
+                    //    if (mutationList.find(mutation => mutation.target instanceof Document)) {
+                    //        stylesheets_to_render.push(stylesheet);
+                    //    }
+                    //}
                     let listeners = [...stylesheet.querySelectorAll('xo-listener')].filter(el => el.section === self && el.closest('[xo-stylesheet]') === stylesheet);
-                    listeners.forEach(listener => {
+                    for (listener of listeners) {
                         mutationList.forEach(mutation => {
                             if (!stylesheets_to_render.find(el => el === stylesheet)) {
-                                let render = false;
                                 if (listener.getAttribute("node")) {
                                     if (mutation.target instanceof Element && mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes, ...mutation.addedNodes].find(el => el.matches(listener.getAttribute("node")))) {
-                                        render = true;
+                                        stylesheets_to_render.push(stylesheet);
                                     }
                                 }
                                 if (mutation.type === 'attributes') {
                                     let attrib = listener.getAttributeNode("attribute");
                                     if (attrib) {
+                                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                                        if (!attr) {
+                                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                                        }
+                                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
+                                        if (attrib && !attrib_node) {
+                                            try {
+                                                attrib_node = mutation.target.createAttribute(attrib.value, null)
+                                            } catch (e) {
+                                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
+                                                if (prefix && name == '*') {
+                                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
+                                                    if (attr.namespaceURI == ns) {
+                                                        stylesheets_to_render.push(stylesheet)
+                                                    }
+                                                }
+                                                return;
+                                            }
+                                        }
+                                        if (attrib_node.isEqualNode(attr)) {
+                                            stylesheets_to_render.push(stylesheet)
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                    }
+
+                    let attrs = [...stylesheet.select('.//@xo-attribute')].filter(el => el.parentNode.section === self && el.parentNode.closest('[xo-stylesheet]') === stylesheet);
+                    for (attrib of attrs) {
+                        for (mutation of mutationList) {
+                            if (!stylesheets_to_render.find(el => el === stylesheet)) {
+                                let scoped_element = attrib.parentNode.closest('[xo-scope]');
+                                if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id")) {
+                                    //&& (mutation.type !== 'attributes' || mutation.type === 'attributes' &&
+                                    let render = false;
+                                    if (attrib.value.indexOf(':') != -1) {
                                         let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
                                         if (!attr) {
                                             attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
@@ -4719,56 +4777,16 @@ xover.Section = function (xml, ...args) {
                                         } else {
                                             render = false;
                                         }
+                                    } else if (mutation.attributeName == attrib.value) {
+                                        render = true
                                     }
-                                }
-                                if (render) {
-                                    stylesheets_to_render.push(stylesheet)
-                                }
-                            }
-                        })
-                    })
-
-                    let attrs = [...stylesheet.select('.//@xo-attribute')].filter(el => el.parentNode.section === self && el.parentNode.closest('[xo-stylesheet]') === stylesheet);
-                    attrs.forEach(attrib => mutationList.forEach(mutation => {
-                        if (!stylesheets_to_render.find(el => el === stylesheet)) {
-                            let scoped_element = attrib.parentNode.closest('[xo-scope]');
-                            if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id")) {
-                                //&& (mutation.type !== 'attributes' || mutation.type === 'attributes' &&
-                                let render = false;
-                                if (attrib.value.indexOf(':') != -1) {
-                                    let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                                    if (!attr) {
-                                        attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                                    if (render) {
+                                        stylesheets_to_render.push(stylesheet)
                                     }
-                                    let attrib_node = mutation.target.getAttributeNode(attrib.value);
-                                    if (attrib && !attrib_node) {
-                                        try {
-                                            attrib_node = mutation.target.createAttribute(attrib.value, null)
-                                        } catch (e) {
-                                            let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
-                                            if (prefix && name == '*') {
-                                                let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
-                                                if (attr.namespaceURI == ns) {
-                                                    render = true;
-                                                }
-                                            }
-                                            return;
-                                        }
-                                    }
-                                    if (attrib_node.isEqualNode(attr)) {
-                                        render = true;
-                                    } else {
-                                        render = false;
-                                    }
-                                } else if (mutation.attributeName == attrib.value) {
-                                    render = true
-                                }
-                                if (render) {
-                                    stylesheets_to_render.push(stylesheet)
                                 }
                             }
                         }
-                    }))
+                    }
                 }
 
                 stylesheets_to_render.forEach(stylesheet => stylesheet.render());
@@ -4780,10 +4798,10 @@ xover.Section = function (xml, ...args) {
                                 mutation.target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
                             }
                         }
-                        [...mutation.addedNodes].forEach(el => {
+                        for (el of [...mutation.addedNodes]) {
                             xover.listener.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }), el);
                             el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.reseed());
-                        });
+                        };
                         if (mutation.addedNodes.length) {
                             xover.listener.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }), mutation.target);
                             if (mutation.target instanceof Element && mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (mutation.target.firstElementChild || mutation.target.textContent)) {
@@ -6106,13 +6124,13 @@ xover.listener.on('click', function (event) {
     }
 });
 
-xover.listener.on(["change", "click"], function (event) {
-    if (event.defaultPrevented) return;
-    xover.dom.bluredElement = event.target;
-    xover.delay(40).then(() => {
-        xover.dom.triggeredByTab = xover.listener.keypress.tabKey;
-    })
-})
+//xover.listener.on(["change", "click"], function (event) {
+//    if (event.defaultPrevented) return;
+//    xover.dom.bluredElement = event.target;
+//    xover.delay(40).then(() => {
+//        xover.dom.triggeredByTab = xover.listener.keypress.tabKey;
+//    })
+//})
 
 xover.listener.on("click", function (event) {
     if (event.defaultPrevented) return;
@@ -6761,12 +6779,14 @@ xover.modernize = function (targetWindow) {
             var original_element_matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
             Object.defineProperty(Element.prototype, 'matches', {
                 value: function (...args) {
+                    let node = this;
                     try {
-                        return original_element_matches && original_element_matches.value.apply(this, args);
+                        return original_element_matches && original_element_matches.value.apply(node, args);
                     } catch (e) {
-                        if (e.message.indexOf('not a valid selector') != -1 && this.ownerDocument instanceof XMLDocument) {
-                            let parentNode = this.parentNode || this.previousParentNode;
-                            return parentNode.selectNodes.apply(this.parentNode, args).includes(this);
+                        if (e.message.indexOf('not a valid selector') != -1 && node.ownerDocument instanceof XMLDocument) {
+                            /*node = node.parentNode || node.previousParentNode;*/
+                            let key = args[0];
+                            return [node.select('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.select(key).includes(this))
                         }
                     }
                 }
@@ -6774,12 +6794,17 @@ xover.modernize = function (targetWindow) {
             var original_attr_matches = Object.getOwnPropertyDescriptor(Attr.prototype, 'matches');
             Object.defineProperty(Attr.prototype, 'matches', {
                 value: function (...args) {
+                    let node = this;
                     try {
-                        return original_attr_matches && original_attr_matches.value.apply(this, args);
+                        if (!(node.ownerElement instanceof HTMLElement)) {
+                            throw new DOMException('not a valid selector');
+                        }
+                        return original_attr_matches && original_attr_matches.value.apply(node, args);
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
-                            let parentNode = this.parentNode || this.previousParentNode;
-                            return parentNode.selectNodes.apply(this.parentNode, args).includes(this);
+                            node = node.parentNode || node.previousParentNode;
+                            let key = args[0];
+                            return [node.select('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.select(key).includes(this))
                         }
                     }
                 }
@@ -7404,7 +7429,7 @@ xover.modernize = function (targetWindow) {
                 //    context_section.save();
                 //}
                 let event_type = 'remove', node = this;
-                let matching_listeners = xover.listener.matches(node, event_type);
+                let matching_listeners = xover.listener.matches(node, event_type).map(([key]) => key);
 
                 original_remove.apply(this, arguments);
 
@@ -8173,7 +8198,7 @@ xover.modernize = function (targetWindow) {
                 if (ownerElement) {
                     let return_value;
                     let event_type = 'remove', node = this;
-                    let matching_listeners = xover.listener.matches(node, event_type);
+                    let matching_listeners = xover.listener.matches(node, event_type).map(([key]) => key);
                     if (this.namespaceURI) {
                         return_value = original_removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
                     } else {
