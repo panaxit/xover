@@ -8727,7 +8727,7 @@ xover.modernize = function (targetWindow) {
                     let before = new xover.listener.Event('beforePushState', { state: args[0] })
                     xover.listener.dispatchEvent(before, this);
                     if (before.cancelBubble || before.defaultPrevented) return;
-                    let response = original_pushState.value.apply(this, args);
+                    let response = original_pushState.value.apply(this, [JSON.parse(JSON.stringify(args[0])), args[1], args[2]]);
                     xover.listener.dispatchEvent(new xover.listener.Event('pushState', { state: args[0] }), this);
                     return response;
                 }
