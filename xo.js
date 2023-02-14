@@ -513,7 +513,7 @@ Object.defineProperty(xover.listener, 'matches', {
         //Object.entries(xover.listener).filter(([key]) => key == event_type).reduce((new_array, [key, fns]) => {
         //    Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array
         //}, listeners);
-        Object.entries(xover.listener).filter(([key]) => event_type.includes(key) || event_type.includes(key.split(/::/g, 1)[0]) && node instanceof Node && node.matches(key.replace(/^\w+::/g, ''))).reduce((new_array, [key, fns]) => {
+        Object.entries(xover.listener).filter(([key]) => event_type.includes(key) || node instanceof xover.Section && key.replace(/^\w+::/g, '') == node.tag || event_type.includes(key.split(/::/g, 1)[0]) && node instanceof Node && node.matches(key.replace(/^\w+::/g, ''))).reduce((new_array, [key, fns]) => {
             Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array
         }, listeners);
         //Object.entries(xover.listener).filter(([key]) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).select('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.select(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument))).reduce((new_array, [key, fns]) => {Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array}, listeners);
@@ -1879,6 +1879,7 @@ xover.Source = function (source, tag, manifest_key) {
                     try {
                         documents = await Promise.all(promises).then(document => document);
                     } catch (e) {
+                        xover.listener.dispatchEvent(new xover.listener.Event('failure::fetch', { response: e }), self);
                         return reject(e);
                     }
                     document = documents[0];
@@ -5237,17 +5238,16 @@ xover.Section = function (xml, ...args) {
             if (before.cancelBubble || before.defaultPrevented) return;
             //__document = event.detail.document || __document;
             if (__document.fetch) {
-                __document.section = section;
+                //__document.section = section;
                 try {
                     await __document.fetch()
                 } catch (e) {
-                    xover.listener.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: _tag, document: __document, response: e }), self);
                     return Promise.reject(e);
                 }
             }
-            let event = new xover.listener.Event('fetch', { tag: _tag, document: __document });
-            xover.listener.dispatchEvent(event, self);
-            __document = event.detail.document || __document;
+            //let event = new xover.listener.Event('fetch', { tag: _tag, document: __document });
+            //xover.listener.dispatchEvent(event, self);
+            //__document = event.detail.document || __document;
             await this.initialize();
             this.reseed();
         },
@@ -6748,9 +6748,9 @@ xover.modernize = function (targetWindow) {
                 }
                 xpath = xpath.replace(/&quot;/gi, '"');
                 let namespace = this.resolveNS("");
-                if (!xpath.match(/[^\w\d\-\_]/g) && namespace) {
-                    xpath = `*[namespace-uri()='${namespace}' and name()='${xpath}']`
-                }
+                //if (!xpath.match(/[^\w\d\-\_]/g) && namespace) {
+                //    xpath = `*[namespace-uri()='${namespace}' and name()='${xpath}']`
+                //}
                 let xItems = this.selectNodes(`(${xpath})[1]`, context);
                 if (xItems.length > 0) { return xItems[0]; }
                 else { return null; }
