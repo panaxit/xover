@@ -609,8 +609,8 @@ Object.defineProperty(xover.listener, 'dispatchEvent', {
         //listeners = listeners.filter(el => el).flat(Infinity);
 
         //try {
-            listeners.push(event.type);
-            matching_listeners = xover.listener.matches(node, listeners)//.map(([key]) => key); /*Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)))*/
+        listeners.push(event.type);
+        matching_listeners = xover.listener.matches(node, listeners)//.map(([key]) => key); /*Object.keys(xover.listener).filter((key) => key.match(`^${event.type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).$$('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.$$(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument)))*/
 
         //    //listeners = listeners.concat(matching_listeners);
         //} catch (e) {
@@ -653,7 +653,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         if ((event.detail || {}).fn) {
             listeners = [event.detail.fn];
         } else {
-            listeners = xover.listener.matches(event.srcElement, event.type).map(([,value])=>value);
+            listeners = xover.listener.matches(event.srcElement, event.type).map(([, value]) => value);
         }
         //let listeners = Object.values(xover.listener[event.type]).slice(0);
         let first_listener = listeners[0];
@@ -3052,7 +3052,7 @@ xover.xml.setNamespaces = function (xml_document, namespaces) {
 
 xover.xml.createNamespaceDeclaration = function () {
     var namespaces = xover.xml.getNamespaces.apply(this, arguments);
-    return xover.json.join(namespaces, { "separator": " " });
+    return Object.entries(namespaces).map(([key, value]) => `xmlns:${key}="${value}"`).join(" ");
 }
 
 xover.Response = function (response, request) {
@@ -5581,41 +5581,6 @@ xover.json.difference = function () {
     return response;
 }
 
-xover.json.toArray = function (json) {
-    var array = []
-    for (let key in json) {
-        array.push(json[key]);
-    }
-    return array;
-}
-
-xover.json.join = function (json, settings) {
-    if (!(json && json.constructor == {}.constructor)) {
-        return json;
-    }
-    var result = []
-    var settings = (settings || {});
-    var equal_sign = (settings["equal_sign"] || '=');
-    var separator = (settings["separator"] || ' ');
-    var for_each = (settings["for_each"] || function (element, index, array) {
-        var quote = (settings["quote"] !== undefined ? settings["quote"] : '"');
-        var regex = new RegExp(quote, "ig");
-        if (element.value && quote) {
-            element.value = quote + String(element.value).replace(regex, "\\$&") + quote;
-        }
-        array[index] = element.key + equal_sign + element.value;
-    })
-    for (let key in json) {
-        result.push({ "key": key, "value": json[key] });
-        //result.push({ "key": key, "value": (json[key] || "DEFAULT") });
-    }
-    result.forEach(for_each)
-    var filter_function = (settings["filter_function"] || function (value, index, arr) {
-        return value !== undefined;
-    })
-    return result.filter(filter_function).join(separator);
-}
-
 xover.json.toAttributes = function (json) {
     json = Object.entries(json).reduce((filtered, [key, value]) => { if (value !== undefined) { filtered[key] = value; } return filtered; }, {})
     let attribs = new URLSearchParams(json);
@@ -6716,23 +6681,10 @@ xover.modernize = function (targetWindow) {
                         }
                     }
                 } catch (e) {
-                    if (e.message.match(/contains unresolvable namespaces/g) && ((arguments || {}).callee || {}).caller !== XMLDocument.prototype.selectNodes && XMLDocument.prototype.selectNodes.caller !== Element.prototype.selectNodes) {
-                        let prefixes = xpath.match(/\w+(?=\:)/g);
-                        prefixes = [...new Set(prefixes)]; //remueve duplicados
-                        let target = context;
-                        let all_namespaces = xover.xml.normalizeNamespaces(target).getNamespaces();
-                        let new_namespaces = prefixes.filter(prefix => (all_namespaces[prefix] || xover.spaces[prefix]))
-
-                        if (new_namespaces.length) {
-                            new_namespaces.map(prefix => {
-                                (target.documentElement || target).setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, (all_namespaces[prefix] || xover.spaces[prefix]));
-                            });
-                            context.selectNodes(xpath);
-                        } else {
-                            throw (e);
-                        }
+                    if (e.message.match(/contains unresolvable namespaces/g)) {
+                        /* ignore this for resolvable namespaces should have been resolved with the nsResolver */
                     } else {
-                        throw (e);
+                        console.log(e);
                     }
                 }
                 return new xover.NodeSet(selection);
@@ -8219,39 +8171,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.getNamespaces = function () {
-                if (this instanceof HTMLElement) {
-                    return {};
-                } else {
-                    var xsltProcessor = new XSLTProcessor();
-                    xsltProcessor.importStylesheet(xover.xml.createDocument(`
-                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:source="http://panax.io/source">
-                  <xsl:output method="xml" indent="no" omit-xml-declaration="yes"/>
-                  <xsl:template match="*" priority="-1">
-                    <output>
-                        <xsl:for-each select="current()/namespace::*">
-                            <xsl:variable name="current-namespace" select="."/>
-                            <xsl:variable name="prefix" select="name(.)"/>
-                            <xsl:if test=".!='http://www.w3.org/XML/1998/namespace'">
-                              <xsl:value-of select="concat(' ','xmlns')"/>
-                              <xsl:if test="name(.)!=''">
-                                <xsl:value-of select="concat(':',name(.))"/>
-                              </xsl:if>
-                              <xsl:text>="</xsl:text>
-                              <xsl:value-of select="." disable-output-escaping="yes"/>
-                              <xsl:text>"</xsl:text>
-                            </xsl:if>
-                        </xsl:for-each>
-                    </output>
-                  </xsl:template>
-                </xsl:stylesheet>
-                `));
-                    try {
-                        return JSON.parse('{' + xsltProcessor.transformToDocument(this).documentElement.textContent.replace(/(xmlns)=(["'])([^\2]+?)\2/ig, '').replace(/xmlns:([\w-]+)=(["'])([^\2]+?)\2/ig, ',"$1":$2$3$2').replace(/^[\s,]+/, '') + '}');
-                    } catch (e) {
-                        return {}
-                    }
-
-                }
+                return Object.fromEntries([this, ...this.querySelectorAll("*")].map(el => [...el.attributes].filter(attr => attr.namespaceURI === 'http://www.w3.org/2000/xmlns/')).flat(Infinity).map(attr => [attr.localName, attr.value]));
             }
 
             var insertBefore = Element.prototype.insertBefore
@@ -8387,7 +8307,7 @@ xover.modernize = function (targetWindow) {
                 //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                 //}
                 //try {
-                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => original_setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
+                this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => original_setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
                 //} catch (e) {
                 //    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
                 //}
