@@ -6667,7 +6667,7 @@ xover.modernize = function (targetWindow) {
                     let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
 
                     return function (prefix) {
-                        return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix];
+                        return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix] || "urn:unknown";
                     };
                 }(contextNode))
 
@@ -6681,11 +6681,7 @@ xover.modernize = function (targetWindow) {
                         }
                     }
                 } catch (e) {
-                    if (e.message.match(/contains unresolvable namespaces/g)) {
-                        /* ignore this for resolvable namespaces should have been resolved with the nsResolver */
-                    } else {
-                        console.log(e);
-                    }
+                    Promise.reject(e);
                 }
                 return new xover.NodeSet(selection);
             }
