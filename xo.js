@@ -3289,6 +3289,23 @@ xover.Response = function (response, request) {
                         return body;
                     }
                 });
+                let __document = body;
+                for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS']) {
+                    let prop_desc = Object.getPropertyDescriptor(__document, prop);
+                    if (!prop_desc) {
+                        continue
+                    } else if (prop_desc.value) {
+                        Object.defineProperty(this, prop, {
+                            value: function () { return __document[prop].apply(__document, arguments) }
+                            , enumerable: true, configurable: false
+                        });
+                    } else if (prop_desc.get) {
+                        Object.defineProperty(this, prop, {
+                            get: function () { return __document[prop] }
+                            , enumerable: true, configurable: false
+                        });
+                    }
+                }
             }
 
             if (body.documentElement) {
@@ -4763,7 +4780,7 @@ xover.Section = function (xml, ...args) {
                     //}
                     let listeners = [...stylesheet.querySelectorAll('xo-listener')].filter(el => el.section === self && el.closest('[xo-stylesheet]') === stylesheet);
                     for (listener of listeners) {
-                        mutationList.forEach(mutation => {
+                        for (let mutation of mutationList) {
                             if (!stylesheets_to_render.find(el => el === stylesheet)) {
                                 if (listener.getAttribute("node")) {
                                     if (mutation.target instanceof Element && mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes, ...mutation.addedNodes].find(el => el.matches(listener.getAttribute("node")))) {
@@ -4789,7 +4806,7 @@ xover.Section = function (xml, ...args) {
                                                         stylesheets_to_render.push(stylesheet)
                                                     }
                                                 }
-                                                return;
+                                                continue;
                                             }
                                         }
                                         if (attrib_node.isEqualNode(attr)) {
@@ -4798,7 +4815,7 @@ xover.Section = function (xml, ...args) {
                                     }
                                 }
                             }
-                        })
+                        }
                     }
 
                     let attrs = [...stylesheet.select('.//@xo-attribute')].filter(el => el.parentNode.section === self && el.parentNode.closest('[xo-stylesheet]') === stylesheet);
@@ -4826,7 +4843,7 @@ xover.Section = function (xml, ...args) {
                                                         render = true;
                                                     }
                                                 }
-                                                return;
+                                                continue;
                                             }
                                         }
                                         if (attrib_node.isEqualNode(attr)) {
@@ -6791,7 +6808,7 @@ xover.modernize = function (targetWindow) {
                         return false;
                     }
                     let node = this.documentElement;
-                    return [node.ownerDocument].find(el => el && el.select(predicate).includes(node))
+                    return node && [node.ownerDocument].find(el => el && el.select(predicate).includes(node))
                 }
             })
 
@@ -8686,9 +8703,9 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
-            let html_node_render_handler = async function () {
+            let stylsheet_renderer_handler = async function () {
                 this._render_manager = this._render_manager || xover.delay(1).then(async () => {
-                    let selector = this.selector;
+                    let selector = this.ownerDocument.contains(this) && this.selector || undefined;
                     let ref = selector && this.closest("[xo-stylesheet]");
                     if (ref) {
                         let stylesheet = this.getAttribute("xo-stylesheet");
@@ -8706,13 +8723,13 @@ xover.modernize = function (targetWindow) {
 
             if (!HTMLElement.prototype.hasOwnProperty('render')) {
                 Object.defineProperty(HTMLElement.prototype, 'render', {
-                    value: html_node_render_handler
+                    value: stylsheet_renderer_handler
                 });
             }
 
             if (!SVGElement.prototype.hasOwnProperty('render')) {
                 Object.defineProperty(SVGElement.prototype, 'render', {
-                    value: html_node_render_handler
+                    value: stylsheet_renderer_handler
                 });
             }
 
