@@ -707,7 +707,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 if (predicate) {
                     //let target = event.detail && (event.detail.srcElement || event.detail.target) || (event.srcEvent || event).target;
                     let tag = event.detail && event.detail.tag || null;
-                    if (!event.defaultPrevented && !event.cancelBubble && typeof(context.matches)!='undefined') {
+                    if (!event.defaultPrevented && !event.cancelBubble && typeof (context.matches) != 'undefined') {
                         if (predicate == tag || context.matches(predicate)) {
                             fns.set(handler.toString(), handler);
                         }
@@ -1010,11 +1010,7 @@ xover.server = new Proxy({}, {
             });
 
             response.response_value = return_value;
-            let event = new xover.listener.Event('response', { response_value: return_value }, response);
-            window.top.dispatchEvent(event);
-            return_value = event.detail.response_value || return_value;
-            //window.top.dispatchEvent(new xover.listener.Event(`response::server:${key}`, { response, payload, request }), return_value);
-            window.top.dispatchEvent(new xover.listener.Event(`response`, { response, payload, request, tag: `#server:${key}` }, response));
+            window.top.dispatchEvent(new xover.listener.Event(`response`, { response_value: return_value, response, payload, request, tag: `#server:${key}` }, response));
 
             responseHandler && responseHandler(return_value, request, response)
             if (response.ok) {
@@ -2123,6 +2119,8 @@ xover.spaces["prev"] = "http://panax.io/state/previous"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
 xover.spaces["text"] = "http://panax.io/state/text"
 xover.spaces["env"] = "http://panax.io/state/environment"
+
+xover.timeouts = new Map();
 
 xover.alertManager = {};
 xover.dom.alert = async function (message) {
@@ -7393,16 +7391,16 @@ xover.modernize = function (targetWindow) {
                         let node = section.find(dom_scope.getAttribute("xo-scope") || id);
 
                         if (node && attribute) {
-                            let attribute_node;
                             if (attribute === 'text()') {
                                 [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
                                 return [...node.childNodes].filter(el => el instanceof Text).pop();
                             }
                             else {
+                                let attribute_node;
                                 attribute_node = node.getAttributeNode(attribute);
                                 attribute_node = attribute_node || node.createAttribute(attribute, null);
+                                return attribute_node;
                             }
-                            return attribute_node;
                         }
                         //Implementar para Text $0.$$('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.$('self::xo:r')).pop().getAttributeNode($0.scope.value)
                         return node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
