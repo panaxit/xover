@@ -6752,7 +6752,24 @@ xover.modernize = function (targetWindow) {
                         }
                     }
                 } catch (e) {
-                    Promise.reject(e);
+                    if (e.message.match(/contains unresolvable namespaces/g) && ((arguments || {}).callee || {}).caller !== XMLDocument.prototype.selectNodes && XMLDocument.prototype.selectNodes.caller !== Node.prototype.selectNodes) {
+                        let prefixes = xpath.match(/\w+(?=\:)/g);
+                        prefixes = [...new Set(prefixes)]; //remueve duplicados
+                        let target = context;
+                        let all_namespaces = xover.xml.normalizeNamespaces(target).getNamespaces();
+                        let new_namespaces = prefixes.filter(prefix => (all_namespaces[prefix] || xover.spaces[prefix]))
+
+                        if (new_namespaces.length) {
+                            new_namespaces.map(prefix => {
+                                (target.documentElement || target).setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, (all_namespaces[prefix] || xover.spaces[prefix]));
+                            });
+                            context.selectNodes(xpath);
+                        } else {
+                            throw (e);
+                        }
+                    } else {
+                        throw (e);
+                    }
                 }
                 return new xover.NodeSet(selection);
             }
@@ -8089,7 +8106,8 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(HTMLSelectElement.prototype, 'value', value_handler);
 
             Attr.prototype.set = function (value) {
-                value = typeof value === 'function' && value.call(this, this.value) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                value = typeof value === 'function' && value.call(this, this) || value;
+                value = value instanceof Attr && value.value || value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 //if (this.value != value) {
                 //this.ownerElement.section && this.ownerElement.section.render();
                 //}
