@@ -6719,28 +6719,24 @@ xover.modernize = function (targetWindow) {
                         let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
 
                         return function (prefix) {
-                            return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '');
+                            return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || undefined;
                         };
                     }
                 });
             }
 
             Node.prototype.selectNodes = function (xpath, context) {
-                if (!context) { context = this; }
-                //if (context instanceof xover.Section) {
-                context = (context.document || context);
-                //}
+                context = context || this instanceof Node && this || this.document;
                 if (!xpath.match(/[^\w\d\-\_]/g)) {
-                    xpath = `*[${this.resolveNS("") !== null && `namespace-uri()='${this.resolveNS("")}' and ` || ''}name()='${xpath}']`
+                    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
                 }
-                let contextNode = context.documentElement || context;
                 let nsResolver = (function (element) {
                     let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
 
                     return function (prefix) {
                         return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix] || "urn:unknown";
                     };
-                }(contextNode))
+                }(context))
 
                 let selection = new Array;
                 try {
@@ -6752,21 +6748,14 @@ xover.modernize = function (targetWindow) {
                         }
                     }
                 } catch (e) {
-                    if (e.message.match(/contains unresolvable namespaces/g) && ((arguments || {}).callee || {}).caller !== XMLDocument.prototype.selectNodes && XMLDocument.prototype.selectNodes.caller !== Node.prototype.selectNodes) {
+                    if (e.message.match(/contains unresolvable namespaces/g) && ((arguments || {}).callee || {}).caller !== Node.prototype.selectNodes) {
                         let prefixes = xpath.match(/\w+(?=\:)/g);
-                        prefixes = [...new Set(prefixes)]; //remueve duplicados
-                        let target = context;
-                        let all_namespaces = xover.xml.normalizeNamespaces(target).getNamespaces();
-                        let new_namespaces = prefixes.filter(prefix => (all_namespaces[prefix] || xover.spaces[prefix]))
-
-                        if (new_namespaces.length) {
-                            new_namespaces.map(prefix => {
-                                (target.documentElement || target).setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, (all_namespaces[prefix] || xover.spaces[prefix]));
-                            });
-                            context.selectNodes(xpath);
-                        } else {
-                            throw (e);
+                        prefixes = [...new Set(prefixes)];
+                        for (let prefix of prefixes) {
+                            let target = (context.documentElement || context);
+                            original_setAttributeNS.call(target, 'http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, nsResolver(prefix));
                         }
+                        return context.selectNodes(xpath);
                     } else {
                         throw (e);
                     }
@@ -6854,7 +6843,7 @@ xover.modernize = function (targetWindow) {
                         return false;
                     }
                     let node = this.documentElement;
-                    return [node.ownerDocument].find(el => el && el.select(predicate).includes(node))
+                    return node && [node.ownerDocument].find(el => el && el.select(predicate).includes(node))
                 }
             })
 
@@ -8822,7 +8811,6 @@ xover.modernize = function (targetWindow) {
                         }
                         var data = this.cloneNode(true);
                         data.reseed();
-                        let action;
                         let stylesheet_target = 'body';
                         let targets = [];
                         //if (stylesheets instanceof Array && !Object.fromEntries(stylesheets).length) {
@@ -8834,7 +8822,7 @@ xover.modernize = function (targetWindow) {
                         //}
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
-                            action = (stylesheet.action || !stylesheet.target && "append" || action);
+                            let action = stylesheet.action;// || !stylesheet.target && "append";
                             if (stylesheet.assert && !data.selectSingleNode(stylesheet.assert)) continue;
                             if (stylesheet.target == "self") {
                                 let i = 0;
