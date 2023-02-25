@@ -6812,7 +6812,7 @@ xover.modernize = function (targetWindow) {
                         return false;
                     }
                     let node = this.documentElement;
-                    return node && [node.ownerDocument].find(el => el && el.select(predicate).includes(node))
+                    return node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node))
                 }
             })
 
@@ -6826,7 +6826,7 @@ xover.modernize = function (targetWindow) {
                         if (e.message.indexOf('not a valid selector') != -1) {
                             /*node = node.parentNode || node.previousParentNode;*/
                             let key = args[0];
-                            return [node.select('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.select(key).includes(this))
+                            return [node.selectNodes('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.selectNodes(key).includes(this))
                         }
                     }
                 }
@@ -6843,7 +6843,7 @@ xover.modernize = function (targetWindow) {
                         return false;
                     }
                     let node = this.documentElement;
-                    return node && [node.ownerDocument].find(el => el && el.select(predicate).includes(node))
+                    return node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node))
                 }
             })
 
@@ -6860,7 +6860,7 @@ xover.modernize = function (targetWindow) {
                         if (e.message.indexOf('not a valid selector') != -1) {
                             node = node.parentNode || node.previousParentNode;
                             let key = args[0];
-                            return [node.select('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.select(key).includes(this))
+                            return [node.selectNodes('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.selectNodes(key).includes(this))
                         }
                     }
                 }
@@ -9067,7 +9067,7 @@ xover.modernize = function (targetWindow) {
                             }
                             window.top.dispatchEvent(new xover.listener.Event('render', { section: section, stylesheet: stylesheet, target: target }, dom));
 
-                            targets.push(dom)
+                            targets.push(dom);
 
                             dom.querySelectorAll('img').forEach(el => el.addEventListener('error', function () {
                                 window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
@@ -9076,46 +9076,49 @@ xover.modernize = function (targetWindow) {
                                 let el = event.srcElement;
                                 let scope = el.scope;
                                 if (scope instanceof Attr) {
-                                    scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight);
-                                    scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth);
+                                    scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight, { silent: true });
+                                    scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth, { silent: true });
                                 } else {
-                                    scope.set('state:height', el.offsetHeight, false);
-                                    scope.set('state:width', el.offsetWidth, false);
+                                    scope.set('state:height', el.offsetHeight, { silent: true });
+                                    scope.set('state:width', el.offsetWidth, { silent: true });
                                 }
                             }));
-                            [...dom.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]')].filter(el => !el.getAttribute("onchange")).forEach(el => el.addEventListener('change', async function () {
-                                if (this.type === 'date' && !isValidISODate(this.value)) return;
-                                let scope = this.scope;
-                                let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-                                let srcElement = event.target;
-                                let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : srcElement.value;
-                                /*if (!srcElement.hasOwnProperty("value")) {
-                                    console.log('Not modifiable')
-                                } else*/ if (srcElement.type && srcElement.type.toLowerCase() === 'file') {
-                                    if (!(srcElement.files && srcElement.files[0])) return;
-                                    let section = await xover.store.files;
-                                    section.add(srcElement.files).forEach(record => {
-                                        [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
-                                        if (scope instanceof Text || _attribute === 'text') {
-                                            scope.set(record.uid);
-                                        } else if (scope instanceof Attr || _attribute) {
-                                            let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
-                                            scope = scope instanceof Attr ? scope.ownerElement : scope;
-                                            let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
-                                            delete metadata["file"];
-                                            scope.set(_attribute, record.uid);
-                                            scope.set(`metadata:${attribute_name}`, metadata);
-                                            if (metadata.name) {
-                                                scope.set(`text:${attribute_name}`, metadata.name);
-                                            }
-                                        }
-                                    });
-                                } else if (scope instanceof Attr || scope instanceof Text) {
-                                    scope.set(value);
-                                } else if (scope instanceof Node) {
-                                    _attribute && scope.set(_attribute, value);
-                                }
-                            }))
+                            //[...dom.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]')].filter(el => !el.getAttribute("onchange")).forEach(el => el.addEventListener('change', async function () {
+                            //    if (this.type === 'date' && !isValidISODate(this.value)) {
+                            //        event.preventDefault();
+                            //        return;
+                            //    }
+                            //    let scope = this.scope;
+                            //    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
+                            //    let srcElement = event.target;
+                            //    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : srcElement.value;
+                            //    /*if (!srcElement.hasOwnProperty("value")) {
+                            //        console.log('Not modifiable')
+                            //    } else*/ if (srcElement.type && srcElement.type.toLowerCase() === 'file') {
+                            //        if (!(srcElement.files && srcElement.files[0])) return;
+                            //        let section = await xover.store.files;
+                            //        section.add(srcElement.files).forEach(record => {
+                            //            [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
+                            //            if (scope instanceof Text || _attribute === 'text') {
+                            //                scope.set(record.uid);
+                            //            } else if (scope instanceof Attr || _attribute) {
+                            //                let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
+                            //                scope = scope instanceof Attr ? scope.ownerElement : scope;
+                            //                let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
+                            //                delete metadata["file"];
+                            //                scope.set(_attribute, record.uid);
+                            //                scope.set(`metadata:${attribute_name}`, metadata);
+                            //                if (metadata.name) {
+                            //                    scope.set(`text:${attribute_name}`, metadata.name);
+                            //                }
+                            //            }
+                            //        });
+                            //    } else if (scope instanceof Attr || scope instanceof Text) {
+                            //        scope.set(value);
+                            //    } else if (scope instanceof Node) {
+                            //        _attribute && scope.set(_attribute, value);
+                            //    }
+                            //}))
                             if (window.MathJax) {
                                 MathJax.typeset && MathJax.typeset();
                             } else if (dom.selectSingleNode('//mml:math') || ((dom || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
@@ -9266,6 +9269,61 @@ xover.modernize = function (targetWindow) {
     }
     console.info("Powered by XOVER")
 }
+
+//xover.listener.on('mouseup::textarea', function () {
+//    let el = event.srcElement;
+//    let scope = el.scope;
+//    if (!scope) return;
+//    if (scope instanceof Attr) {
+//        scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight, { silent: true });
+//        scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth, { silent: true });
+//    } else {
+//        scope.set('state:height', el.offsetHeight, { silent: true });
+//        scope.set('state:width', el.offsetWidth, { silent: true });
+//    }
+//});
+
+xover.listener.on(['change::*[xo-attribute]'], function () {
+    if (this.type === 'date' && !isValidISODate(this.value)) {
+        event.preventDefault();
+        return;
+    }
+    let srcElement = this;
+    let scope = this.scope;
+    if (!scope) return;
+    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
+    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : srcElement.value;
+    if (scope instanceof Attr || scope instanceof Text) {
+        scope.set(value);
+    } else if (scope instanceof Node) {
+        _attribute && scope.set(_attribute, value);
+    }
+})
+
+xover.listener.on(['change::input[type="file"]'], async function () {
+    let srcElement = this;
+    if (!(srcElement.files && srcElement.files[0])) return;
+    let section = await xover.store.files;
+    let scope = this.scope;
+    if (!scope) return;
+    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
+    section.add(srcElement.files).forEach(record => {
+        [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
+        if (scope instanceof Text || _attribute === 'text') {
+            scope.set(record.uid);
+        } else if (scope instanceof Attr || _attribute) {
+            let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
+            scope = scope instanceof Attr ? scope.ownerElement : scope;
+            let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
+            delete metadata["file"];
+            scope.set(_attribute, record.uid);
+            //scope.set(`metadata:${attribute_name}`, metadata);
+            if (metadata.name) {
+                scope.set(`text:${attribute_name}`, metadata.name);
+            }
+        }
+    })
+})
 
 xover.modernize();
 
