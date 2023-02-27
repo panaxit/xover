@@ -5381,7 +5381,7 @@ xover.Section = function (xml, ...args) {
                         return Promise.reject(e);
                     }
                     if (!__document.documentElement) {
-                        return Promise.reject(`No document body for ${tag}`);
+                        return Promise.reject(``); //No document body for ${tag}
                     }
                     let source = __document.source;
                     source && source.save && source.save();
@@ -6584,6 +6584,15 @@ xover.modernize = function (targetWindow) {
             var date = new Date(this.valueOf());
             date.setDate(date.getDate() + days);
             return date;
+        }
+
+        String.prototype.parseDate = function (input_format = "dd/mm/yyyy") {
+            sDate = this.toString();
+            var pattern = /\b(\d{1,2})(?:(\/)(\d{1,2})(?:\2(\d{2,4}))?)?/
+            var currentDate = new Date();
+            var [, day, separator, month, year] = (sDate.match(pattern) || []);
+            let result = new Date(`${year}-${month}-${day}T00:00:00`);
+            return result;
         }
 
         if (!Object.hasOwnProperty('getPropertyDescriptor')) {
@@ -9284,7 +9293,7 @@ xover.modernize = function (targetWindow) {
 //});
 
 xover.listener.on(['change::*[xo-attribute]'], function () {
-    if (this.type === 'date' && !isValidISODate(this.value)) {
+    if (this.type === 'date' && this.value != '' && !isValidISODate(this.value)) {
         event.preventDefault();
         return;
     }
