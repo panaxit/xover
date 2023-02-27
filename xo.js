@@ -6835,7 +6835,13 @@ xover.modernize = function (targetWindow) {
                         if (e.message.indexOf('not a valid selector') != -1) {
                             /*node = node.parentNode || node.previousParentNode;*/
                             let key = args[0];
-                            return [node.selectNodes('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.selectNodes(key).includes(this))
+                            return [node.selectNodes('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => {
+                                try {
+                                    return el && el.selectNodes(el instanceof Document && key.replace(/^self::/, '') || key).includes(this)
+                                } catch (e) {
+                                    console.warn(`No a valid xpath was provided: ${key}`)
+                                }
+                            })
                         }
                     }
                 }
