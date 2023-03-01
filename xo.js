@@ -1481,9 +1481,9 @@ Object.defineProperty(xover.site, 'seed', {
             let prev = [...this["history"]];
             prev.unshift({
                 section: (reference.section || {}).tag || null
-                , ref: {
-                    id: (ref_node.ownerElement || ref_node || document.createElement('p')).getAttribute("xo:id") || null
-                    , attribibute: ref_node instanceof Attr && ref_node.name || null
+                , reference: {
+                    id: (ref_node && ref_node.ownerElement || ref_node || document.createElement('p')).getAttribute("xo:id") || null
+                    , attribute: ref_node instanceof Attr && ref_node.name || null
                 }
             });
             let new_state = Object.assign({}, history.state); //If state is not copied, attributes that are not present like "sections", might be lost
