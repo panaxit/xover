@@ -827,7 +827,7 @@ xover.listener.on('popstate', async function (event) {
     //    //let current_hash = xover.data.hashTagName();
     //    //history.replaceState({
     //    //    hash: current_hash
-    //    //    , prev: ((history.state || {}).prev || [])
+    //    //    , history: ((history.state || {}).history || [])
     //    //}, event.target.textContent, current_hash);
     //    this.popping = undefined;
     //}
@@ -852,7 +852,7 @@ xover.listener.on('popstate', async function (event) {
         //let current_hash = xover.sections.seed.tag;
         //history.replaceState({
         //    hash: current_hash
-        //    , prev: ((history.state || {}).prev || [])
+        //    , history: ((history.state || {}).history || [])
         //}, ((event || {}).target || {}).textContent, current_hash);
     }
     //            resolve();
@@ -898,7 +898,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
 
 xover.listener.on('navigatedForward', function (event) {
     if (event.defaultPrevented) return;
-    if (xover.site.seed == "#" && xover.site.position > 1 && !(xover.site.prev || []).length) {
+    if (xover.site.seed == "#" && xover.site.position > 1 && !(xover.site.history || []).length) {
         console.log("Navigated forward");
         history.back();
     }
@@ -1333,9 +1333,9 @@ Object.defineProperty(xover.site, 'reference', {
     , enumerable: true
 });
 
-Object.defineProperty(xover.site, 'prev', {
-    get() { return (history.state['prev'] || []) }
-    , set() { throw `State "prev" is readonly` }
+Object.defineProperty(xover.site, 'history', {
+    get() { return (history.state['history'] || []) }
+    , set() { throw `State "history" is readonly` }
     , enumerable: true
 });
 
@@ -1476,12 +1476,20 @@ Object.defineProperty(xover.site, 'seed', {
             //xover.site.active = input;
         } else if (new xo.URL(history.state['seed']).hash != new xo.URL(input).hash) {
             xover.site.next = input;
-            var prev = [...this["prev"]];
-            prev.unshift(history.state.seed);
+            let reference = event && event.srcElement || {};
+            let ref_node = reference.scope;
+            let prev = [...this["history"]];
+            prev.unshift({
+                section: (reference.section || {}).tag || null
+                , ref: {
+                    id: (ref_node.ownerElement || ref_node || document.createElement('p')).getAttribute("xo:id") || null
+                    , attribibute: ref_node instanceof Attr && ref_node.name || null
+                }
+            });
             let new_state = Object.assign({}, history.state); //If state is not copied, attributes that are not present like "sections", might be lost
             //new_state["position"] = history.state.position++;
             new_state["seed"] = input;
-            new_state["prev"] = prev;
+            new_state["history"] = prev;
             new_state["next"] = "";
             new_state["position"] = new_state["position"] + 1;
             xover.session.setKey('lastPosition', new_state["position"]);
@@ -1498,7 +1506,7 @@ Object.defineProperty(xover.site, 'scrollableElements', {
 });
 
 Object.defineProperty(xover.site, 'position', {
-    get() { return [history.state['position'], Number(this.prev.length) + 1].coalesce() }
+    get() { return [history.state['position'], Number(this.history.length) + 1].coalesce() }
     , set(input) { history.go(input - xover.site.position) }
     , enumerable: true
 });
@@ -9085,8 +9093,13 @@ xover.modernize = function (targetWindow) {
                             targets.push(dom);
 
                             dom.querySelectorAll('img').forEach(el => el.addEventListener('error', function () {
-                                window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
+                                window.top.dispatchEvent(new xover.listener.Event(event.type, { event: event }));
                             }));
+
+                            dom.querySelectorAll('input,textarea').forEach(el => el.addEventListener('focus', function () {
+                                window.top.dispatchEvent(new xover.listener.Event(event.type, { event: event }));
+                            }));
+
                             dom.querySelectorAll('textarea').forEach(el => el.addEventListener('mouseup', function () {
                                 let el = event.srcElement;
                                 let scope = el.scope;
