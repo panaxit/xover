@@ -556,18 +556,25 @@ xover.listener.Event = function (event_name, params = {}, context) {
 xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
 Object.defineProperty(xover.listener, 'matches', {
-    value: function (node, event_type) {
+    value: function (context, event_type) {
         event_type = [event_type].flat();
 
-        let listeners = [];
-        //Object.entries(xover.listener).filter(([key]) => key == event_type).reduce((new_array, [key, fns]) => {
-        //    Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array
-        //}, listeners);
-        Object.entries(xover.listener).filter(([key]) => event_type.includes(key) || node instanceof xover.Section && key.replace(/^\w+::/g, '') == node.tag || event_type.includes(key.split(/::/g, 1)[0]) && node instanceof Node && node.matches(key.replace(/^\w+::/g, ''))).reduce((new_array, [key, fns]) => {
-            Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array
-        }, listeners);
-        //Object.entries(xover.listener).filter(([key]) => key.match(`^${event_type}::(?!#)`) && node instanceof Node && [(node instanceof Attr ? node.parentNode : node).select('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.select(`${key.replace(/^\w+::/g, '')}`).includes(node || node.ownerDocument))).reduce((new_array, [key, fns]) => {Object.values(fns).forEach(fn => new_array.push([key, fn])); return new_array}, listeners);
-        return listeners;
+        let fns = new Map();
+        for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/(?<!::.*)::/)[0] == event_type).reverse()) {
+            for (let [, handler] of handlers) {
+                let [, predicate] = event_name.split(/(?<!::.*)::/);
+                if (predicate) {
+                    if (typeof (context.matches) != 'undefined') {
+                        if (context.matches(predicate)) {
+                            fns.set(handler.toString(), handler);
+                        }
+                    }
+                } else {
+                    fns.set(handler.toString(), handler);
+                }
+            }
+        }
+        return fns;
     },
     writable: false, enumerable: false, configurable: false
 })
@@ -699,26 +706,31 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             await xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
-        let fns = new Map();
         let context = event.context || (event.srcEvent || event).target;
-        for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event.type || event_name.split(/(?<!::.*)::/)[0] == event.type).reverse()) {
-            for (let [, handler] of handlers) {
-                let [, predicate] = event_name.split(/(?<!::.*)::/);
-                if (predicate) {
-                    //let target = event.detail && (event.detail.srcElement || event.detail.target) || (event.srcEvent || event).target;
-                    let tag = event.detail && event.detail.tag || null;
-                    if (!event.defaultPrevented && !event.cancelBubble && typeof (context.matches) != 'undefined') {
-                        if (predicate == tag || context.matches(predicate)) {
-                            fns.set(handler.toString(), handler);
-                        }
-                    }
-                } else {
-                    fns.set(handler.toString(), handler);
-                }
-            }
-        }
-        for (let [, handler] of [...fns]) {
+        
+        let fns = xover.listener.matches(context, event.type);
+        //for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/(?<!::.*)::/)[0] == event_type).reverse()) {
+        //    for (let [, handler] of handlers) {
+        //        let [, predicate] = event_name.split(/(?<!::.*)::/);
+        //        if (predicate) {
+        //            //let target = event.detail && (event.detail.srcElement || event.detail.target) || (event.srcEvent || event).target;
+        //            //let tag = event.detail && event.detail.tag || null;
+        //            //if (!event.defaultPrevented && !event.cancelBubble && typeof (context.matches) != 'undefined') {
+        //            if (context.matches(predicate)) { //predicate == tag || 
+        //                    fns.set(handler.toString(), handler);
+        //                }
+        //            //}
+        //        } else {
+        //            fns.set(handler.toString(), handler);
+        //        }
+        //    }
+        //}
+        let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
+        for (let [, handler] of [...handlers]) {
             handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments);
+            if (event.srcEvent) {
+                event.srcEvent.returnValue = event.returnValue;
+            }
             if (event.srcEvent && event.defaultPrevented) {
                 event.srcEvent.preventDefault();
             }
@@ -733,7 +745,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 Object.defineProperty(xover.listener, 'on', {
     value: function (name__or_list, handler, options = {}) {
         name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
-        for (event_name of name__or_list) {
+        for (let event_name of name__or_list) {
             let handler_array = xover.listener.get(event_name) || new Map();
             handler_array.set(handler.toString(), handler);
             xover.listener.set(event_name, handler_array);
@@ -6736,7 +6748,12 @@ xover.modernize = function (targetWindow) {
                         let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
 
                         return function (prefix) {
-                            return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || undefined;
+                            let namespace = resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '');
+                            if (namespace == undefined) {
+                                return null;
+                            }
+                            return namespace;
+
                         };
                     }
                 });
@@ -6744,37 +6761,49 @@ xover.modernize = function (targetWindow) {
 
             Node.prototype.selectNodes = function (xpath, context) {
                 context = context || this instanceof Node && this || this.document;
-                if (!xpath.match(/[^\w\d\-\_]/g)) {
-                    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
-                }
+                //if (!xpath.match(/[^\w\d\-\_]/g)) {
+                //    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
+                //}
                 let nsResolver = (function (element) {
                     let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
 
                     return function (prefix) {
                         return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix] || "urn:unknown";
+                        let namespace = resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '');
+                        if (namespace == undefined) {
+                            return xover.spaces[prefix] || "urn:unknown";
+                        }
+                        return namespace;
                     };
                 }(context))
 
                 let selection = new Array;
+                let aItems;
                 try {
-                    let aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null)
-                    for (let i = 0; i < aItems.snapshotLength; i++) {
-                        selection[i] = aItems.snapshotItem(i);
-                        if (selection[i] instanceof ProcessingInstruction) {
-                            selection[i] = new xover.ProcessingInstruction(selection[i]);
-                        }
-                    }
+                    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                 } catch (e) {
                     if (e.message.match(/contains unresolvable namespaces/g) && ((arguments || {}).callee || {}).caller !== Node.prototype.selectNodes) {
-                        let prefixes = xpath.match(/\w+(?=\:)/g);
-                        prefixes = [...new Set(prefixes)];
-                        for (let prefix of prefixes) {
-                            let target = (context.documentElement || context);
-                            original_setAttributeNS.call(target, 'http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, nsResolver(prefix));
-                        }
-                        return context.selectNodes(xpath);
+                        //let prefixes = xpath.match(/\w+(?=\:)/g);
+                        //prefixes = [...new Set(prefixes)];
+                        //for (let prefix of prefixes) {
+                        //    let target = (context.documentElement || context);
+                        //    original_setAttributeNS.call(target, 'http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, nsResolver(prefix));
+                        //}
+                        //try {
+                        //    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                        //} catch (e) {
+                        xpath = xpath.replace(/(?<=@|\/|\[|^)([\w-_]+):([\w-_]+)/g, ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
+                        console.log(xpath)
+                        aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                        //}
                     } else {
                         throw (e);
+                    }
+                }
+                for (let i = 0; i < aItems.snapshotLength; i++) {
+                    selection[i] = aItems.snapshotItem(i);
+                    if (selection[i] instanceof ProcessingInstruction) {
+                        selection[i] = new xover.ProcessingInstruction(selection[i]);
                     }
                 }
                 return new xover.NodeSet(selection);
@@ -6822,8 +6851,9 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Response.prototype, 'matches', {
                 value: function (...args) {
                     let predicate = args.pop();
+                    let tag = this.tag || event && event.detail && event.detail.tag || null;
                     if (predicate[0] == '#') {
-                        if (this.tag == predicate[0]) {
+                        if (tag == predicate[0]) {
                             return true;
                         }
                         return false;
@@ -6859,8 +6889,9 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Document.prototype, 'matches', {
                 value: function (...args) {
                     let predicate = args.pop();
+                    let tag = this.tag || event && event.detail && event.detail.tag || null;
                     if (predicate[0] == '#') {
-                        if (this.tag == predicate[0]) {
+                        if (tag == predicate[0]) {
                             return true;
                         }
                         return false;
@@ -7508,7 +7539,7 @@ xover.modernize = function (targetWindow) {
                 //    context_section.save();
                 //}
                 let event_type = 'remove', node = this;
-                let matching_listeners = xover.listener.matches(node, event_type).map(([key]) => key);
+                let matching_listeners = xover.listener.matches(node, event_type);
 
                 original_remove.apply(this, arguments);
 
@@ -8278,7 +8309,7 @@ xover.modernize = function (targetWindow) {
                 if (ownerElement) {
                     let return_value;
                     let event_type = 'remove', node = this;
-                    let matching_listeners = xover.listener.matches(node, event_type).map(([key]) => key);
+                    let matching_listeners = xover.listener.matches(node, event_type);
                     if (this.namespaceURI) {
                         return_value = original_removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
                     } else {
@@ -8290,10 +8321,6 @@ xover.modernize = function (targetWindow) {
                     }
                     this.value = null;
                     window.top.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
-                    //if (refresh) {
-                    //    let section = this.section;
-                    //    section && section.render(((event || {}).target || {}).stylesheet)
-                    //}
                     return return_value;
                 }
             }
