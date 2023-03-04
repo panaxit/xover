@@ -1416,15 +1416,15 @@ Object.defineProperty(xover.site, 'set', {
 });
 
 Object.defineProperty(xover.site, 'get', {
-    value(prop) {
+    value(prop, initial = {}) {
         let { prefix, name } = xover.xml.getAttributeParts(prop);
         let active = this.active;
         let state_sections = this.sections;
         state_sections[active] = (state_sections[active] || {});
         if (prefix) {
-            return (state_sections[active][prefix] || {})[name] || {};
+            return (state_sections[active][prefix] || {})[name] || initial;
         } else {
-            return state_sections[active][name] || {};
+            return state_sections[active][name] || initial;
         }
     }
     , enumerable: false
