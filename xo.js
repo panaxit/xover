@@ -6732,7 +6732,7 @@ xover.modernize = function (targetWindow) {
                     let predicate = args.pop();
                     let tag = this.tag || event && event.detail && event.detail.tag || null;
                     if (predicate[0] == '#') {
-                        if (tag == predicate[0]) {
+                        if (tag == predicate) {
                             return true;
                         }
                         return false;
@@ -6770,7 +6770,7 @@ xover.modernize = function (targetWindow) {
                     let predicate = args.pop();
                     let tag = this.tag || event && event.detail && event.detail.tag || null;
                     if (predicate[0] == '#') {
-                        if (tag == predicate[0]) {
+                        if (tag == predicate) {
                             return true;
                         }
                         return false;
