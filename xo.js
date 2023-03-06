@@ -197,6 +197,21 @@ xover.cryptography.encodeMD5 = function (str) {
     return rhex(a) + rhex(b) + rhex(c) + rhex(d);
 }
 
+Object.defineProperty(Array.prototype, 'coalesce',
+    {
+        value: function () {
+            let args = this instanceof Array && this || arguments;
+            for (let item of args) {
+                if (item !== undefined && item !== null) {
+                    return item;
+                }
+            }
+            return;
+        },
+        writable: true, enumerable: false, configurable: false
+    }
+);
+
 xover.custom = {};
 xover.data = {};
 xover.sections = new Proxy({}, {
@@ -256,9 +271,9 @@ xover.sections = new Proxy({}, {
             delete xover.sources[key];
             if (same && xover.site.position > 1) {
                 history.back();
-            } else {
+            } /*else {
                 xover.dom.refresh();
-            }
+            }*/
         }
         return exists && !(key in self)
     }, has: function (self, key) {
@@ -586,7 +601,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
         let context = event.context || (event.srcEvent || event).target;
-        
+
         let fns = xover.listener.matches(context, event.type);
         //for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/(?<!::.*)::/)[0] == event_type).reverse()) {
         //    for (let [, handler] of handlers) {
@@ -666,7 +681,6 @@ xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     if (new_hash === '#' || document.getElementById(new_hash.substr(1)) || !(new_hash in xover.sources)) {
         event.preventDefault();
     }
-    //xdom.sections.active = (xdom.sections[new_hash] || xdom.sections.active);
 })
 
 xover.listener.on('keyup', async function (event) {
@@ -905,11 +919,9 @@ xover.server = new Proxy({}, {
 
             responseHandler && responseHandler(return_value, request, response)
             if (response.ok) {
-                //xover.listener.dispatchEvent(new xover.listener.Event(`success::server:${key}`, { response, payload, request }), return_value);
                 window.top.dispatchEvent(new xover.listener.Event(`success`, { response, payload, request, tag: `#server:${key}` }, response));
                 return Promise.resolve(return_value);
             } else {
-                //xover.listener.dispatchEvent(new xover.listener.Event(`failure::server:${key}`, { response, payload, request }), return_value);
                 window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, payload, request, tag: `#server:${key}` }, response));
                 return Promise.reject(response);
             }
@@ -1234,15 +1246,25 @@ Object.defineProperty(xover.site, 'hash', {
     get() { return location.hash }
     , set(input) {
         input = input[input.length - 1] != '#' ? input : '';
-        history.replaceState(Object.assign({ position: history.length - 1 }, this, { active: history.state.active }), ((event || {}).target || {}).textContent, location.pathname + location.search + (input || ''));
+        history.replaceState(Object.assign({ position: history.length - 1 }, history.state, { active: history.state.active }), ((event || {}).target || {}).textContent, location.pathname + location.search + (input || ''));
     }
     , enumerable: false
 });
 
-Object.defineProperty(xover.site, 'sections', {
-    get() { return (history.state['sections'] || {}) }
-    , set(input) { history.state['sections'] = input }
+Object.defineProperty(xover.site, 'state', {
+    get() {
+        history.state['state'] = history.state['state'] || {};
+        return history.state['state'];
+    }
+    , set(input) { history.state['state'] = input }
     , enumerable: true
+});
+
+Object.defineProperty(xover.site, 'sections', {
+    get() {
+        return [...top.window.document.querySelectorAll(`[xo-stylesheet]`)]
+    }
+    , enumerable: false
 });
 
 Object.defineProperty(xover.site, 'set', {
@@ -1265,57 +1287,72 @@ Object.defineProperty(xover.site, 'set', {
         }
         let { prefix, name } = xover.xml.getAttributeParts(prop);
         let active = this.active;
-        let state_sections = this.sections;
-        state_sections[active] = (state_sections[active] || {});
+        let site_state = this.state;
+        site_state[active] = (site_state[active] || {});
         if (prefix) {
-            state_sections[active][prefix] = (state_sections[active][prefix] || {});
+            site_state[active][prefix] = (site_state[active][prefix] || {});
         }
         if (value instanceof Array) {
             if (prefix) {
-                state_sections[active][prefix][name] = state_sections[active][prefix][name] || []
-                state_sections[active][prefix][name] = value
+                site_state[active][prefix][name] = site_state[active][prefix][name] || []
+                site_state[active][prefix][name] = value
             } else {
-                state_sections[active][name] = state_sections[active][name] || [];
-                state_sections[active][name] = value
+                site_state[active][name] = site_state[active][name] || [];
+                site_state[active][name] = value
             }
         } else if (value instanceof Object) {
             if (prefix) {
-                state_sections[active][prefix][name] = state_sections[active][prefix][name] || {}
-                state_sections[active][prefix][name].merge(value)
+                site_state[active][prefix][name] = site_state[active][prefix][name] || {}
+                site_state[active][prefix][name] = value;
             } else {
-                state_sections[active][name] = state_sections[active][name] || {};
-                state_sections[active][name].merge(value)
+                site_state[active][name] = site_state[active][name] || {};
+                site_state[active][name] = value;
             }
         } else {
             value = (value !== null && value !== undefined && !(value instanceof Array) ? value.toString() : value);
             if (value === undefined) {
                 if (prefix) {
-                    delete state_sections[active][prefix][name]
+                    delete site_state[active][prefix][name]
                 } else {
-                    delete state_sections[active][name];
+                    delete site_state[active][name];
                 }
             } else {
                 if (prefix) {
-                    state_sections[active][prefix][name] = value
+                    site_state[active][prefix][name] = value
                 } else {
-                    state_sections[active][name] = value;
+                    site_state[active][name] = value;
                 }
             }
         }
+
     }
     , enumerable: false
 });
 
 Object.defineProperty(xover.site, 'get', {
-    value(prop, initial = {}) {
+    value(prop, initial) {
         let { prefix, name } = xover.xml.getAttributeParts(prop);
         let active = this.active;
-        let state_sections = this.sections;
-        state_sections[active] = (state_sections[active] || {});
+        let site_state = this.state;
+        site_state[active] = (site_state[active] || {});
+        let returnValue;
         if (prefix) {
-            return (state_sections[active][prefix] || {})[name] || initial;
+            if (initial) {
+                returnValue = (site_state[active][prefix] || {})[name];
+                if (returnValue == undefined) {
+                    xover.site.set(prop, initial)
+                }
+                (site_state[active][prefix] || {})[name] = initial;
+            }
+            return (site_state[active][prefix] || {})[name];
         } else {
-            return state_sections[active][name] || initial;
+            if (initial) {
+                returnValue = (site_state[active] || {})[name];
+                if (returnValue == undefined) {
+                    xover.site.set(prop, initial)
+                }
+            }
+            return site_state[active][name];
         }
     }
     , enumerable: false
@@ -1324,14 +1361,14 @@ Object.defineProperty(xover.site, 'get', {
 Object.defineProperty(xover.site, 'activeCaret', {
     get() {
         let active = this.active;
-        let state_sections = this.sections;
-        return (state_sections[active] || {})["activeCaret"];
+        let site_state = this.state;
+        return (site_state[active] || {})["activeCaret"];
     }
     , set(input) {
         let active = this.active;
-        let state_sections = this.sections;
-        state_sections[active] = (state_sections[active] || {});
-        state_sections[active]["activeCaret"] = input;
+        let site_state = this.state;
+        site_state[active] = (site_state[active] || {});
+        site_state[active]["activeCaret"] = input;
     }
     , enumerable: false
 });
@@ -1340,15 +1377,15 @@ Object.defineProperty(xover.site, 'activeElement', {
     get() {
         targetDocument = ((document.activeElement || {}).contentDocument || document);
         let active = this.active;
-        let state_sections = this.sections;
-        return targetDocument.querySelector((state_sections[active] || {})["activeElement"]) || (document.activeElement || {});
+        let site_state = this.state;
+        return targetDocument.querySelector((site_state[active] || {})["activeElement"]) || (document.activeElement || {});
     }
     , set(input) {
         if (input instanceof Node) input = input.selector;
         let active = this.active;
-        let state_sections = this.sections;
-        state_sections[active] = (state_sections[active] || {});
-        state_sections[active]["activeElement"] = input;
+        let site_state = this.state;
+        site_state[active] = (site_state[active] || {});
+        site_state[active]["activeElement"] = input;
     }
     , enumerable: false
 });
@@ -1379,6 +1416,7 @@ Object.defineProperty(xover.site, 'seed', {
             });
             let new_state = Object.assign({}, history.state); //If state is not copied, attributes that are not present like "sections", might be lost
             //new_state["position"] = history.state.position++;
+            //new_state["scrollableElements"] = {};
             new_state["seed"] = input;
             new_state["history"] = prev;
             new_state["next"] = "";
@@ -1387,12 +1425,6 @@ Object.defineProperty(xover.site, 'seed', {
             history.pushState(Object.assign({ position: history.length - 1 }, new_state), ((event || {}).target || {}).textContent, (xover.sections[input] || {}).tag);
         }
     }
-    , enumerable: true
-});
-
-Object.defineProperty(xover.site, 'scrollableElements', {
-    get() { return (history.state['scrollableElements'] || {}) }
-    , set(input) { history.state['scrollableElements'] = input }
     , enumerable: true
 });
 
@@ -1439,17 +1471,17 @@ Object.defineProperty(xover.site, 'activeTags', {
     get: function () {
         return function (tag) {
             let active_tag = tag || (xover.sections[this.active] || {}).tag || this.active; //se hace de esta manera porque el estado podría guardar como active el tag "#"
-            this.sections[active_tag] = this.sections[active_tag] || {};
-            let active_sections = (this.sections[active_tag] || {}).active;
+            this.state[active_tag] = this.state[active_tag] || {};
+            let active_sections = (this.state[active_tag] || {}).active;
             return active_sections || [(xover.sections[this.active] || {}).tag].filter(tag => tag);
         }
     }
     , set: function (input) {
         let self = this;
         let active = self.active;
-        let state_sections = self.sections;
-        state_sections[active] = (state_sections[active] || {});
-        state_sections[active]["active"] = input;
+        let site_state = self.state;
+        site_state[active] = (site_state[active] || {});
+        site_state[active]["active"] = input;
     }
     , enumerable: false
 });
@@ -1475,20 +1507,6 @@ Object.defineProperty(xover.site, 'goto', {
     , writable: false, enumerable: false, configurable: false
 });
 
-Object.defineProperty(xover.site, 'detectActive', {
-    value: function () {
-        //let active_tag = self.tag;
-        let active_tags = [...window.document.querySelectorAll(`[xo-section]`)].reduce((new_target, el) => { let tag = el.getAttribute("xo-section"); new_target.push(tag); return new_target; }, []);
-        this.activeTags = [...new Set(active_tags)];
-        //let state_sections = this.sections;
-        //state_sections[active_tag] = (state_sections[active_tag] || {})
-        //state_sections[active_tag]["active"] = active_tags;
-        //xover.site.activeTags = [...new Set([xover.site.activeTags(), active_tags].flat())];
-        //return state_sections[active_tag]["active"];
-    }
-    , enumerable: false, configurable: false
-});
-
 Object.defineProperty(xover.site, 'save', {
     value: function (srcElement) {
         //xover.delay(1).then(() => {
@@ -1506,10 +1524,7 @@ Object.defineProperty(xover.site, 'save', {
             this.activeElement = srcElement.selector;
             this.activeCaret = xover.dom.getCaretPosition(srcElement);
         }
-        //console.log(this.activeElement)
-        //console.log(this.activeCaret)
-        xover.dom.updateScrollableElements();
-        //})
+        history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
     }
     , enumerable: false, configurable: false
 });
@@ -1517,15 +1532,13 @@ Object.defineProperty(xover.site, 'save', {
 Object.defineProperty(xover.site, 'restore', {
     value: function (scope) {
         targetDocument = (scope || (document.activeElement || {}).contentDocument || document);
-        //var linkEls = targetDocument.querySelectorAll('a');
-        //for (link of linkEls) {
-        //    link.addEventListener('click', () => { new xover.listener.Event('click', [hashtag, (window.top || window).location.hash]) }, true);
-        //}
+        let scrollableElements = xover.site.getScrollableElements(targetDocument);
+        for (let element of scrollableElements) {
+            let [, coordinates = { x: 0, y: 0 }] = Object.entries(xover.site.get("scrollableElements", {})).find(([selector, coordinates]) => element.matches(selector)) || [];
+            xover.dom.setScrollPosition(element, coordinates);
+        }
 
-        let activeElement = xover.site.activeElement
-        Object.entries(xover.site.scrollableElements).map(([selector, coordinates]) => {
-            xover.dom.setScrollPosition(targetDocument.querySelector(selector), coordinates)
-        })
+        let activeElement = xover.site.activeElement;
         if (!activeElement) {
             return;
         }
@@ -2420,30 +2433,26 @@ xover.data.updateScrollPosition = function (document, coordinates) {
 }
 
 xover.dom.onscroll = function () {
-    xover.dom.onscroll.Promise = xover.dom.onscroll.Promise || xover.delay(500).then(async () => {
-        Object.entries(xover.site.scrollableElements).map(([selector, coordinates]) => {
-            let scroll_data = xover.dom.getScrollPosition(document.querySelector(selector))
-            xover.dom.scrollableElements[selector]["x"] = scroll_data["x"] || 0
-            xover.dom.scrollableElements[selector]["y"] = scroll_data["y"] || 0
-        })
-        xover.dom.updateScrollableElements();
-        xover.dom.onscroll.Promise = undefined;
-    });
-    return xover.dom.onscroll.Promise
-    //xover.dom.position = xover.dom.getScrollPosition();//document.getElementsByClassName("w3-responsive")[0] || document.querySelector('main')
-    //xover.data.updateScrollPosition(xover.sections.active, xover.dom.position);
+    let element = this;
+    xover.delay(500).then(async () => {
+        let selector = this.selector;
+        xover.site.get("scrollableElements", {})[selector] = xover.dom.getScrollPosition(element);
+        history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
+    })
 }
 
-//document.addEventListener('scroll', function () {
-//    xover.dom.onscroll()
-//});
-
 document.addEventListener("DOMContentLoaded", function (event) {
-    document.body.addEventListener('scroll', xover.dom.onscroll);
-    //Object.values((xover.dom.getScrollableElements() || {})).forEach(
+    //document.body.addEventListener('scroll', xover.dom.onscroll);
+    //Object.values((xover.site.getScrollableElements() || {})).forEach(
     //    el => el.addEventListener('scroll', xover.dom.getScrollPosition)
     //);
     //xover.init();
+});
+
+xover.listener.on("render", function ({ dom }) {
+    for (element of xover.site.getScrollableElements(dom)) {
+        element.addEventListener('scroll', xover.dom.onscroll);
+    }
 });
 
 window.addEventListener("focusin", function (event) {
@@ -2696,20 +2705,6 @@ Object.defineProperty(xover.sections, 'active', {
             /*await */xover.sections[hashtag].render();
         }
     }
-});
-
-Object.defineProperty(xover.sections, 'detectActive', {
-    value: function () {
-        if ((xover.site.activeTags() || []).includes(xover.site.hash)) {
-            var activeTags = [];
-            [...document.querySelectorAll("[xo-section]")].filter(el => xover.sections[el.getAttribute("xo-section")]).map(el => {
-                activeTags.push(el.getAttribute("xo-section"));
-            });
-            xover.site.activeTags = activeTags;
-        }
-        return this.getActive()
-    },
-    writable: false, enumerable: false, configurable: false
 });
 
 Object.defineProperty(xover.sections, 'find', {
@@ -5317,9 +5312,6 @@ xover.Section = function (xml, ...args) {
                 let dom = targetDocument.querySelector(`[xo-section="${tag}"]`)
                 window.top.dispatchEvent(new xover.listener.Event('domLoaded', { target: dom, initiator: this }));
                 let active_section = xover.sections.active;
-                if (active_section == self) {
-                    self.detectActive(); // xover.site.detectActive(); //xover.sections.active.detectActive();
-                }
                 return Promise.resolve(self)
             }).catch((e) => {
                 let tag = self.tag;
@@ -5368,7 +5360,7 @@ xover.Section = function (xml, ...args) {
     //this.reseed();
     xover.manifest.getSettings(this, 'stylesheets').flat().forEach(stylesheet => section.addStylesheet(stylesheet, false));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { section: this }));
-    xo.sections[_tag] = this;
+    xover.sections[_tag] = this;
     return this;
 }
 
@@ -5406,20 +5398,6 @@ Object.defineProperty(xover.Section.prototype, 'isActive', {
 Object.defineProperty(xover.Section.prototype, 'isRendered', {
     get: function () {
         return !!document.querySelector(`[xo-section="${this.tag}"]`);
-    }
-});
-
-Object.defineProperty(xover.Section.prototype, 'detectActive', {
-    value: function () {
-        let active_tag = this.tag;
-        let active_tags = [...window.document.querySelectorAll(`[xo-section]`)].reduce((new_target, el) => { let tag = el.getAttribute("xo-section"); /*tag != active_tag && */new_target.push(tag); return new_target; }, []);
-        active_tags = [...new Set(active_tags)];
-        let state_sections = xover.site.sections;
-        state_sections[active_tag] = (state_sections[active_tag] || {})
-        state_sections[active_tag]["active"] = active_tags;
-        xover.site.sections = state_sections;
-        //xover.site.activeTags = [...new Set([xover.site.activeTags(), active_tags].flat())];
-        return state_sections[active_tag]["active"];
     }
 });
 
@@ -5924,8 +5902,8 @@ document.onkeyup = function (e) {
 };
 
 // TODO: Modificar listeners para que funcion con el método de XOVER
-xover.listener.on('beforeunload', async function (e) {
-    history.replaceState(Object.assign({ position: history.length - 1 }, history.state), {}, location.pathname + location.search + (location.hash || ''));
+xover.dom.beforeunload = function (e) {
+    history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
     //let sections = await xover.store.sources;
     //for (let hashtag in xover.sections) {
     //    console.log("Saving " + hashtag)
@@ -5942,7 +5920,7 @@ xover.listener.on('beforeunload', async function (e) {
     //    e.preventDefault();
     //    e.returnValue = false;
     //}
-});
+};
 
 var eventName = xover.browser.isIOS() ? "pagehide" : "beforeunload";
 
@@ -6077,7 +6055,6 @@ xover.listener.on("click", function (event) {
             }
             if (xover.listener.keypress.ctrlKey && !xover.listener.keypress.shiftKey && !xover.listener.keypress.altKey/* && target_tag !== (window.top || window).location.hash)*/) {
                 let target_tag = target_section.tag;
-                //target_section.detectActive();
                 xover.site.update({ active: target_tag, hash: target_tag });
             }
         }
@@ -6353,11 +6330,11 @@ xover.dom.setScrollPosition = function (el, coordinates) {
             return;
         }
         el.scrollTo(coordinates.x, coordinates.y);
-    } else {
-        Object.entries(xover.site.scrollableElements).map(([selector, coordinates]) => {
+    }/* else {
+        Object.entries(xover.site.get("scrollableElements", {})).map(([selector, coordinates]) => {
             xover.dom.setScrollPosition(selector, coordinates)
         })
-    }
+    }*/
 }
 
 xover.dom.getScrollParent = function (el) {
@@ -6371,40 +6348,44 @@ xover.dom.getScrollParent = function (el) {
     }
 }
 
-xover.dom.scrollableElements = (history.state || {}).scrollableElements || {};
-xover.dom.getScrollableElements = function (el) {
-    var target = (el || (document.activeElement || {}).contentDocument || document);
-    xover.sections.active.selectNodes("//*[@state:x-position]").filter(node => {
-        (node.getAttribute("state:x-position") > 0 || node.getAttribute("state:y-position") > 0)/* && document.querySelector(`#${node.getAttributeNS("http://panax.io/xover", "id")}`)*/
-    });
-    return [...(el && [el] || []), ...target.querySelectorAll("*")].filter(el => el.scrollHeight > el.clientHeight && (el.scrollTop || el.scrollLeft));
-}
+Object.defineProperty(xover.site, 'getScrollableElements', {
+    value: function (scope) {
+        var target = (scope || (document.activeElement || {}).contentDocument || document);
+        function isScrollable(el) {
+            //return el.scrollHeight >= el.clientHeight && (el.scrollTop || el.scrollLeft);
+            // Check if the element has overflow and overflow-y set to auto or scroll
+            if (!(el instanceof HTMLElement)) return false;
+            const overflowY = window.getComputedStyle(el).overflowY;
+            const overflowX = window.getComputedStyle(el).overflowX;
+            return (overflowY === 'scroll' || overflowY === 'auto' ||
+                overflowX === 'scroll' || overflowX === 'auto');
+        }
 
-xover.dom.updateScrollableElements = function (el) {
-    var target = (el || (document.activeElement || {}).contentDocument || document);
-    Object.keys(xover.dom.scrollableElements).filter(selector => document.querySelector(selector)).forEach(selector => xover.dom.scrollableElements[selector] = xover.dom.getScrollPosition(document.querySelector(selector))); //Updates all scrollable elements in sight even if they are not longer scrollable.
-    let scrollable = xover.dom.getScrollableElements(target);
-    scrollable.map(el => {
-        let coordinates = xover.dom.getScrollPosition(el);
-        //if (el.source) {
-        //    el.source.setAttributeNS(null, `state:x-position`, coordinates.x);
-        //    el.source.setAttributeNS(null, `state:y-position`, coordinates.y);
-        //}
+        //xover.sections.active.selectNodes("//*[@state:x-position]").filter(node => {
+        //    (node.getAttribute("state:x-position") > 0 || node.getAttribute("state:y-position") > 0)/* && document.querySelector(`#${node.getAttributeNS("http://panax.io/xover", "id")}`)*/
+        //});
+        return [...(scope && [scope] || []), ...target.querySelectorAll("*")].filter(scope => isScrollable(scope));
+    }
+})
 
-        path = el.selector;
-        xover.dom.scrollableElements[path] = {}
-        xover.dom.scrollableElements[path]["x"] = coordinates.x;
-        xover.dom.scrollableElements[path]["y"] = coordinates.y;
-    });
-    xover.site.scrollableElements = xover.dom.scrollableElements;
-    //xover.sections.active.selectNodes("//*[@state:x-position]").filter(node => {
-    //    return (node.getAttribute("state:x-position") > 0 || node.getAttribute("state:y-position") > 0)/* && document.querySelector(`#${node.getAttributeNS("http://panax.io/xover", "id")}`)*/
-    //}).map(node => {
-    //    xover.dom.scrollableElements[node.getAttributeNS("http://panax.io/xover", "id")] = {}
-    //    xover.dom.scrollableElements[node.getAttributeNS("http://panax.io/xover", "id")]["x"] = node.getAttribute("state:x-position");
-    //    xover.dom.scrollableElements[node.getAttributeNS("http://panax.io/xover", "id")]["y"] = node.getAttribute("state:y-position");
-    //});
-}
+//xover.dom.updateScrollableElements = function (el) {
+//    var target = (el || (document.activeElement || {}).contentDocument || document);
+//    Object.keys(xover.site.scrollableElements).filter(selector => document.querySelector(selector)).forEach(selector => xover.site.scrollableElements[selector] = xover.dom.getScrollPosition(document.querySelector(selector))); //Updates all scrollable elements in sight even if they are not longer scrollable.
+//    let scrollable = xover.site.getScrollableElements(target);
+//    scrollable.map(el => {
+//        let coordinates = xover.dom.getScrollPosition(el);
+//        path = el.selector;
+//        xover.site.scrollableElements[path] = { x: coordinates.x, y: coordinates.y }
+//    });
+//    //xover.site.scrollableElements = xover.site.scrollableElements;
+//    ////xover.sections.active.selectNodes("//*[@state:x-position]").filter(node => {
+//    ////    return (node.getAttribute("state:x-position") > 0 || node.getAttribute("state:y-position") > 0)/* && document.querySelector(`#${node.getAttributeNS("http://panax.io/xover", "id")}`)*/
+//    ////}).map(node => {
+//    ////    xover.site.scrollableElements[node.getAttributeNS("http://panax.io/xover", "id")] = {}
+//    ////    xover.site.scrollableElements[node.getAttributeNS("http://panax.io/xover", "id")]["x"] = node.getAttribute("state:x-position");
+//    ////    xover.site.scrollableElements[node.getAttributeNS("http://panax.io/xover", "id")]["y"] = node.getAttribute("state:y-position");
+//    ////});
+//}
 
 xover.dom.getNextElement = function (src) {
     src = (src || document.activeElement)
@@ -6730,9 +6711,9 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Response.prototype, 'matches', {
                 value: function (...args) {
                     let predicate = args.pop();
-                    let tag = this.tag || event && event.detail && event.detail.tag || null;
+                    let tag = this.tag || event && event.detail && event.detail.tag || '';
                     if (predicate[0] == '#') {
-                        if (tag == predicate) {
+                        if (tag == predicate || predicate == tag.split(/[:\?~]/)[0]) {
                             return true;
                         }
                         return false;
@@ -6768,9 +6749,9 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Document.prototype, 'matches', {
                 value: function (...args) {
                     let predicate = args.pop();
-                    let tag = this.tag || event && event.detail && event.detail.tag || null;
+                    let tag = this.tag || event && event.detail && event.detail.tag || '';
                     if (predicate[0] == '#') {
-                        if (tag == predicate) {
+                        if (tag == predicate || predicate == tag.split(/[:\?~]/)[0]) {
                             return true;
                         }
                         return false;
@@ -7528,21 +7509,6 @@ xover.modernize = function (targetWindow) {
                             return original_textContent.set.call(this, value);
                         }
                     }
-                }
-            );
-
-            Object.defineProperty(Array.prototype, 'coalesce',
-                {
-                    value: function () {
-                        let args = this instanceof Array && this || arguments;
-                        for (let item of args) {
-                            if (item !== undefined && item !== null) {
-                                return item;
-                            }
-                        }
-                        return;
-                    },
-                    writable: true, enumerable: false, configurable: false
                 }
             );
 
@@ -8637,7 +8603,7 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
-            let stylsheet_renderer_handler = async function () {
+            let stylesheet_renderer_handler = async function () {
                 this._render_manager = this._render_manager || xover.delay(1).then(async () => {
                     let selector = this.ownerDocument.contains(this) && this.selector || undefined;
                     let ref = selector && this.closest("[xo-stylesheet]");
@@ -8657,13 +8623,13 @@ xover.modernize = function (targetWindow) {
 
             if (!HTMLElement.prototype.hasOwnProperty('render')) {
                 Object.defineProperty(HTMLElement.prototype, 'render', {
-                    value: stylsheet_renderer_handler
+                    value: stylesheet_renderer_handler
                 });
             }
 
             if (!SVGElement.prototype.hasOwnProperty('render')) {
                 Object.defineProperty(SVGElement.prototype, 'render', {
-                    value: stylsheet_renderer_handler
+                    value: stylesheet_renderer_handler
                 });
             }
 
@@ -8722,7 +8688,7 @@ xover.modernize = function (targetWindow) {
                     value: async function (stylesheets) {
                         let section = this.section;
                         if (!this.documentElement) await this.fetch();
-                        await xover.site.save() //TODO: Reubicar a un posición en donde se optimice más su uso, por ejemplo al scroll
+                        //await xover.site.save() //TODO: Reubicar a un posición en donde se optimice más su uso, por ejemplo al scroll
                         let last_argument = [...arguments].pop();
                         let options = last_argument && typeof (last_argument) == 'object' && last_argument.constructor === {}.constructor && last_argument || undefined;
                         stylesheets = stylesheets !== options && stylesheets || this.stylesheets;
@@ -8790,23 +8756,18 @@ xover.modernize = function (targetWindow) {
                                 original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
                             }
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
-                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data }, data)
-                            window.top.dispatchEvent(before_dom);
-                            if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             let dom = await data.transform(xsl);
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
-                            //if (section) {
-                            //    let before = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data }, section)
-                            //    window.top.dispatchEvent(before);
-                            //    if (before.cancelBubble || before.defaultPrevented) continue;
-                            //}
+                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data, dom: dom }, self)
+                            window.top.dispatchEvent(before_dom);
+                            if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             if (!dom.documentElement) {
-                                xover.dom.alert(`No result for transformation ${stylesheet.href}`)
+                                //xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
                             }
-                            dom = dom.documentElement
+                            dom = dom.documentElement;
                             window.top.dispatchEvent(new xover.listener.Event('transform', { section: section, stylesheet: stylesheet, target: target, node: dom }, section));
                             dom.setAttributeNS(null, "xo-section", target.getAttribute("xo-section") || tag);
                             dom.setAttributeNS(null, "xo-stylesheet", target.getAttribute("xo-stylesheet"));
@@ -8992,9 +8953,9 @@ xover.modernize = function (targetWindow) {
                                         return script;
                                     }));
                                 }
-                                xover.site.restore(dom);
+                                xover.site.restore(target);
                             }
-                            window.top.dispatchEvent(new xover.listener.Event('render', { section: section, stylesheet: stylesheet, target: target }, dom));
+                            window.top.dispatchEvent(new xover.listener.Event('render', { section: section, stylesheet: stylesheet, target: target, dom: dom }, self));
 
                             targets.push(dom);
 
