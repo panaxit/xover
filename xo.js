@@ -701,7 +701,7 @@ xover.listener.on('error', async function ({ event }) {
     let srcElement = event.target;
     let section = await xover.store.files;
     let src = srcElement.getAttribute("src") || "";
-    let record = await section.get(src);
+    let record = await section.get(src.split('?')[0]);
     if (record) {
         let old_url = srcElement.src;
         if (record.file.type.indexOf('image') !== -1) {
@@ -7994,7 +7994,9 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(HTMLSelectElement.prototype, 'value', value_handler);
 
             Attr.prototype.set = function (value) {
-                value = typeof value === 'function' && value.call(this, this) || value;
+                if (typeof value === 'function') {
+                    value = value.call(this, this);
+                }
                 value = value instanceof Attr && value.value || value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 //if (this.value != value) {
                 //this.ownerElement.section && this.ownerElement.section.render();
@@ -8978,42 +8980,6 @@ xover.modernize = function (targetWindow) {
                                     scope.set('state:width', el.offsetWidth, { silent: true });
                                 }
                             }));
-                            //[...dom.querySelectorAll('input[xo-attribute],select[xo-attribute],textarea[xo-attribute],input[type="file"]')].filter(el => !el.getAttribute("onchange")).forEach(el => el.addEventListener('change', async function () {
-                            //    if (this.type === 'date' && !isValidISODate(this.value)) {
-                            //        event.preventDefault();
-                            //        return;
-                            //    }
-                            //    let scope = this.scope;
-                            //    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-                            //    let srcElement = event.target;
-                            //    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : srcElement.value;
-                            //    /*if (!srcElement.hasOwnProperty("value")) {
-                            //        console.log('Not modifiable')
-                            //    } else*/ if (srcElement.type && srcElement.type.toLowerCase() === 'file') {
-                            //        if (!(srcElement.files && srcElement.files[0])) return;
-                            //        let section = await xover.store.files;
-                            //        section.add(srcElement.files).forEach(record => {
-                            //            [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
-                            //            if (scope instanceof Text || _attribute === 'text') {
-                            //                scope.set(record.uid);
-                            //            } else if (scope instanceof Attr || _attribute) {
-                            //                let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
-                            //                scope = scope instanceof Attr ? scope.ownerElement : scope;
-                            //                let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
-                            //                delete metadata["file"];
-                            //                scope.set(_attribute, record.uid);
-                            //                scope.set(`metadata:${attribute_name}`, metadata);
-                            //                if (metadata.name) {
-                            //                    scope.set(`text:${attribute_name}`, metadata.name);
-                            //                }
-                            //            }
-                            //        });
-                            //    } else if (scope instanceof Attr || scope instanceof Text) {
-                            //        scope.set(value);
-                            //    } else if (scope instanceof Node) {
-                            //        _attribute && scope.set(_attribute, value);
-                            //    }
-                            //}))
                             if (window.MathJax) {
                                 MathJax.typeset && MathJax.typeset();
                             } else if (dom.selectSingleNode('//mml:math') || ((dom || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
@@ -9195,29 +9161,48 @@ xover.listener.on(['change::*[xo-attribute]'], function () {
     }
 })
 
+//xover.listener.on(['change::input[type="file"]'], async function () {
+//    let srcElement = this;
+//    if (!(srcElement.files && srcElement.files[0])) return;
+//    let section = await xover.store.files;
+//    let scope = this.scope;
+//    if (!scope) return;
+//    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
+//    section.add(srcElement.files).forEach(record => {
+//        [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
+//        if (scope instanceof Text || _attribute === 'text') {
+//            scope.set(record.uid);
+//        } else if (scope instanceof Attr || _attribute) {
+//            let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
+//            scope = scope instanceof Attr ? scope.ownerElement : scope;
+//            let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
+//            delete metadata["file"];
+//            scope.set(_attribute, record.uid);
+//            //scope.set(`metadata:${attribute_name}`, metadata);
+//            if (metadata.name) {
+//                scope.set(`text:${attribute_name}`, metadata.name);
+//            }
+//        }
+//    })
+//})
+
+xover.dom.fileManager = async function (files) {
+    if (!(files[0])) return [];
+    let database = await xover.store.files;
+    let cached_files = database.add(files);
+    let file_value = cached_files.map(record => {
+        let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
+        return `${record.uid}?name=${metadata.name}`
+    });
+    return file_value;
+}
+
 xover.listener.on(['change::input[type="file"]'], async function () {
     let srcElement = this;
-    if (!(srcElement.files && srcElement.files[0])) return;
-    let section = await xover.store.files;
     let scope = this.scope;
     if (!scope) return;
-    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-    section.add(srcElement.files).forEach(record => {
-        [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
-        if (scope instanceof Text || _attribute === 'text') {
-            scope.set(record.uid);
-        } else if (scope instanceof Attr || _attribute) {
-            let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
-            scope = scope instanceof Attr ? scope.ownerElement : scope;
-            let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
-            delete metadata["file"];
-            scope.set(_attribute, record.uid);
-            //scope.set(`metadata:${attribute_name}`, metadata);
-            if (metadata.name) {
-                scope.set(`text:${attribute_name}`, metadata.name);
-            }
-        }
-    })
+    let file_string = await xover.dom.fileManager(srcElement.files);
+    scope.set(file_string.join(";"));
 })
 
 xover.modernize();
