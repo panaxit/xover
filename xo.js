@@ -2264,63 +2264,13 @@ Object.defineProperty(xover.server, 'uploadFile', {
         if (!(xover.manifest.server["uploadFile"])) {
             throw (new Error("Endpoint for uploadFile is not defined in the manifest"));
         }
-        let file;
-        if (source instanceof HTMLElement && source.type === 'file') {
-            file = source.files && source.files[0]
-            file.id = source.id;
-            file.saveAs = saveAs || source.saveAs || file.id;
-        } else if (source instanceof File) {
-            file = source;
-            file.id = file.id || source.id;
-            file.saveAs = saveAs || file.saveAs || file.name;
-        } else if (source instanceof Attr) {
-            let record = await (await xover.store.files).get(source.value);
-            if (!(record && record.file)) {
-                source.parentNode.setAttribute(source.name, '');
-                throw (new Error('Invalid file, upload again'));
-            }
-            file = record.file;
-            file.id = record.id;
-            file.saveAs = saveAs || record.saveAs || file.id;
-        }
-        if (file) {
-            //var progress_bar = document.getElementById('_progress_bar_' + control.id);
-            //progress_bar.style.width = '0%';
-            //
-            //var that = this;
-            //if (xover.dom.intervals[control.id]) delete xover.dom.intervals[control.id];
-            //if (xover.manifest.server["uploadFileManager"]) {
-            //    xover.dom.intervals[control.id] = setInterval(function () {
-            //        var upload_check = new XMLHttpRequest();
-            //        upload_check.open('GET', xover.manifest.server["uploadFileManager"] + '?UploadID=' + control.id);// + control.id);
-            //        upload_check.onreadystatechange = function (oEvent) {
-            //            if (upload_check.readyState === 4) {
-            //                var json_response = JSON.parse(upload_check.responseText);
-            //                var progress_bar = document.getElementById('_progress_bar_' + control.id);
-            //
-            //                progress_bar.className = progress_bar.className.replace(/\bprogress-bar(-\w+)*\s*/ig, '')
-            //                progress_bar.className = 'progress-bar progress-bar-striped progress-bar-animated ' + progress_bar.className;
-            //
-            //                if (String(Number.parseFloat(progress_bar.style.width)) == 'NaN') {
-            //                    progress_bar.style.width = '0%';
-            //                }
-            //                if (json_response.percent > Number.parseFloat(progress_bar.style.width)) {
-            //                    progress_bar.style.width = json_response.percent + '%';
-            //                }
-            //            }
-            //        };
-            //        upload_check.send();
-            //    }, 200);
-            //}
-
-
+        function uploadFile(file, source) {
             return new Promise((resolve, reject) => {
                 let reader = new FileReader();
                 reader.onload = function (e) {
                     var formData = new FormData();
                     formData.append(file.name, file);
 
-                    //var request = new XMLHttpRequest();
                     let request = new xover.Request(xover.manifest.server["uploadFile"] + `?UploadID=${file.id}&saveAs=${file.saveAs}&parentFolder=${(file.parentFolder || '').replace(/\//g, '\\')}`, { method: 'POST', body: formData });
                     fetch(request).then(async response => {
                         let file_name = response.headers.get("File-Name") + `?name=${file.name.normalize()}`;
@@ -2335,7 +2285,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
                                 source = source.scope;
                             }
                             //}
-                            [source, ...xover.sections.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node instanceof Attr ? node.set(file_name) : node.setAttribute("value", file_name));
+                            //[source, ...xover.sections.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node instanceof Attr ? node.set(file_name) : node.setAttribute("value", file_name));
                         }
                         var progress_bar = document.getElementById('_progress_bar_' + file.id);
                         if (progress_bar) {
@@ -2343,7 +2293,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
                             progress_bar.className = progress_bar.className.replace(/\bbg-\w+/ig, 'bg-success');
                             progress_bar.className = progress_bar.className.replace(/\progress-bar-\w+/ig, '');
                         }
-                        resolve();
+                        resolve(file_name);
                         //console.log(request.responseText)
                         //let res = new xover.Response(response, request);;
                         //let document = await res.processBody();
@@ -2397,7 +2347,40 @@ Object.defineProperty(xover.server, 'uploadFile', {
                     ////target.src=e.target.result;
                 }
                 reader.readAsDataURL(file);
-            });
+            })
+        }
+        let files;
+        let uploading = [];
+        if (source instanceof HTMLElement && source.type === 'file') {
+            file = source.files && source.files[0]
+            file.id = source.id;
+            file.saveAs = saveAs || source.saveAs || file.id;
+            uploading.push(uploadFile(file, source));
+        } else if (source instanceof File) {
+            file = source;
+            file.id = file.id || source.id;
+            file.saveAs = saveAs || file.saveAs || file.name;
+            uploading.push(uploadFile(file, source));
+        } else if (source instanceof Attr) {
+            let files = source.value.split(/;/);
+            for (let [ix, file_ref] of [...files.entries()]) {
+                if (file_ref.indexOf("blob:") == -1) continue;
+                let [file_name, searchParams] = file_ref.split("?");
+                let record = await (await xover.store.files).get(file_name);
+                if (!(record && record.file)) {
+                    return Promise.reject('Invalid file, upload again');
+                }
+                file = record.file;
+                file.id = record.id;
+                file.saveAs = saveAs || record.saveAs || file.id;
+                /*let searchParameters = new URLSearchParams(Object.fromEntries(Object.entries({ file: record.file, id: record.id }), [...new URLSearchParams(searchParams.join("&")).entries()]));*/
+                uploading.push(uploadFile(file, source).then(file_name => files[ix] = file_name).then(() => source.set(files.join(";"))));
+            }
+        }
+        try {
+            return Promise.all(uploading);
+        } catch (e) {
+            return Promise.reject("Couln't finish uploading files, please try again");
         }
     },
     writable: true, enumerable: false, configurable: false
