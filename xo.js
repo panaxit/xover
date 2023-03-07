@@ -8760,7 +8760,7 @@ xover.modernize = function (targetWindow) {
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
-                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data, dom: dom }, self)
+                            let before_dom = new xover.listener.Event('beforeRender', { section: section, stylesheet: stylesheet, target: target, document: data, dom: dom }, data)
                             window.top.dispatchEvent(before_dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             if (!dom.documentElement) {
