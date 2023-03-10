@@ -1260,7 +1260,7 @@ Object.defineProperty(xover.site, 'state', {
     , enumerable: true
 });
 
-Object.defineProperty(xover.site, 'stores', {
+Object.defineProperty(xover.site, 'sections', {
     get() {
         return [...top.window.document.querySelectorAll(`[xo-stylesheet]`)]
     }
