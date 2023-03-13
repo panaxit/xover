@@ -1,5 +1,5 @@
-﻿const xover = {};
-const xo = xover;
+﻿var xover = {};
+var xo = xover;
 xover.app = {};
 xover.debug = {};
 xover.browser = {};
@@ -4667,7 +4667,6 @@ xover.Store = function (xml, ...args) {
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
                 let stylesheets_to_render = [];
-
                 for (let stylesheet of xover.site.sections.filter(stylesheet => stylesheet.store === self)) {
                     if (!stylesheet.stylesheet.documentElement || mutationList.find(mutation => mutation.type === 'childList')) {
                         stylesheet.render()
@@ -4804,6 +4803,11 @@ xover.Store = function (xml, ...args) {
                     }
                 }
                 window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store));
+
+                if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction))) {
+                    self.render()
+                }
+
                 self.save && self.save();
             };
 
@@ -8901,6 +8905,7 @@ xover.modernize = function (targetWindow) {
                                 //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
                                 //target = document.body;
                                 xover.dom.setEncryption(dom, 'UTF-7');
+                                dom.select('//text()[.="�"]').remove();
                                 let iframe;
                                 if (document.activeElement.tagName.toLowerCase() == 'iframe') {
                                     iframe = document.activeElement;
