@@ -8484,7 +8484,7 @@ xover.modernize = function (targetWindow) {
                                         xsltProcessor.setParameter(null, param.getAttribute("name"), eval(param.textContent))
                                     } catch (e) {
                                         //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                        console.error(e.message);
+                                        Promise.reject(e.message);
                                         xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                     }
                                 });
@@ -8498,7 +8498,7 @@ xover.modernize = function (targetWindow) {
                                         }
                                     } catch (e) {
                                         //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                        console.error(e.message);
+                                        Promise.reject(e.message);
                                     }
                                 });
                                 xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`).map(param => {
@@ -8510,7 +8510,7 @@ xover.modernize = function (targetWindow) {
                                         }
                                     } catch (e) {
                                         //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                        console.error(e.message);
+                                        Promise.reject(e.message);
                                     }
                                 });
                                 xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
@@ -8522,7 +8522,7 @@ xover.modernize = function (targetWindow) {
                                         }
                                     } catch (e) {
                                         //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                        console.error(e.message);
+                                        Promise.reject(e.message);
                                     }
                                 });
 
