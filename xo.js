@@ -556,6 +556,7 @@ xover.listener.Event = function (event_name, params = {}, context) {
         _event.detail["response"] = _event.detail["response"] || context;
         _event.detail["resquest"] = _event.detail["request"] || context.request;
         _event.detail["target"] = _event.detail["target"] || context.documentElement;
+        _event.detail["document"] = _event.detail["document"] || context.document;
         _event.detail["body"] = _event.detail["body"] || context.body;
         _event.detail["tag"] = _event.detail["tag"] || context.tag;
         node = _event.detail["return_value"] || context.document;
@@ -1881,11 +1882,11 @@ xover.Source = function (source, tag, manifest_key) {
                 settings.stylesheets && settings.stylesheets.forEach(stylesheet => document.addStylesheet(stylesheet));
                 __document.url = document.url || url;
                 __document.href = document.href || href;
-                window.top.dispatchEvent(new xover.listener.Event('fetch', { document: __document, tag: tag, store: __document.store }, self));
+                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: __document, tag: tag, store: __document.store }, self));
                 __document.replaceBy(document);
                 return resolve(__document);
             }).catch(async (e) => {
-                window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
+                //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
                 if (!e) {
                     return reject(e);
                 }
@@ -3477,7 +3478,11 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
                 return href
             }
         });
-        window.top.dispatchEvent(new xover.listener.Event('fetch', {}, document));
+    }
+    if (response.ok) { 
+        window.top.dispatchEvent(new xover.listener.Event('fetch', { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
+    } else {
+        window.top.dispatchEvent(new xover.listener.Event('failure', { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
     }
 
     if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
@@ -4807,6 +4812,9 @@ xover.Store = function (xml, ...args) {
                 if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
                     self.render()
                 }
+                //if (mutation.target instanceof Document && mutation.target.childNodes.length === mutation.addedNodes.length && mutation.removedNodes.length === 0) {
+
+                //}
 
                 self.save && self.save();
             };
@@ -6688,8 +6696,8 @@ xover.modernize = function (targetWindow) {
                 return new xover.NodeSet(selection);
             }
 
-            Node.prototype.selectSingleNode = function (xpath, context) {
-                if (!context) { context = this; }
+            Node.prototype.selectSingleNode = function (xpath) {
+                context = this;
                 if (context instanceof xover.Store) {
                     context = (context.document || context);
                 }
@@ -6707,6 +6715,17 @@ xover.modernize = function (targetWindow) {
             }
             Node.prototype.select = Node.prototype.selectNodes
             Node.prototype.selectFirst = Node.prototype.selectSingleNode
+
+            var original_select = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'select');
+            Object.defineProperty(HTMLInputElement.prototype, 'select', {
+                value: function (...args) {
+                    if (!args.length) {
+                        return original_select && original_select.value.apply(this, args);
+                    } else {
+                        return Node.prototype.select.apply(this, args)
+                    }
+                }
+            })
 
             Element.prototype.createNode = function (node_description) {
                 let node = xover.xml.createNode(node_description)
@@ -7859,7 +7878,7 @@ xover.modernize = function (targetWindow) {
             //}
 
             Attr.prototype.selectSingleNode = function (xpath) {
-                return this.ownerDocument.selectSingleNode(xpath, this);
+                return this.ownerDocument.selectSingleNode.apply(this, [xpath]);
             }
 
             Attr.prototype.getPropertyValue = function (property_name) {
