@@ -4725,6 +4725,9 @@ xover.Store = function (xml, ...args) {
                     for (attrib of attrs) {
                         for (mutation of mutationList) {
                             if (!stylesheets_to_render.find(el => el === stylesheet)) {
+                                if (event && event.type == 'input' && stylesheet.contains(event.srcElement)) {
+                                    continue
+                                }
                                 let scoped_element = attrib.parentNode.closest('[xo-scope]');
                                 if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id")) {
                                     //&& (mutation.type !== 'attributes' || mutation.type === 'attributes' &&
