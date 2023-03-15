@@ -6697,10 +6697,6 @@ xover.modernize = function (targetWindow) {
             }
 
             Node.prototype.selectSingleNode = function (xpath) {
-                context = this;
-                if (context instanceof xover.Store) {
-                    context = (context.document || context);
-                }
                 if (!xpath) {
                     return null;
                 }
@@ -6709,7 +6705,8 @@ xover.modernize = function (targetWindow) {
                 //if (!xpath.match(/[^\w\d\-\_]/g) && namespace) {
                 //    xpath = `*[namespace-uri()='${namespace}' and name()='${xpath}']`
                 //}
-                let xItems = this.selectNodes(`(${xpath})[1]`, context);
+                let scope = this instanceof Node && this || this.document;
+                let xItems = scope.selectNodes(`(${xpath})[1]`);
                 if (xItems.length > 0) { return xItems[0]; }
                 else { return null; }
             }
