@@ -4804,7 +4804,7 @@ xover.Store = function (xml, ...args) {
                 }
                 window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store));
 
-                if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction))) {
+                if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
                     self.render()
                 }
 
