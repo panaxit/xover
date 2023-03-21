@@ -6684,7 +6684,7 @@ xover.modernize = function (targetWindow) {
                         ////    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         ////} catch (e) {
                         if (!xover.browser.isIOS()) {
-                            xpath = xpath.replace(RegExp("(?<=@|\/|\[|^|\()([\w-_]+):([\w-_]+)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
+                            xpath = xpath.replace(RegExp("(?<=@|\\/|\\[|^|\\()([\\w-_]+):([\\w-_]+)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
                         }
                         console.log(xpath)
                         aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
@@ -9284,6 +9284,10 @@ addEventListener("unhandledrejection", (event) => {
         if (event.message || event.reason instanceof TypeError || event.reason instanceof DOMException) {
             String(event.message || event.reason).alert()
             console.error(event.message || event.reason)
+        } else if ((event.message || event.reason) instanceof Document) {
+            (event.message || event.reason).render()
+        } else {
+            String(event.message || event.reason).alert()
         }
     } catch (e) {
         console.error(e);
