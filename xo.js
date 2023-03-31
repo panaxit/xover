@@ -578,7 +578,7 @@ Object.defineProperty(xover.listener, 'matches', {
         let fns = new Map();
         for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/(?<!::.*)::/)[0] == event_type).reverse()) {
             for (let [, handler] of handlers) {
-                let [, predicate] = event_name.split(/::/);
+                let [, predicate] = event_name.split(/(?<!::.*)::/);
                 if (predicate) {
                     if (context == predicate) {
                         fns.set(handler.toString(), handler);
