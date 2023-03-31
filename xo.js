@@ -7567,6 +7567,28 @@ xover.modernize = function (targetWindow) {
                 }
             );
 
+            Object.defineProperty(Node.prototype, 'value',
+                {
+                    get: function () {
+                        return this.textContent;
+                    },
+                    set: function (value) {
+                        this.textContent = value;
+                    }
+                }
+            );
+
+            Object.defineProperty(Text.prototype, 'value',
+                {
+                    get: function () {
+                        return this.textContent;
+                    },
+                    set: function (value) {
+                        this.textContent = value;
+                    }
+                }
+            );
+
             Object.defineProperty(ProcessingInstruction.prototype, 'textContent',
                 // Passing innerText or innerText.get directly does not work,
                 // wrapper function is required.
@@ -8121,7 +8143,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Text.prototype.set = function (value) {
-                value = typeof value === 'function' && value.call(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                value = typeof value === 'function' && value(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 if (this.textContent != value) {
                     this.parentNode.store.render();
                 }
@@ -8163,6 +8185,16 @@ xover.modernize = function (targetWindow) {
             Node.prototype.replace = function (new_node) {
                 new_node = (new_node.documentElement || new_node)
                 return this.parentNode && this.parentNode.replaceChild(new_node/*.cloneNode(true)*/, this) || new_node;
+            }
+
+            let original_attr_replace = Attr.prototype.replace
+            Attr.prototype.replace = function (...args) {
+                if (args[0] instanceof Attr) {
+                    return original_attr_replace.apply(this, args)
+                } else if (typeof (args[0]) == 'string' || args[0] instanceof RegExp) {
+                    this.value = this.value.replace(args[0], args[1])
+                    return this;
+                }
             }
 
             Node.prototype.replaceBy = function (new_node) {
@@ -9326,8 +9358,8 @@ addEventListener("unhandledrejection", (event) => {
         if (event.message || event.reason instanceof TypeError || event.reason instanceof DOMException) {
             String(event.message || event.reason).alert()
             console.error(event.message || event.reason)
-        } else if ((event.message || event.reason) instanceof Document) {
-            (event.message || event.reason).render()
+        } else if (typeof((event.message || event.reason).render) != 'undefined') {
+            (event.message || event.reason).render();
         } else {
             String(event.message || event.reason).alert()
         }
