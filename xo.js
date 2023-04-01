@@ -572,14 +572,16 @@ xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
 Object.defineProperty(xover.listener, 'matches', {
     value: function (context, event_type) {
-        event_type = [event_type].flat();
-
+        context = context instanceof Window && event_type.split(/(?<!::.*)::/)[1] || context;
+        event_type = event_type.split(/(?<!::.*)::/)[0];
         let fns = new Map();
         for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/(?<!::.*)::/)[0] == event_type).reverse()) {
             for (let [, handler] of handlers) {
                 let [, predicate] = event_name.split(/(?<!::.*)::/);
                 if (predicate) {
-                    if (typeof (context.matches) != 'undefined') {
+                    if (context == predicate) {
+                        fns.set(handler.toString(), handler);
+                    } else if (typeof (context.matches) != 'undefined') {
                         if (context.matches(predicate)) {
                             fns.set(handler.toString(), handler);
                         }
