@@ -8873,6 +8873,7 @@ xover.modernize = function (targetWindow) {
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
                             let target = stylesheet_target;
+                            xover.site.renderingTo = target;
                             let current_cursor_style = target.style.cursor;
                             try { target.style.cursor = 'wait' } catch (e) { console.log(e) }
                             if ((data.documentElement || data) instanceof Element) {
@@ -9134,6 +9135,7 @@ xover.modernize = function (targetWindow) {
                             dependants = [...dom.querySelectorAll('*[xo-store],*[xo-stylesheet]')];
                             window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: dom }, store));
                             dependants.forEach(el => el.render());
+                            delete xover.site.renderingTo;
                         }
                         return Promise.resolve(targets);
                     },
