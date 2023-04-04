@@ -8702,7 +8702,7 @@ xover.modernize = function (targetWindow) {
                         }
                         try {
                             //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                                window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, transformed: result }));
+                                window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, transformed: result }, this));
                             //}
                         } catch (e) { }
                         return result
