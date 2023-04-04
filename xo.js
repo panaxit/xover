@@ -603,7 +603,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             await xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
-        let context = event.context || (event.srcEvent || event).target;
+        let context = event.context || event.target;
 
         let fns = xover.listener.matches(context, event.type);
         //for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/::/)[0] == event_type).reverse()) {
@@ -1730,7 +1730,7 @@ xover.Source = function (source, tag, manifest_key) {
             return _progress
         }, set: function (input) {
             _progress = input;
-            window.top.dispatchEvent.dispatchEvent(new xover.listener.Event('progress', { percent: _progress, document: __document, source: self }, self));
+            window.top.dispatchEvent(new xover.listener.Event('progress', { percent: _progress, document: __document, source: self }, self));
         }
     });
 
@@ -4808,52 +4808,49 @@ xover.Store = function (xml, ...args) {
                 for (let [stylesheet] of [...stylesheets_to_render.entries()]) {
                     stylesheet.render()
                 }
-                for (const mutation of mutationList) {
+                for (const [target, mutation] of [...mutated_targets]) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
-                    if (mutation.type === 'childList') {
                         if (mutation.removedNodes.length) {
-                            if (typeof (mutation.target.getAttributeNS) === 'function' && !mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && !(mutation.target.firstElementChild || mutation.target.textContent)) {
-                                mutation.target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
+                            if (typeof (target.getAttributeNS) === 'function' && !target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && !(target.firstElementChild || target.textContent)) {
+                                target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
                             }
                         }
                         for (let el of [...mutation.addedNodes]) {
-                            window.top.dispatchEvent(new xover.listener.Event('append', { target: mutation.target }, el));
+                            window.top.dispatchEvent(new xover.listener.Event('append', { target: target }, el));
                             el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.reseed());
                         };
                         if (mutation.addedNodes.length) {
-                            window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, mutation.target));
-                            if (mutation.target instanceof Element && mutation.target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (mutation.target.firstElementChild || mutation.target.textContent)) {
-                                mutation.target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
+                            window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
+                            if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
+                                target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                             }
                         }
                         //for (let el of [...mutation.removedNodes]) {
-                        //    Object.defineProperty(el, 'parentNode', { get: function () { return mutation.target } });
-                        //    window.top.dispatchEvent(new xover.listener.Event('remove', { target: mutation.target }, el));
+                        //    Object.defineProperty(el, 'parentNode', { get: function () { return target } });
+                        //    window.top.dispatchEvent(new xover.listener.Event('remove', { target: target }, el));
                         //};
                         if (mutation.removedNodes.length) {
-                            //[...mutation.removedNodes].forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { store: store, target: mutation.target }), el));
-                            window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, mutation.target))
+                            //[...mutation.removedNodes].forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { store: store, target: target }), el));
+                            window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))
                         }
-                        window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: mutation.target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes }, mutation.target));
-                    } else if (mutation.type === 'attributes') {
-                        //console.log(`The ${mutation.attributeName} attribute was modified.`);
-                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                    window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes }, target));
+
+                    let attr = target instanceof Element && target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
                         if (!attr) {
-                            //let target_copy = mutation.target.cloneNode();
+                            //let target_copy = target.cloneNode();
                             //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
                             //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                            attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
                         }
                         //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.store == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
                         /*stores.filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());*/
-                    }
                 }
                 window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store));
 
                 if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
                     self.render()
                 }
-                //if (mutation.target instanceof Document && mutation.target.childNodes.length === mutation.addedNodes.length && mutation.removedNodes.length === 0) {
+                //if (target instanceof Document && target.childNodes.length === mutation.addedNodes.length && mutation.removedNodes.length === 0) {
 
                 //}
 
