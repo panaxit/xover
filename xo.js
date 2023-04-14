@@ -1803,7 +1803,7 @@ xover.Source = function (source, tag, manifest_key) {
         value: async function (...args) {
             let url, href;
             let payload;
-            let qrl = xover.QRL(tag.substr(1));
+            let qri = xover.QUERI(tag.replace(/^#/,''));
             source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                 if (typeof (source) == 'string') {
                     source = tag.replace(new RegExp(manifest_key, "i"), source)
@@ -1818,7 +1818,7 @@ xover.Source = function (source, tag, manifest_key) {
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value])) || parameters
-                    parameters && {}.constructor === parameters.constructor && parameters.merge(qrl.predicate);
+                    parameters && {}.constructor === parameters.constructor && parameters.merge(qri.predicate);
                     if (tag === xover.site.active) {
                         parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
                     }
@@ -3270,41 +3270,49 @@ Object.defineProperty(URL.prototype, 'href', {
     }
 });
 
-xover.QRL = function (href) {
-    if (!(this instanceof xover.QRL)) return new xover.QRL(href);
-    let ref = href;
-    let target = {};
-    let fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings = new URLSearchParams();
-    href = href.value || href;
-    if (typeof (href) == 'string') {
-        let url = xover.URL(href);
-        predicate = url.searchParams;
-        fields = url.hash.replace(/^#/, '');
-        if (fields.indexOf("?") != -1 && fields.indexOf("?") < fields.indexOf("#")) {
-            ({ searchParams: settings, hash: fields = '' } = xover.URL(fields));
-            fields = fields.replace(/^#/, '');
+xover.QUERI = function (href) {
+    class Predicate extends URLSearchParams {
+        constructor(queryString) {
+            super(queryString);
+            // Add any additional properties or methods you want to your custom class
         }
-        let pathname = url.pathname.replace(/^\//, '');
-        [pathname, mode] = pathname.split(/~/);
-        [pathname, identity_value] = pathname.split(/:/);
-        [pathname, ref_node] = pathname.split(/@/);
-        [schema, name, ...primary_values] = pathname.split(/\//);
-        settings = Object.fromEntries(settings.entries());
-        predicate = Object.fromEntries(predicate.entries());
+        // Add any additional methods you want to your custom class
     }
-    target["fields"] = fields;
+
+    if (!(this instanceof xover.QUERI)) return new xover.QUERI(href);
+    let ref = href;
+    let fields, schema, name, mode, identity_value, primary_values, ref_node, settings = new URLSearchParams();
+    href = href && href.value || href || '';
+    let url = xover.URL(href.toString());
+    let target = new Proxy({}, {
+        get: function (self, key) {
+            return self[key];
+        },
+        set: function (self, key, value) {
+            return self[key] = value
+        }
+    });
+    let predicate = new Predicate(url.searchParams);
+    let headers = new Headers(new URLSearchParams(url.hash.replace(/^[\?#]+/, '')));
+    let pathname = url.pathname.replace(/^\//, '');
+    [pathname, mode] = pathname.split(/~/);
+    [pathname, identity_value] = pathname.split(/:/);
+    [pathname, ref_node] = pathname.split(/@/);
+    [schema, name, ...primary_values] = pathname.split(/\//);
+
     target["schema"] = schema;
     target["name"] = name;
     target["mode"] = mode;
+    target["fields"] = headers.get("fields");
     target["identity_value"] = identity_value;
     target["primary_values"] = primary_values;
     target["ref_node"] = ref_node;
     target["predicate"] = predicate;
-    target["settings"] = settings;
+    target["headers"] = headers;
     Object.defineProperties(target, {
         toString: {
             value: function () {
-                return `${schema}/${name}?${new URLSearchParams(predicate).toString()}#?${new URLSearchParams(settings).toString()}#${fields}`;
+                return `${schema}/${name}?${predicate.toString()}#${headers.toString()}`;
             }, enumerable: false, writable: false, configurable: false
         }
     });
@@ -3324,6 +3332,9 @@ xover.QRL = function (href) {
     //return { fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings }
     return target;
 }
+
+xover.qri = xover.QUERI;
+xover.QRI = xover.qri;
 
 xover.Request = function (request, settings = {}) {
     if (!(this instanceof xover.Request)) return new xover.Request(request, settings);
@@ -6719,7 +6730,7 @@ xover.modernize = function (targetWindow) {
                         ////    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         ////} catch (e) {
                         if (!xover.browser.isIOS()) {
-                            xpath = xpath.replace(RegExp("(?<=@|\\/|\\[|^|\\()([\\w-_]+):([\\w-_]+)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
+                            xpath = xpath.replace(RegExp("(?<=::|@|\\/|\\[|^|\\()([\\w-_]+):([\\w-_]+)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
                         }
                         console.log(xpath)
                         aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
