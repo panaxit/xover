@@ -880,7 +880,6 @@ xover.server = new Proxy({}, {
             }
             settings = Object.assign(Object.fromEntries(xo.manifest.getSettings(`server:${key}`)), settings)
             let payload = args.pop() || settings["payload"];
-            let query = args.pop() || settings["query"] || {};
 
             let url, params = {};
             let headers = new Headers(settings["headers"]);
@@ -898,7 +897,9 @@ xover.server = new Proxy({}, {
                     settings["query"] = payload;
                 }
             }
-            [...new URLSearchParams(query).entries()].map(([key, value]) => url.searchParams.set(key, value));
+            let query = args.pop() || settings["query"] || {};
+            [...new URLSearchParams(query).entries()].map(([key, value]) => url.searchParams.append(key, value));
+            delete settings["query"];
 
             try {
                 [return_value, request, response] = await xover.fetch(url, settings).then(response => [response.body, response.request, response]);
@@ -1803,7 +1804,7 @@ xover.Source = function (source, tag, manifest_key) {
         value: async function (...args) {
             let url, href;
             let payload;
-            let qri = xover.QUERI(tag.replace(/^#/,''));
+            let qri = xover.QUERI(tag.replace(/^#/, ''));
             source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                 if (typeof (source) == 'string') {
                     source = tag.replace(new RegExp(manifest_key, "i"), source)
@@ -2849,7 +2850,7 @@ xover.NodeSet = function (nodeSet = []) {
             //}
             ////stores.map(store => store.render(refresh));
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'setAttribute', {
         value: function (attribute, value, refresh) {
@@ -2860,7 +2861,7 @@ xover.NodeSet = function (nodeSet = []) {
                 }
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'set', {
         value: async function (...args) {
@@ -2868,7 +2869,7 @@ xover.NodeSet = function (nodeSet = []) {
                 target.set.apply(target, args);
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'setAttributeNS', {
         value: async function (namespaceURI, attribute, value, refresh) {
@@ -2879,20 +2880,20 @@ xover.NodeSet = function (nodeSet = []) {
                 }
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'getAttribute', {
         value: function (attribute) {
             //attribute = attribute.replace(/^@/, "");
             return nodeSet.reduce((arr, item) => { arr.push(item.getAttribute(attribute)); return arr; }, []);
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'highlight', {
         value: function () {
             nodeSet.map(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-source='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'setAttributes', {
         value: async function (delay) {
@@ -2907,7 +2908,7 @@ xover.NodeSet = function (nodeSet = []) {
                 });
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'removeAttribute', {
         value: function (attribute, refresh, delay) {
@@ -2924,7 +2925,7 @@ xover.NodeSet = function (nodeSet = []) {
             });
             stores.map(store => store.render(refresh));
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'appendBefore', {
         value: function () {
@@ -2934,7 +2935,7 @@ xover.NodeSet = function (nodeSet = []) {
                 }
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'appendAfter', {
         value: function () {
@@ -2944,7 +2945,7 @@ xover.NodeSet = function (nodeSet = []) {
                 }
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'textContent', {
         value: function () {
@@ -2954,7 +2955,7 @@ xover.NodeSet = function (nodeSet = []) {
                 }
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.defineProperty(nodeSet, 'moveTo', {
         value: function () {
@@ -2964,7 +2965,7 @@ xover.NodeSet = function (nodeSet = []) {
                 }
             });
         },
-        writable: false, enumerable: false, configurable: false
+        writable: true, enumerable: false, configurable: false
     });
     Object.setPrototypeOf(nodeSet, this);
     Object.setPrototypeOf(nodeSet, Array.prototype);
@@ -3247,7 +3248,7 @@ xover.URL = function (url, base, settings = {}) {
     }
     method = settings["method"] || method;
     query = settings["query"];
-    url = new URL(url.replace(/\+/g, '%2B'), base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+    url = new URL(url/*.replace(/\+/g, '%2B')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
 
     if (query instanceof URLSearchParams) {
         [...query.entries()].map(([key, value]) => url.searchParams.set(key, value));
@@ -3276,46 +3277,126 @@ xover.QUERI = function (href) {
             super(queryString);
             // Add any additional properties or methods you want to your custom class
         }
-        // Add any additional methods you want to your custom class
+        append(name, value) {
+            if (value === undefined) {
+                url.searchParams.delete(name)
+            } else {
+                url.searchParams.append(name, value)
+            }
+        }
+        set(name, value) {
+            url.searchParams.set(name, value)
+        }
+        delete(name) {
+            url.searchParams.delete(name)
+        }
+    };
+    class Fields {
+        constructor(json) {
+            let proxy = new Proxy(json, {
+                get(self, key) {
+                    if (self.hasOwnProperty(key)) {
+                        return self[key];
+                    }
+                    return undefined; // or delegate to another object
+                }, set(self, key, value) {
+                    if (value === undefined) {
+                        delete self[key];
+                    } else {
+                        self[key] = value;
+                    }
+                    headers.set("fields", new URLSearchParams(Object.entries(self)))
+                    url.hash = `#${new URLSearchParams(headers.entries()).toString()}`
+                }, deleteProperty: function (self, key) {
+                    delete self[key];
+                    url.hash = `#${new URLSearchParams(headers.entries()).toString()}`
+                }
+            });
+
+            Object.defineProperties(proxy, {
+                toString: {
+                    value: function () {
+                        return new URLSearchParams(this).toString()
+                    }, enumerable: false, writable: false, configurable: false
+                }
+            });
+            return proxy
+        }
     }
+
 
     if (!(this instanceof xover.QUERI)) return new xover.QUERI(href);
     let ref = href;
     let fields, schema, name, mode, identity_value, primary_values, ref_node, settings = new URLSearchParams();
     href = href && href.value || href || '';
+
+    let getParts = function (key) {
+        let pathname = url.pathname.replace(/^\//, '');
+        [pathname, mode] = pathname.split(/~/);
+        [pathname, identity_value] = pathname.split(/:/);
+        [pathname, ref_node] = pathname.split(/@/);
+        [schema = '', name = '', ...primary_values] = pathname.split(/\//);
+        return { schema, name, mode, primary_values, identity_value, ref_node }
+    }
     let url = xover.URL(href.toString());
-    let target = new Proxy({}, {
-        get: function (self, key) {
-            return self[key];
-        },
-        set: function (self, key, value) {
-            return self[key] = value
-        }
-    });
     let predicate = new Predicate(url.searchParams);
     let headers = new Headers(new URLSearchParams(url.hash.replace(/^[\?#]+/, '')));
-    let pathname = url.pathname.replace(/^\//, '');
-    [pathname, mode] = pathname.split(/~/);
-    [pathname, identity_value] = pathname.split(/:/);
-    [pathname, ref_node] = pathname.split(/@/);
-    [schema, name, ...primary_values] = pathname.split(/\//);
+    parts = getParts();
+    let target = new Proxy({}, {
+        get: function (self, key) {
+            if (parts.hasOwnProperty(key)) {
+                return parts[key];
+            }
+            if (self.hasOwnProperty(key)) {
+                return self[key];
+            }
+            return url[key];
+        },
+        set: function (self, key, value) {
+            self[key] = value;
+            if (key in url) {
+                url[key] = value;
+            }
+            parts = getParts();
+        }
+    });
 
-    target["schema"] = schema;
-    target["name"] = name;
-    target["mode"] = mode;
-    target["fields"] = headers.get("fields");
-    target["identity_value"] = identity_value;
-    target["primary_values"] = primary_values;
-    target["ref_node"] = ref_node;
-    target["predicate"] = predicate;
-    target["headers"] = headers;
     Object.defineProperties(target, {
-        toString: {
+        fields: {
+            get: function () {
+                let fields = Object.fromEntries(new URLSearchParams((headers.get("fields") || '').replace(/\+/g, '%2B')).entries());
+                return new Fields(fields);
+            },
+            set: function (input) {
+                headers.set("fields", input);
+                parts = getParts();
+            }
+        },
+        predicate: {
+            get: function () {
+                return new Predicate(url.searchParams);
+            },
+            set: function (input) {
+                url.search = input;
+            }
+        },
+        headers: {
+            get: function () {
+                return headers;
+            }
+        }, toString: {
             value: function () {
-                return `${schema}/${name}?${predicate.toString()}#${headers.toString()}`;
+                return `${url.pathname}?${url.searchParams.toString()}#${new URLSearchParams(headers.entries()).toString()}`;
+            }, enumerable: false, writable: false, configurable: false
+        }, update: {
+            value: function () {
+                if (ref instanceof Node) {
+                    ref.value = this.toString();
+                }
             }, enumerable: false, writable: false, configurable: false
         }
     });
+
     Object.defineProperties(target, {
         assign: {
             value: function (attribs) {
@@ -3329,7 +3410,6 @@ xover.QUERI = function (href) {
             }, enumerable: false, writable: false, configurable: false
         }
     });
-    //return { fields, schema, name, mode, identity_value, primary_values, ref_node, predicate, settings }
     return target;
 }
 
@@ -3342,7 +3422,7 @@ xover.Request = function (request, settings = {}) {
     let self = this;
     let _request = request;
     let query = new URLSearchParams(settings["query"] || settings["parameters"] || settings["params"]);
-    settings["query"] = query;
+    //settings["query"] = query;
     if (request instanceof Request) {
         req = request;
         if (Object.keys(settings).length) {
@@ -3907,7 +3987,7 @@ xover.xml.transform = function (xml, xsl, target) {
     }
     try {
         //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-            window.top.dispatchEvent(new xover.listener.Event('xmlTransformed', { original: xml, transformed: result }));
+        window.top.dispatchEvent(new xover.listener.Event('xmlTransformed', { original: xml, transformed: result }));
         //}
     } catch (e) { }
     return result
@@ -4692,6 +4772,7 @@ xover.Store = function (xml, ...args) {
                 if (!mutationList.length) return;
                 mutated_targets = new Map();
                 for (let mutation of mutationList) {
+                    let inserted_ids = [];
                     let value = mutated_targets.get(mutation.target) || {};
                     value.addedNodes = value.addedNodes || [];
                     value.addedNodes.push(...mutation.addedNodes);
@@ -4703,6 +4784,14 @@ xover.Store = function (xml, ...args) {
                         value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = {};
                     }
                     mutated_targets.set(mutation.target, value);
+                    [...mutation.addedNodes].forEach((addedNode) => {
+                        inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
+                    })
+                    let duplicated_node = inserted_ids.find(id => mutation.target.selectFirst(`(//*[@xo:id="${id}"])[2]`));
+                    if (duplicated_node) {
+                        Promise.reject(`Duplicated id ${duplicated_node}`)
+                        //console.log(inserted_ids)
+                    }
                 }
                 if (event && event.type == 'input') {
                     event.srcElement.preventChangeEvent = true;
@@ -4821,40 +4910,40 @@ xover.Store = function (xml, ...args) {
                 }
                 for (const [target, mutation] of [...mutated_targets]) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
-                        if (mutation.removedNodes.length) {
-                            if (typeof (target.getAttributeNS) === 'function' && !target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && !(target.firstElementChild || target.textContent)) {
-                                target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
-                            }
+                    if (mutation.removedNodes.length) {
+                        if (typeof (target.getAttributeNS) === 'function' && !target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && !(target.firstElementChild || target.textContent)) {
+                            target.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", "true");
                         }
-                        for (let el of [...mutation.addedNodes]) {
-                            window.top.dispatchEvent(new xover.listener.Event('append', { target: target }, el));
-                            el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.reseed());
-                        };
-                        if (mutation.addedNodes.length) {
-                            window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
-                            if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
-                                target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
-                            }
+                    }
+                    for (let el of [...mutation.addedNodes]) {
+                        window.top.dispatchEvent(new xover.listener.Event('append', { target: target }, el));
+                        el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.reseed());
+                    };
+                    if (mutation.addedNodes.length) {
+                        window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
+                        if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
+                            target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                         }
-                        //for (let el of [...mutation.removedNodes]) {
-                        //    Object.defineProperty(el, 'parentNode', { get: function () { return target } });
-                        //    window.top.dispatchEvent(new xover.listener.Event('remove', { target: target }, el));
-                        //};
-                        if (mutation.removedNodes.length) {
-                            //[...mutation.removedNodes].forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { store: store, target: target }), el));
-                            window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))
-                        }
+                    }
+                    //for (let el of [...mutation.removedNodes]) {
+                    //    Object.defineProperty(el, 'parentNode', { get: function () { return target } });
+                    //    window.top.dispatchEvent(new xover.listener.Event('remove', { target: target }, el));
+                    //};
+                    if (mutation.removedNodes.length) {
+                        //[...mutation.removedNodes].forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { store: store, target: target }), el));
+                        window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))
+                    }
                     window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes }, target));
 
                     let attr = target instanceof Element && target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                        if (!attr) {
-                            //let target_copy = target.cloneNode();
-                            //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
-                            //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                            attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                        }
-                        //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.store == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
-                        /*stores.filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());*/
+                    if (!attr) {
+                        //let target_copy = target.cloneNode();
+                        //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
+                        //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                        attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                    }
+                    //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.store == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
+                    /*stores.filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());*/
                 }
                 window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store));
 
@@ -6061,10 +6150,10 @@ xover.listener.on("focusout", function (event) {
     //if (((arguments || {}).callee || {}).caller === xover.dom.clear) {
     //    xover.dom.activeElement = event.target;
     //} else {
-        xover.dom.bluredElement = event.target;
-        if (xover.debug["focusout"]) {
-            console.log(event.target);
-        }
+    xover.dom.bluredElement = event.target;
+    if (xover.debug["focusout"]) {
+        console.log(event.target);
+    }
     //}
 })
 
@@ -6731,8 +6820,8 @@ xover.modernize = function (targetWindow) {
                         ////} catch (e) {
                         if (!xover.browser.isIOS()) {
                             xpath = xpath.replace(RegExp("(?<=::|@|\\/|\\[|^|\\()([\\w-_]+):([\\w-_]+|\\*)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
+                            //console.log(xpath)
                         }
-                        console.log(xpath)
                         aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         //}
                     } else {
@@ -8426,11 +8515,14 @@ xover.modernize = function (targetWindow) {
                 return cloned_element;
             }
 
-            Element.prototype.reseed = function () {
+            Element.prototype.reseed = function (forced) {
                 //if (navigator.userAgent.indexOf("Safari") == -1) {
                 //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                 //}
                 //try {
+                if (forced) {
+                    this.selectNodes('.//@xo:id').remove()
+                }
                 this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => original_setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
                 //} catch (e) {
                 //    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
@@ -8713,7 +8805,7 @@ xover.modernize = function (targetWindow) {
                         }
                         try {
                             //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                                window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, transformed: result }, this));
+                            window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, transformed: result }, this));
                             //}
                         } catch (e) { }
                         return result
@@ -9368,7 +9460,7 @@ addEventListener("unhandledrejection", (event) => {
         if (event.message || event.reason instanceof TypeError || event.reason instanceof DOMException) {
             String(event.message || event.reason).alert()
             console.error(event.message || event.reason)
-        } else if (typeof((event.message || event.reason).render) != 'undefined') {
+        } else if (typeof ((event.message || event.reason).render) != 'undefined') {
             (event.message || event.reason).render();
         } else {
             String(event.message || event.reason).alert()
