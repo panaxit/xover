@@ -3241,6 +3241,10 @@ xover.Response.prototype = Object.create(Response.prototype);
 var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 xover.URL = function (url, base, settings = {}) {
     if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
+    if (url === null) {
+        return Promise.reject(`${url} is not a valid value for xover.URL`)
+    }
+    url = url || '';
     let method;
     [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
     if (settings.body) {
@@ -3328,7 +3332,7 @@ xover.QUERI = function (href) {
     if (!(this instanceof xover.QUERI)) return new xover.QUERI(href);
     let ref = href;
     let fields, schema, name, mode, identity_value, primary_values, ref_node, settings = new URLSearchParams();
-    href = href && href.value || href || '';
+    href = (href instanceof Attr ? href.value : href);
 
     let getParts = function (key) {
         let pathname = url.pathname.replace(/^\//, '');
@@ -3338,7 +3342,13 @@ xover.QUERI = function (href) {
         [schema = '', name = '', ...primary_values] = pathname.split(/\//);
         return { schema, name, mode, primary_values, identity_value, ref_node }
     }
-    let url = xover.URL(href.toString());
+    let url = xover.URL(href);
+    if (!(url instanceof URL)) {
+        if (url instanceof Promise)
+            return url
+        else 
+        return Promise.reject(`${href} is not a valid value for QUERI`)
+    }
     let predicate = new Predicate(url.searchParams);
     let headers = new Headers(new URLSearchParams(url.hash.replace(/^[\?#]+/, '')));
     parts = getParts();
