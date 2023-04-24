@@ -8835,8 +8835,8 @@ xover.modernize = function (targetWindow) {
             let stylesheet_renderer_handler = async function () {
                 this._render_manager = this._render_manager || xover.delay(1).then(async () => {
                     let selector = this.ownerDocument.contains(this) && this.selector || undefined;
-                    let ref = selector && this.closest("[xo-stylesheet]");
-                    if (ref) {
+                    let section = selector && this.closest("[xo-stylesheet]");
+                    if (section) {
                         let stylesheet = this.getAttribute("xo-stylesheet");
                         let target_store = this.store;
                         if (target_store && !stylesheet) return this.store.render();
@@ -9145,7 +9145,7 @@ xover.modernize = function (targetWindow) {
                                     iframe.src = url;
                                 }
                                 target = iframe;
-                                //xover.site.restore(target);
+                                xover.site.restore(target);
                             } else if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                                 dom = await dom.transform('error.xslt');
                                 target = document.querySelector('main') || document.querySelector('body')
@@ -9168,7 +9168,7 @@ xover.modernize = function (targetWindow) {
                                 let active_element = document.activeElement;
                                 let active_element_selector = active_element.selector
                                 if (action == "replace") {
-                                    target.replaceWith(dom)//target = [target.replace(dom)];
+                                    target = target.replaceWith(dom)//target = [target.replace(dom)];
                                     //let to_be_replaced = target[0].querySelector(active_element_selector)
                                     //to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
@@ -9190,7 +9190,7 @@ xover.modernize = function (targetWindow) {
                                         return script;
                                     }));
                                 }
-                                /*xover.site.restore*/(target);
+                                xover.site.restore(target);
                             }
                             window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target, dom: dom }, self));
 
