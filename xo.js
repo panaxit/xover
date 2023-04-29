@@ -3346,8 +3346,8 @@ xover.QUERI = function (href) {
     if (!(url instanceof URL)) {
         if (url instanceof Promise)
             return url
-        else 
-        return Promise.reject(`${href} is not a valid value for QUERI`)
+        else
+            return Promise.reject(`${href} is not a valid value for QUERI`)
     }
     let predicate = new Predicate(url.searchParams);
     let headers = new Headers(new URLSearchParams(url.hash.replace(/^[\?#]+/, '')));
@@ -3644,47 +3644,52 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     settings["headers"] = (settings["headers"] || {});
     settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "text/xml, text/xsl")
 
-    let response = await xover.fetch(url, settings, on_success);
-    let return_value = response.document || response;
-    //if (!return_value.documentElement && response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
-    //    return_value = xover.xml.fromJSON(return_value.documentElement);
-    //}
-    if (xover.session.debug) {
-        return_value.$$(`//xsl:template[not(contains(@mode,'-attribute'))]/*[not(contains(string(@mode),'-attribute'))][not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy)]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]`).forEach(el => {
-            let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name(),'::')"/></xsl:if> ${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}</xsl:comment>`);
-            if (el.selectSingleNode('self::html:textarea')) {
-                el.insertFirst(debug_node)
-            } else {
-                el.appendBefore(debug_node)
+    try {
+        let response = await xover.fetch(url, settings, on_success);
+        let return_value = response.document || response;
+        //if (!return_value.documentElement && response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
+        //    return_value = xover.xml.fromJSON(return_value.documentElement);
+        //}
+        if (xover.session.debug) {
+            return_value.$$(`//xsl:template[not(contains(@mode,'-attribute'))]/*[not(contains(string(@mode),'-attribute'))][not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy)]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]`).forEach(el => {
+                let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name(),'::')"/></xsl:if> ${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}</xsl:comment>`);
+                if (el.selectSingleNode('self::html:textarea')) {
+                    el.insertFirst(debug_node)
+                } else {
+                    el.appendBefore(debug_node)
+                }
+            });
+        }
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//html:*[not(self::html:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
+            el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
+            if (!el.getAttribute("xo-attribute")) {
+                el.set("xo-attribute", "{name(current()[not(self::*)])}")
             }
         });
-    }
-    return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//html:*[not(self::html:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
-        el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
-        if (!el.getAttribute("xo-attribute")) {
-            el.set("xo-attribute", "{name(current()[not(self::*)])}")
-        }
-    });
-    return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`).forEach(el => {
-        el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
-        el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
-    });
-    return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").map(async node => {
-        let href = node.href || node.getAttribute("href");
-        if (!href.match(/^\//)) {
-            let new_href = new URL(href, response.url || response.href).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
-            if (node instanceof ProcessingInstruction) {
-                node.href = new_href;
-            } else {
-                node.setAttributeNS(null, "href", new_href);
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`).forEach(el => {
+            el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
+            el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
+        });
+        return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").map(async node => {
+            let href = node.href || node.getAttribute("href");
+            if (!href.match(/^\//)) {
+                let new_href = new URL(href, response.url || response.href).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
+                if (node instanceof ProcessingInstruction) {
+                    node.href = new_href;
+                } else {
+                    node.setAttributeNS(null, "href", new_href);
+                }
             }
+        });
+        let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.getAttribute("href")); return arr; }, []) || [];
+        if (imports.length) {
+            await Promise.all(imports.map(href => xover.sources[href].fetch()));
+            return_value = return_value.consolidate();
         }
-    });
-    let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.getAttribute("href")); return arr; }, []) || [];
-    if (imports.length) {
-        await Promise.all(imports.map(href => xover.sources[href].fetch()));
-        return_value = return_value.consolidate();
+    } catch (e) {
+        return Promise.reject(`Can't load file "${url}": ${e.message}`);
     }
+
     return return_value;
 }
 
