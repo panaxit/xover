@@ -1876,7 +1876,11 @@ xover.Source = function (source, tag, manifest_key) {
                     }
                     document = documents[0];
                 } else if (source[0] !== '#') {
-                    document = await xover.fetch.xml(source);
+                    try {
+                        document = await xover.fetch.xml(source);
+                    } catch (e) {
+                        return reject(e);
+                    }
                 }
                 if (!document) {
                     document = xover.sources.defaults[tag];
@@ -2064,20 +2068,23 @@ xover.spaces["env"] = "http://panax.io/state/environment"
 
 xover.timeouts = new Map();
 
-xover.alertManager = {};
+xover.alertManager = new Map();
 xover.dom.alert = async function (message) {
-    let message_id = message.toString()
-
-    xover.alertManager[message_id] = xover.alertManager[message_id] || xover.delay(1).then(async () => {
+    xover.alertManager[message] = xover.alertManager[message] || xover.delay(1).then(async () => {
         let xMessage = xover.data.createMessage(message)
-        await xMessage.addStylesheet({ href: "message.xslt", role: "modal" })
-        dom = await xMessage.transform();
-        document.body && document.body.appendChild(dom.documentElement)
-        return dom.documentElement;
-    }).finally(async () => {
-        delete xover.alertManager[message_id];
+        await xMessage.addStylesheet({ href: "message.xslt", role: "modal" });
+        try {
+            dom = await xMessage.transform();
+            document.body && document.body.appendChild(dom.documentElement)
+            return dom.documentElement;
+        } catch (e) {
+            console.error(e)
+            return xover.dom.createDialog(message.cloneNode(true))
+        }
+    }).finally(() => {
+        delete xover.alertManager[message];
     })
-    return xover.alertManager[message_id];
+    return xover.alertManager[message];
 }
 
 xover.dom.createDialog = function (message) {
@@ -3683,14 +3690,22 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
         });
         let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.getAttribute("href")); return arr; }, []) || [];
         if (imports.length) {
-            await Promise.all(imports.map(href => xover.sources[href].fetch()));
-            return_value = return_value.consolidate();
+            try {
+                let rejections = []
+                await Promise.all(imports.map(href => xover.sources[href].fetch().catch(e => rejections.push(e))));
+                if (rejections.length) {
+                    return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, los siguientes archivos no se pudieron descargar</legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}</li>`)}</ol></fieldset>`));
+                }
+                return_value = return_value.consolidate();
+            } catch (e) {
+                return Promise.reject(e);
+            }
         }
-    } catch (e) {
-        return Promise.reject(`Can't load file "${url}": ${e.message}`);
-    }
 
-    return return_value;
+        return return_value;
+    } catch (e) {
+        return Promise.reject(e);
+    }
 }
 
 xover.fetch.json = async function (url, settings = { rejectCodes: 400 }, on_success) {
@@ -4257,7 +4272,9 @@ xover.init = async function () {
         xover.manifest = new xover.Manifest(xover.manifest.merge(manifest));
         Object.assign(xover.spaces, xover.manifest.spaces);
         xover.modernize();
-        await Promise.all(xover.manifest.stylesheets.map(href => xover.sources[href]).map(source => source.fetch()));
+        xover.manifest.stylesheets.map(href => xover.sources[href]).forEach(source => {
+            source.fetch().catch(e => Promise.reject(e))
+        });
         await xover.stores.restore();
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
@@ -8616,7 +8633,12 @@ xover.modernize = function (targetWindow) {
                         let self = this;
                         if (xml_document instanceof Document && !xml_document.documentElement && xml_document.source) {
                             return new Promise(async (resolve, reject) => {
-                                return resolve(self.transform(await xml_document.source.fetch()));
+                                try {
+                                    let result = self.transform(await xml_document.source.fetch().catch(e => Promise.reject(e)))
+                                    return resolve(result);
+                                } catch (e) {
+                                    return reject(e)
+                                }
                             })
                         }
                         if (xml_document instanceof Promise) {
@@ -9472,13 +9494,16 @@ addEventListener("unhandledrejection", (event) => {
         return;
     }
     try {
-        if (event.message || event.reason instanceof TypeError || event.reason instanceof DOMException) {
+        let reason = event.message || event.reason;
+        if (reason instanceof TypeError || reason instanceof DOMException) {
             String(event.message || event.reason).alert()
             console.error(event.message || event.reason)
-        } else if (typeof ((event.message || event.reason).render) != 'undefined') {
-            (event.message || event.reason).render();
+        } else if (reason instanceof HTMLElement) {
+            xover.dom.alert(reason);
+        } else if (typeof (reason.render) != 'undefined') {
+            reason.render();
         } else {
-            String(event.message || event.reason).alert()
+            String(reason).alert()
         }
     } catch (e) {
         console.error(e);
