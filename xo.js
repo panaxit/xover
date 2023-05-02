@@ -2079,7 +2079,7 @@ xover.dom.alert = async function (message) {
             return dom.documentElement;
         } catch (e) {
             console.error(e)
-            return xover.dom.createDialog(message.cloneNode(true))
+            return xover.dom.createDialog(typeof (message.cloneNode) != 'undefined' && message.cloneNode(true) || message)
         }
     }).finally(() => {
         delete xover.alertManager[message];
@@ -5513,7 +5513,7 @@ xover.Store = function (xml, ...args) {
                     if ([401].includes(e.status)) {
                         console.error(e.statusText)
                     } else {
-                        xover.dom.alert(e.statusText)
+                        return Promise.reject(e);
                     }
                 } else {
                     console.log(`Couldn't render store ${tag}`)
