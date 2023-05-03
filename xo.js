@@ -3259,7 +3259,7 @@ xover.URL = function (url, base, settings = {}) {
     }
     method = settings["method"] || method;
     query = settings["query"];
-    url = new URL(url/*.replace(/\+/g, '%2B')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+    url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
 
     if (query instanceof URLSearchParams) {
         [...query.entries()].map(([key, value]) => url.searchParams.set(key, value));
@@ -3286,7 +3286,6 @@ xover.QUERI = function (href) {
     class Predicate extends URLSearchParams {
         constructor(queryString) {
             super(queryString);
-            // Add any additional properties or methods you want to your custom class
         }
         append(name, value) {
             if (value === undefined) {
