@@ -1903,7 +1903,7 @@ xover.Source = function (source, tag, manifest_key) {
                 let targets = []
                 if (e.status != 404 && document && document.render) {
                     targets = await document.render();
-                    if (!targets.length) {
+                    if (!(targets && targets.length)) {
                         return Promise.reject(e)
                     }
                 } else {
@@ -7268,7 +7268,7 @@ xover.modernize = function (targetWindow) {
                         let targets = []
                         if (e.status != 404 && document && document.render) {
                             targets = await document.render();
-                            if (!targets.length) {
+                            if (!(targets && targets.length)) {
                                 return reject(e)
                             }
                         } else {
