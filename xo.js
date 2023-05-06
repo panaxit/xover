@@ -622,9 +622,14 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         //        }
         //    }
         //}
-        let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
+        event.detail = event.detail || {};
+        let handlers = new Map([...fns, ...new Map(event.detail.listeners)]);
         for (let [, handler] of [...handlers]) {
-            handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments);
+            let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
+            if (returnValue !== undefined) {
+                event.returnValue = returnValue;
+                event.detail.returnValue = returnValue;
+            }
             if (event.srcEvent) {
                 event.srcEvent.returnValue = event.returnValue;
             }
@@ -6827,6 +6832,22 @@ xover.modernize = function (targetWindow) {
                             return [node.selectNodes('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.selectNodes(key).includes(this))
                         }
                     }
+                }
+            })
+
+            Object.defineProperty(Attr.prototype, 'dispatch', {
+                value: function (event_name, args) {
+                    let event = new xover.listener.Event(event_name, { target: this, element: this.parentNode, attribute: this }, this);
+                    window.top.dispatchEvent(event);
+                    return event.detail.returnValue;
+                }
+            })
+
+            Object.defineProperty(Element.prototype, 'dispatch', {
+                value: function (event_name, args) {
+                    let event = new xover.listener.Event(event_name, { target: this, element: this }, this);
+                    window.top.dispatchEvent(event);
+                    return event.detail.returnValue;
                 }
             })
 
