@@ -3691,9 +3691,25 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
         });
         let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.getAttribute("href")); return arr; }, []) || [];
         if (imports.length) {
+            function assert(condition, message) {
+                if (!condition) {
+                    throw new Error(message);
+                }
+            }
+
             try {
                 let rejections = []
                 await Promise.all(imports.map(href => xover.sources[href].fetch().catch(e => rejections.push(e))));
+                if (xover.session.debug) {
+                    return_value.select(`//xsl:*[xsl:param]`).forEach(template => {
+                        let param_names = [...template.select(`xsl:param/@name`).map(param => param.value)];
+                        try {
+                            assert(param_names.length == [...new Set(param_names)].length, `Los nombres de los parámetros deben ser únicos en: ${template.nodeName} ${template.select(`@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}>`)
+                        } catch (e) {
+                            rejections.push(e)
+                        }
+                    })
+                }
                 if (rejections.length) {
                     return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, los siguientes archivos no se pudieron descargar</legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}</li>`)}</ol></fieldset>`));
                 }
@@ -5044,180 +5060,6 @@ xover.Store = function (xml, ...args) {
         }
     });
 
-    Object.defineProperty(this, 'triggerBindings', {
-        value: async function (backwards_compatibility = false) {
-            var context = this;
-            if (!(context.isActive)) {
-                return;
-            }
-            if (!(!((xover.manifest.server || {}).login && !(xover.session.getKey('status') == 'authorized')) && context && typeof (context.selectSingleNode) != 'undefined' && (context.selectSingleNode('.//@source:*|.//request:*|.//source:*') || context.stylesheets.filter(stylesheet => stylesheet.role == 'binding' || stylesheet.target == "self")))) {
-                return; //*** Revisar si en vez de salir, revisar todo el documento
-            }
-            //if (!context.selectSingleNode('//@source:*') || context.selectSingleNode('.//@request:*[local-name()!="init"]')) {
-            //    return;
-            //}
-            if (backwards_compatibility) {
-                let new_bindings = 0;
-                let bindings = [].concat(
-                    context.stylesheets.filter(stylesheet => stylesheet.role == "binding" || stylesheet.target == "self" && stylesheet.action == 'replace').map(async function (stylesheet) {
-                        if ((await stylesheet.document || window.document.createElement('p')).selectSingleNode('//xsl:copy[not(xsl:apply-templates) and not(comment()="ack:no-apply-templates")]')) {
-                            console.warn('In a binding stylesheet a xsl:copy withow a xsl:apply-templates may cause an infinite loop. If missing xsl:apply-templates was intentional, please add an acknowledge comment <!--ack:no-apply-templates-->');
-                        };
-                        return stylesheet
-                    })
-                    //, (xover.manifest.getSettings(context, 'stylesheets') || []).filter(stylesheet => stylesheet.role == "binding" || (stylesheet.target || '').match(/^self::./)).map(stylesheet => stylesheet.href)
-                    , ["xover/databind.xslt"]);
-                bindings = await Promise.all(bindings).then(document => document)
-                bindings = [...new Set(bindings)].filter(binding => binding);
-                //let original = xover.xml.clone(context); //Se obtiene el original si se quieren comparar cambios
-                if (!__document.documentElement.resolveNS("changed")) {
-                    __document.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:changed", xover.spaces["changed"])
-                }
-                let cloned_document = __document.cloneNode(true);
-                cloned_document.store = context;
-                let some_changed = false;
-                var changed = cloned_document.selectNodes("//@changed:*");
-                var stylesheets = [];
-                for (let binding of bindings) {
-                    do {
-                        changed && changed.remove(false);
-                        stylesheet = await binding;
-                        if (!stylesheets.find(doc => doc.selectSingleNode(`//xsl:import[@href="${stylesheet.href || stylesheet}"]|//xsl:import[@href="${stylesheet.href || stylesheet}"]|//comment()[contains(.,'=== Imported from "${stylesheet.href || stylesheet}" ===')]`))) {
-                            let xsl_doc = stylesheet.document || context.sources[stylesheet] || xover.sources[stylesheet]// || await xover.sources.load(stylesheet);
-                            !xsl_doc.documentElement && xsl_doc.fetch && await xsl_doc.fetch();
-                            stylesheets.push(xsl_doc);
-
-                            if (stylesheet.target == "self") {
-                                let i = 0;
-                                do {
-                                    cloned_document.selectNodes("//@binding:changed").remove(false);
-                                    ++i;
-                                    cloned_document = cloned_document.transform(xsl_doc);
-                                } while (i < 15 && cloned_document.selectSingleNode(stylesheet.assert || '*[1=0]') && (!xsl_doc.documentElement.getAttribute('xmlns:binding') || cloned_document.selectSingleNode("//@binding:changed")))
-                            } else {
-                                cloned_document = cloned_document.transform(xsl_doc.consolidate());
-                            }
-                            cloned_document.store = context;
-                        }
-                        changed = cloned_document.selectNodes("//@changed:*");
-                        some_changed = (some_changed || !!changed.length);
-                    } while (context && changed.length && ++new_bindings <= 15)
-                }
-                if (cloned_document.$(`//*[not(@xo:id)]`)) {
-                    cloned_document.reseed();
-                }
-                //if (some_changed) { //se quita esta validación porque los bindings podrían estar modificando el documento sin marcar un cambio con changed:*
-                __document.replaceBy(cloned_document); // context.document = cloned_document; TODO: Revisar si es necesario hacer la asignación por medio de la propiedad .document
-                ////}
-
-                ///* Con este código se detectan cambios. Pero es muy costoso*/
-                ////let differences = xover.xml.compare(context, original, true)
-                ////differences.selectNodes('//c:change[@c:type!="Node"]').map(change => {
-                ////    let changes = change ? [...context.selectSingleNode(`//*[@xo:id="${change.getAttributeNS("http://panax.io/xover", "id")}"]`).attributes].filter(attribute => (attribute.prefix != 'xmlns' && change.getAttribute(attribute.name) != attribute.value)) : [];
-                ////    changes.map(attribute => {
-                ////        original.store = context.store;
-                ////        original.selectSingleNode(`//*[@xo:id="${attribute.ownerElement.getAttributeNS("http://panax.io/xover", "id")}"]`).setAttributeNS(null, attribute.name, attribute.value, false);
-                ////    });
-                ////})
-                //if (!(xover.manifest.server || {}).request) {
-                //    return
-                //}
-                if (new_bindings) {
-                    context.takeSnapshot();
-                }
-            }
-
-            var requests = context.selectNodes(`//*[contains(namespace-uri(),'http://panax.io/source') and not(@state:disabled="true") and not(*)]`)//context.selectNodes('.//source:*[not(@state:disabled="true") and not(*)]|.//request:*[not(@state:disabled="true") and not(*)]');
-            var tag = context.tag;
-            requests = requests.filter(req => !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag].hasOwnProperty(req.nodeType == 1 ? req.getAttribute("command") : req.value)));
-            if (requests.length) {
-                for (let node of requests) {
-                    //if (!(node.prefix in (xover.manifest.server || {}))) {
-                    //    console.warn(`Endpoint ${node.prefix} is not configured`)
-                    //    continue;
-                    //}
-                    let command = (node.getAttribute("command") || '').replace(/^[\s\n]+|[\s\n]+$/g, "");
-                    let request = `${node.prefix}:=${command || ''}`;
-
-                    xover.data.binding.requests[tag] = (xover.data.binding.requests[tag] || {});
-                    if (!(request || '').match("{{") && !(xover.data.binding.requests[tag] && xover.data.binding.requests[tag][request])) {
-                        console.log("Binding " + request);
-
-                        let response_handler = async (response) => {
-                            //var response_is_message = !!response.documentElement.selectSingleNode('self::xo:message');
-                            //if (!response_is_message && !response.selectSingleNode(`//${root_node}`)) {
-                            //    let new_node = xover.xml.createDocument(`<${root_node} xmlns:source="http://panax.io/source"/>`);
-                            //    new_node.documentElement.appendChild(response.documentElement);
-                            //    response.appendChild(new_node.documentElement);
-                            //}
-                            ////response.documentElement.setAttributeNS(null, "request", original_request)
-                            ////response = xover.xml.reseed(response);
-                            /*!(response instanceof xover.Store) && node.selectNodes(`//source:*[@request="${request}"]`).map((targetNode, index, array) => {*/
-                            if (response instanceof Error) {
-                                return Promise.reject(response);
-                            } else if (typeof (response) === 'string') {
-                                return Promise.reject(new Error(response))
-                            } else if (!(response instanceof Document)) {
-                                return Promise.reject(new Error("Response is not a document"))
-                            } else if (!response.documentElement) {
-                                return Promise.reject(new Error("Response is empty"))
-                            }
-                            let targetNode = node
-                            let new_node = response.cloneNode(true).reseed();
-                            let fragment = document.createDocumentFragment();
-                            if (response.documentElement && (response.documentElement.tagName == targetNode.tagName || response.documentElement.$('self::xo:response') || ["http://www.mozilla.org/TransforMiix"].includes(response.documentElement.namespaceURI))) {
-                                if (!new_node.documentElement.firstElementChild) {
-                                    fragment.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed());
-                                } else {
-                                    fragment.append(...new_node.documentElement.childNodes);
-                                }
-                            } else {
-                                fragment.append(...new_node.childNodes);
-                            }
-                            new_node.documentElement && new_node.documentElement.selectNodes("@xo:id").remove()
-                            let prev_value = targetNode.parentNode.getAttribute("prev:value");
-                            targetNode = context.find(targetNode) || targetNode;
-                            new_node.documentElement.selectNodes('@*').forEach(attr => targetNode.setAttributeNS(attr.namespaceURI, attr.name, attr.value))
-                            if (response.documentElement.selectSingleNode(`xo:r[@value="${prev_value}"]`)) {
-                                targetNode.parentElement.setAttributeNS(null, "value", prev_value)
-                            }
-                                /*if (array.length > xover.data.binding["max_subscribers"]) {
-                                    targetNode.parentElement.appendChild(xover.data.createMessage("Load truncated").documentElement);
-                                    console.warn("Too many requests may create a big document. Place binding in a common place.")
-                                } else */if (fragment.childNodes.length) {
-                                targetNode.append(fragment);
-                                //if (response_is_message) {
-                                //    targetNode.appendChild(response.documentElement);
-                                //} else {
-                                //    let new_node = xover.xml.createDocument(response);
-                                //    targetNode.selectNodes('@*').map(attr => {
-                                //        new_node.documentElement.setAttributeNS(null, attr.name, attr.value, false)
-                                //    });
-                                //    targetNode.parentElement.replaceChild(new_node.documentElement, targetNode);
-                                //}
-                            } else {
-                                targetNode.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed());
-                            }
-                            xover.site.sections.map(el => [el, el.stylesheet]).filter(el => el.store === context).forEach(([el]) => el.render())
-                            delete xover.data.binding.requests[self.tag][request];
-
-                        };
-                        let headers = new Headers({
-                            "Accept": content_type.xml
-                        })
-                        xover.data.binding.requests[tag][request] = (xover.data.binding.requests[tag][request] || xover.sources[`${node.nodeName}:=${node.get("command")}`].fetch(xover.json.tryParse(command), {
-                            source: node
-                            , method: 'GET'
-                            , headers: headers
-                        }).then(response_handler).catch(response_handler));
-                    }
-                }
-                //xover.data.binding.updateSources();
-            }
-        },
-        writable: false, enumerable: false, configurable: false
-    });
-
     Object.defineProperty(this, 'reseed', {
         value: function () {
             var start_date = new Date();
@@ -5487,7 +5329,6 @@ xover.Store = function (xml, ...args) {
                 //if (!isActive) {
                 //    return Promise.reject(`Store ${tag} is not active`);
                 //}
-                //self.triggerBindings();
 
                 let doc = __document.cloneNode(true);
                 _store_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
