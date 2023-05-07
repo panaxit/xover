@@ -7308,14 +7308,17 @@ xover.modernize = function (targetWindow) {
                 } else {
                     style_definition = definition
                 }
-                if (!this.getStylesheet(definition.href)) {
-                    var pi = document.createProcessingInstruction('xml-stylesheet', style_definition);
+                let stylesheet = this.getStylesheet(definition.href);
+                if (!stylesheet) {
+                    stylesheet = document.createProcessingInstruction('xml-stylesheet', style_definition);
                     if (store && (refresh/* || !store.state.initializing*/)) {
                         store.render();
                     }
-                    document.insertBefore(pi, target || document.selectSingleNode(`(processing-instruction('xml-stylesheet')${definition.role == 'init' ? '' : definition.role == 'binding' ? `[not(contains(.,'role="init"') or contains(.,'role="binding"'))]` : '[1=0]'} | *[1])[1]`));
+                    let beforeEvent = new xover.listener.Event('beforeAddStylesheet', { stylesheet: stylesheet }, this);
+                    window.top.dispatchEvent(beforeEvent);
+                    if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
+                    document.insertBefore(stylesheet, target || document.selectSingleNode(`(processing-instruction('xml-stylesheet')${definition.role == 'init' ? '' : definition.role == 'binding' ? `[not(contains(.,'role="init"') or contains(.,'role="binding"'))]` : '[1=0]'} | *[1])[1]`));
                 }
-                let stylesheet = this.getStylesheet(definition.href);
                 return stylesheet; //.document.documentElement && document || stylesheet.document.fetch();
             }
 
