@@ -545,11 +545,11 @@ xover.listener.Event = function (event_name, params = {}, context) {
         _event.detail["store"] = _event.detail["store"] || context.store;
         _event.detail["target"] = _event.detail["target"] || context.documentElement;
     } else if (context instanceof xover.Store) {
-        _event.detail["tag"] = _event.detail["tag"] || context.tag;
+        //_event.detail["tag"] = _event.detail["tag"] || context.tag;
         _event.detail["store"] = _event.detail["store"] || context;
         _event.detail["target"] = _event.detail["target"] || context.documentElement;
     } else if (context instanceof xover.Source) {
-        _event.detail["tag"] = _event.detail["tag"] || context.tag;
+        //_event.detail["tag"] = _event.detail["tag"] || context.tag;
         _event.detail["source"] = _event.detail["source"] || context;
         _event.detail["target"] = _event.detail["target"] || context.documentElement;
     } else if (context instanceof Response) {
@@ -558,15 +558,15 @@ xover.listener.Event = function (event_name, params = {}, context) {
         _event.detail["target"] = _event.detail["target"] || context.documentElement;
         _event.detail["document"] = _event.detail["document"] || context.document;
         _event.detail["body"] = _event.detail["body"] || context.body;
-        _event.detail["tag"] = _event.detail["tag"] || context.tag;
+        //_event.detail["tag"] = _event.detail["tag"] || context.tag;
         node = _event.detail["return_value"] || context.document;
         node = node instanceof Document && node.documentElement || node;
     }
-    if (_event.detail["store"]) {
-        _event.detail["tag"] = _event.detail["tag"] || _event.detail["store"].tag;
-    }
-    //Object.setPrototypeOf(_event, CustomEvent.prototype);
-    //Object.setPrototypeOf(_event, xover.listener.Event.prototype);
+    //if (_event.detail["store"]) {
+    //    _event.detail["tag"] = _event.detail["tag"] || _event.detail["store"].tag;
+    //}
+    ////Object.setPrototypeOf(_event, CustomEvent.prototype);
+    ////Object.setPrototypeOf(_event, xover.listener.Event.prototype);
     return _event;
 }
 xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
@@ -574,23 +574,11 @@ xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 Object.defineProperty(xover.listener, 'matches', {
     value: function (context, event_type) {
         context = context instanceof Window && event_type.split(/(?<!::.*)::/)[1] || context;
-        event_type = event_type.split(/(?<!::.*)::/)[0];
+        //event_type = event_type.split(/(?<!::.*)::/)[0];
+        let tag = (event && event.detail || {}).tag || '';
         let fns = new Map();
-        for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/(?<!::.*)::/)[0] == event_type).reverse()) {
-            for (let [, handler] of handlers) {
-                let [, predicate] = event_name.split(/(?<!::.*)::/);
-                if (predicate) {
-                    if (context == predicate) {
-                        fns.set(handler.toString(), handler);
-                    } else if (typeof (context.matches) != 'undefined') {
-                        if (context.matches(predicate)) {
-                            fns.set(handler.toString(), handler);
-                        }
-                    }
-                } else {
-                    fns.set(handler.toString(), handler);
-                }
-            }
+        for (let [[, handler]] of ([...xover.listener.get(event_type).values()].filter(([[predicate]]) => predicate === tag || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate)))) {
+                fns.set(handler.toString(), handler);
         }
         return fns;
     },
@@ -624,7 +612,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         //}
         event.detail = event.detail || {};
         let handlers = new Map([...fns, ...new Map(event.detail.listeners)]);
-        for (let [, handler] of [...handlers]) {
+        for (let handler of [...handlers.values()].reverse()) {
             let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 event.returnValue = returnValue;
@@ -639,6 +627,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             if (event.srcEvent && event.cancelBubble) {
                 event.srcEvent.stopPropagation();
             }
+            if (event.propagationStopped) break;
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -648,13 +637,17 @@ Object.defineProperty(xover.listener, 'on', {
     value: function (name__or_list, handler, options = {}) {
         name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
         for (let event_name of name__or_list) {
-            let handler_array = xover.listener.get(event_name) || new Map();
-            handler_array.set(handler.toString(), handler);
-            xover.listener.set(event_name, handler_array);
-
-            let [base_event, predicate] = event_name.split(/::/);
+            let [base_event, ...predicate] = event_name.split(/::/);
+            predicate = predicate.join("::");
             window.top.removeEventListener(event_name, xover.listener.dispatcher);
             window.top.addEventListener(event_name, xover.listener.dispatcher, options);
+
+            let event_array = xover.listener.get(base_event) || new Map();
+            let handler_map = event_array.get(handler.toString()) || new Map();
+            handler_map.set(predicate, handler);
+            event_array.set(handler.toString(), handler_map);
+            xover.listener.set(base_event, event_array);
+
             if (predicate) {
                 window.top.removeEventListener(base_event, xover.listener.dispatcher);
                 window.top.addEventListener(base_event, xover.listener.dispatcher, options);
@@ -3546,7 +3539,6 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
                 original_response = await fetch(req.url, init);
             }
         } catch (e) {
-            //console.log(e);
             return Promise.reject([e, req, { bodyType: 'text' }]);
         }
     }
@@ -3599,10 +3591,11 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
             }
         });
     }
+    window.top.dispatchEvent(new xover.listener.Event(`response`, { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
     if (response.ok) {
-        window.top.dispatchEvent(new xover.listener.Event('fetch', { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`success`, { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
     } else {
-        window.top.dispatchEvent(new xover.listener.Event('failure', { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`failure`, { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
     }
 
     if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
@@ -6835,6 +6828,14 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            var original_StopPropagation = Object.getOwnPropertyDescriptor(Event.prototype, 'stopPropagation');
+            Object.defineProperty(Event.prototype, 'stopPropagation', {
+                value: function () {
+                    Object.defineProperty(this, 'propagationStopped', { value: true })
+                    original_StopPropagation.value.call(this);
+                }
+            });
+
             Object.defineProperty(Attr.prototype, 'dispatch', {
                 value: function (event_name, args) {
                     let event = new xover.listener.Event(event_name, { target: this, element: this.parentNode, attribute: this }, this);
@@ -7120,7 +7121,7 @@ xover.modernize = function (targetWindow) {
                                 __document.replaceBy(new_document.cloneNode(true)); //document is cloned to keep the original document in the source
                             }
                         }
-                        window.top.dispatchEvent(new xover.listener.Event('load', { document: new_document, store: store }, __document));
+                        window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store }, __document));
                         resolve(__document);
                     }).catch(async (e) => {
                         if (!e) {
