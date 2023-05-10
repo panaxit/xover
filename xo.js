@@ -1613,6 +1613,12 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                     } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
                         message.closest("html").remove();
                         //result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
+                    } else if (String(message.textContent).match(/Extra content at the end of the document/)) {
+                        let frag = window.document.createDocumentFragment();
+                        let p = window.document.createElement('p');
+                        p.innerHTML = xml;
+                        frag.append(...p.childNodes);
+                        return frag;
                     } else if (message.closest("html")) {
                         if (options["silent"] !== true) {
                             xover.dom.createDialog(message.closest("html"));
@@ -9064,7 +9070,7 @@ xover.modernize = function (targetWindow) {
                                 let active_element_selector = active_element.selector
                                 if (action == "replace") {
                                     target = target.replaceWith(dom)//target = [target.replace(dom)];
-                                    //let to_be_replaced = target[0].querySelector(active_element_selector)
+                                    //let to_be_replaced = target.querySelector(active_element_selector)
                                     //to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
                                     //target.append(dom);
