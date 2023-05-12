@@ -292,13 +292,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -577,8 +577,10 @@ Object.defineProperty(xover.listener, 'matches', {
         //event_type = event_type.split(/(?<!::.*)::/)[0];
         let tag = (event && event.detail || {}).tag || '';
         let fns = new Map();
-        for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate))) {
+        if (xover.listener.get(event_type)) {
+            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate))) {
                 fns.set(handler.toString(), handler);
+            }
         }
         return fns;
     },
@@ -610,13 +612,14 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         //        }
         //    }
         //}
-        event.detail = event.detail || {};
-        let handlers = new Map([...fns, ...new Map(event.detail.listeners)]);
+        let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         for (let handler of [...handlers.values()].reverse()) {
             let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 event.returnValue = returnValue;
-                event.detail.returnValue = returnValue;
+                if (event.detail) {
+                    event.detail.returnValue = returnValue;
+                }
             }
             if (event.srcEvent) {
                 event.srcEvent.returnValue = event.returnValue;
@@ -1804,7 +1807,7 @@ xover.Source = function (source, tag, manifest_key) {
             target[name] = value
         }
     })
-    Object.defineProperty(this, 'fetch', {
+    Object.defineProperty(this, `fetch`, {
         value: async function (...args) {
             let url, href;
             let payload;
@@ -1822,12 +1825,12 @@ xover.Source = function (source, tag, manifest_key) {
                 window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, self));
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
-                    parameters = parameters && {}.constructor === parameters.constructor && Object.fromEntries(Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value])) || parameters
-                    parameters && {}.constructor === parameters.constructor && parameters.merge(qri.predicate);
+                    parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+                    parameters = parameters.concat([...qri.predicate]);
                     if (tag === xover.site.active) {
-                        parameters.merge(Object.fromEntries((new URLSearchParams(location.search)).entries()))
+                        parameters.concat((new URLSearchParams(location.search)).entries())
                     }
-                    parameters = parameters.constructor === [].constructor && parameters || [parameters];
+                    //parameters = parameters.constructor === [].constructor && parameters || [parameters];
                     return [endpoint, parameters]
                 })
                 let settings;
@@ -1852,10 +1855,10 @@ xover.Source = function (source, tag, manifest_key) {
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
                                 if (endpoint.replace(/^server:/, '') in xover.server) {
-                                    document = await xover.server[endpoint.replace(/^server:/, '')].apply(self, parameters);
+                                    document = await xover.server[endpoint.replace(/^server:/, '')].apply(self, [parameters]);
                                 } else if (existsFunction(endpoint)) {
                                     let fn = eval(endpoint);
-                                    document = await fn.apply(self, parameters.concat(args));
+                                    document = await fn.apply(self, [parameters.concat(args)]);
                                 }
                             } catch (e) {
                                 if (e instanceof Response && e.document instanceof XMLDocument) {
@@ -4840,11 +4843,11 @@ xover.Store = function (xml, ...args) {
                     [...mutation.addedNodes].forEach((addedNode) => {
                         inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
                     })
-                    let duplicated_node = inserted_ids.find(id => mutation.target.selectFirst(`(//*[@xo:id="${id}"])[2]`));
-                    if (duplicated_node) {
-                        Promise.reject(`Duplicated id ${duplicated_node}`)
-                        //console.log(inserted_ids)
-                    }
+                    //let duplicated_node = inserted_ids.find(id => mutation.target.selectFirst(`(//*[@xo:id="${id}"])[2]`));
+                    //if (duplicated_node) {
+                    //    Promise.reject(`Duplicated id ${duplicated_node}`)
+                    //    //console.log(inserted_ids)
+                    //}
                 }
                 if (event && event.type == 'input') {
                     event.srcElement.preventChangeEvent = true;
