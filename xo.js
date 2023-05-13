@@ -1811,7 +1811,7 @@ xover.Source = function (source, tag, manifest_key) {
         value: async function (...args) {
             let url, href;
             let payload;
-            let qri = xover.QUERI(tag.replace(/^#/, ''));
+            //let qri = xover.QUERI(tag.replace(/^#/, ''));
             source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                 if (typeof (source) == 'string') {
                     source = tag.replace(new RegExp(manifest_key, "i"), source)
@@ -1826,11 +1826,14 @@ xover.Source = function (source, tag, manifest_key) {
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
-                    parameters = parameters.concat([...qri.predicate]);
-                    if (tag === xover.site.active) {
-                        parameters.concat((new URLSearchParams(location.search)).entries())
-                    }
+                    //parameters = parameters.concat([...qri.predicate]);
+                    //if (location.search && tag === xover.site.active) {
+                    //    parameters.concat((new URLSearchParams(location.search)).entries())
+                    //}
                     //parameters = parameters.constructor === [].constructor && parameters || [parameters];
+                    if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
+                        parameters = [parameters];
+                    }
                     return [endpoint, parameters]
                 })
                 let settings;
@@ -1851,14 +1854,14 @@ xover.Source = function (source, tag, manifest_key) {
                     document = stored_document
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
-                    endpoints.map(async ([endpoint, parameters]) => {
+                    for (let [endpoint, parameters] of endpoints) {
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
                                 if (endpoint.replace(/^server:/, '') in xover.server) {
-                                    document = await xover.server[endpoint.replace(/^server:/, '')].apply(self, [parameters]);
+                                    document = await xover.server[endpoint.replace(/^server:/, '')].apply(self, parameters);
                                 } else if (existsFunction(endpoint)) {
                                     let fn = eval(endpoint);
-                                    document = await fn.apply(self, [parameters.concat(args)]);
+                                    document = await fn.apply(self, args.concat(parameters));
                                 }
                             } catch (e) {
                                 if (e instanceof Response && e.document instanceof XMLDocument) {
@@ -1873,7 +1876,7 @@ xover.Source = function (source, tag, manifest_key) {
                             }
                             resolve(document);
                         }));
-                    });
+                    }
                     let documents;
                     try {
                         documents = await Promise.all(promises).then(document => document);
