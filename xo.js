@@ -6849,16 +6849,40 @@ xover.modernize = function (targetWindow) {
             });
 
             Object.defineProperty(Attr.prototype, 'dispatch', {
-                value: function (event_name, args) {
-                    let event = new xover.listener.Event(event_name, { target: this, element: this.parentNode, attribute: this }, this);
+                value: function (event_name, ...args) {
+                    let detail = { target: this, element: this.parentNode, attribute: this };
+                    args.forEach(arg => {
+                        if (arg instanceof Array) {
+                            detail.args = detail.args || []
+                            detail.args.concat(arg)
+                        } else if (arg.constructor === {}.constructor) {
+                            detail.assign(arg)
+                        } else {
+                            detail.args = detail.args || []
+                            detail.args.push(arg)
+                        }
+                    });
+                    let event = new xover.listener.Event(event_name, detail, this);
                     window.top.dispatchEvent(event);
                     return event.detail.returnValue;
                 }
             })
 
             Object.defineProperty(Element.prototype, 'dispatch', {
-                value: function (event_name, args) {
-                    let event = new xover.listener.Event(event_name, { target: this, element: this }, this);
+                value: function (event_name, ...args) {
+                    let detail = { target: this, element: this };
+                    args.forEach(arg => {
+                        if (arg instanceof Array) {
+                            detail.args = detail.args || []
+                            detail.args.concat(arg)
+                        } else if (arg.constructor === {}.constructor) {
+                            detail.assign(arg)
+                        } else {
+                            detail.args = detail.args || []
+                            detail.args.push(arg)
+                        }
+                    });
+                    let event = new xover.listener.Event(event_name, detail, this);
                     window.top.dispatchEvent(event);
                     return event.detail.returnValue;
                 }
