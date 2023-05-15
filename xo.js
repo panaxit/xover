@@ -1887,7 +1887,7 @@ xover.Source = function (source, tag, manifest_key) {
                     document = documents[0];
                 } else if (source[0] !== '#') {
                     try {
-                        document = await xover.fetch.xml(source);
+                        document = await xover.fetch.xml.apply(self, [source, self["settings"]]);
                     } catch (e) {
                         return reject(e);
                     }
