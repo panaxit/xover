@@ -4063,6 +4063,14 @@ xover.xml.tryParse = function (input) {
     }
 }
 
+xover.xml.createFragment = function (xml_string) {
+    let frag = window.document.createDocumentFragment();
+    let p = window.document.createElement('p');
+    p.innerHTML = xml_string;
+    frag.append(...p.childNodes);
+    return frag
+}
+
 xover.xml.createNode = function (xml_string, notify_error) {
     let doc = xover.xml.createDocument(xml_string, notify_error)
     return doc.documentElement;
