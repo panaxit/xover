@@ -596,24 +596,10 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let context = event.context || event.target;
 
         let fns = xover.listener.matches(context, event.type);
-        //for (let [event_name, handlers] of [...xover.listener.entries()].filter(([event_name]) => event_name == event_type || event_name.split(/::/)[0] == event_type).reverse()) {
-        //    for (let [, handler] of handlers) {
-        //        let [, predicate] = event_name.split(/::/);
-        //        if (predicate) {
-        //            //let target = event.detail && (event.detail.srcElement || event.detail.target) || (event.srcEvent || event).target;
-        //            //let tag = event.detail && event.detail.tag || null;
-        //            //if (!event.defaultPrevented && !event.cancelBubble && typeof (context.matches) != 'undefined') {
-        //            if (context.matches(predicate)) { //predicate == tag || 
-        //                    fns.set(handler.toString(), handler);
-        //                }
-        //            //}
-        //        } else {
-        //            fns.set(handler.toString(), handler);
-        //        }
-        //    }
-        //}
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         for (let handler of [...handlers.values()].reverse()) {
+            //console.log(`Dispatching event: ${event.type}`)
+            //console.log(handler)
             let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 event.returnValue = returnValue;
@@ -6766,12 +6752,12 @@ xover.modernize = function (targetWindow) {
             Node.prototype.filter = function (...args) {
                 if (typeof (args[0]) === 'string') {
                     if (this.selectSingleNode(args[0])) {
-                        return this
+                        return [this]
                     } else {
-                        return (this.ownerDocument || this).createComment("ack:no_match");
+                        return [];
                     }
                 } else if (typeof (args[0]) === 'function') {
-                    return args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null;
+                    return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
                 }
             }
 
