@@ -292,13 +292,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -2014,31 +2014,31 @@ xover.storage = {};
 xover.spaces = {};
 xover.xml.namespaces = xover.spaces;
 
+xover.spaces["context"] = "http://panax.io/context"
 xover.spaces["debug"] = "http://panax.io/debug"
+xover.spaces["height"] = "http://panax.io/state/height"
+xover.spaces["html"] = "http://www.w3.org/1999/xhtml"
 xover.spaces["js"] = "http://panax.io/xover/javascript"
+xover.spaces["meta"] = "http://panax.io/metadata"
+xover.spaces["metadata"] = "http://panax.io/metadata"
+xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["session"] = "http://panax.io/session"
 xover.spaces["shell"] = "http://panax.io/shell"
 xover.spaces["site"] = "http://panax.io/site"
 xover.spaces["state"] = "http://panax.io/state"
-xover.spaces["height"] = "http://panax.io/state/height"
-xover.spaces["width"] = "http://panax.io/state/width"
-xover.spaces["context"] = "http://panax.io/context"
+xover.spaces["svg"] = "http://www.w3.org/2000/svg"
 xover.spaces["temp"] = "http://panax.io/temp"
+xover.spaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
+xover.spaces["width"] = "http://panax.io/state/width"
+xover.spaces["xhtml"] = "http://www.w3.org/1999/xhtml"
+xover.spaces["xlink"] = "http://www.w3.org/1999/xlink"
 xover.spaces["xmlns"] = "http://www.w3.org/2000/xmlns/"
 xover.spaces["x"] = "http://panax.io/xover"
 xover.spaces["xo"] = "http://panax.io/xover"
-xover.spaces["xson"] = "http://panax.io/xson"
-xover.spaces["meta"] = "http://panax.io/metadata"
-xover.spaces["metadata"] = "http://panax.io/metadata"
 xover.spaces["xml"] = "http://www.w3.org/XML/1998/namespace"
-xover.spaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
 xover.spaces["xsi"] = "http://www.w3.org/2001/XMLSchema-instance"
-xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
-xover.spaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
-xover.spaces["session"] = "http://panax.io/session"
-xover.spaces["html"] = "http://www.w3.org/1999/xhtml"
-xover.spaces["xhtml"] = "http://www.w3.org/1999/xhtml"
-xover.spaces["xlink"] = "http://www.w3.org/1999/xlink"
+xover.spaces["xson"] = "http://panax.io/xson"
+xover.spaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
 
 /* Binding */
 xover.spaces["request"] = "http://panax.io/fetch/request"
@@ -3403,7 +3403,10 @@ xover.QUERI = function (href) {
         }, update: {
             value: function () {
                 if (ref instanceof Node) {
-                    ref.value = this.toString();
+                    ref.updateManager = ref.updateManager || xover.delay(1).then(async () => {
+                        ref.value = this.toString();
+                        delete ref.updateManager;
+                    })
                 }
             }, enumerable: false, writable: false, configurable: false
         }
@@ -3653,7 +3656,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
         //    return_value = xover.xml.fromJSON(return_value.documentElement);
         //}
         if (xover.session.debug) {
-            return_value.$$(`//xsl:template[not(contains(@mode,'-attribute'))]/*[not(contains(string(@mode),'-attribute'))][not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy)]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//xsl:comment[.="debug:info"]`).forEach(el => {
+            return_value.$$(`//xsl:template[not(contains(@mode,'-attribute'))]/*[not(contains(string(@mode),'-attribute'))][not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy)]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).forEach(el => {
                 let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform"><xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name(),'::')"/></xsl:if> ${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}</xsl:comment>`);
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
@@ -3664,7 +3667,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
                 }
             });
         }
-        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//html:*[not(self::html:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`).forEach(el => {
+        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//html:*[not(self::html:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]|//svg:*[not(ancestor::svg:*)]`).forEach(el => {
             el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             if (!el.getAttribute("xo-attribute")) {
                 el.set("xo-attribute", "{name(current()[not(self::*)])}")
@@ -4819,7 +4822,7 @@ xover.Store = function (xml, ...args) {
                 });
             }
 
-            const callback = (mutationList, observer) => {
+            const callback = (mutationList) => {
                 mutationList = mutationList.filter(mutation => mutation.attributeName == 'value' || !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
@@ -5020,8 +5023,13 @@ xover.Store = function (xml, ...args) {
             })
             if (!self.observer.hasOwnProperty('disconnect')) {
                 Object.defineProperty(self.observer, 'disconnect', {
-                    value: function () {
-                        mutation_observer.disconnect()
+                    value: function (ms) {
+                        let mutations = mutation_observer.takeRecords()
+                        mutation_observer.disconnect();
+                        xover.delay(ms || 2).then(async () => {
+                            mutation_observer.observe(__document, config);
+                            mutations.length && callback(mutations);
+                        });
                     },
                     writable: false, enumerable: false, configurable: false
                 });
@@ -6785,15 +6793,25 @@ xover.modernize = function (targetWindow) {
                         return original_element_matches && original_element_matches.value.apply(node, args);
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
-                            /*node = node.parentNode || node.previousParentNode;*/
+                            /*node = node.parentNode || node.formerParentNode;*/
                             let key = args[0];
-                            return [node.selectNodes('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => {
+                            let remove;
+                            let store = this.ownerDocument.store;
+                            if (!this.parentElement && this.formerParentNode && !(this.formerParentNode instanceof Document)) {
+                                store && store.observer.disconnect();
+                                original_insertBefore.apply(this.formerParentNode, [this, this.formerNextSibling]);
+                                remove = true;
+                            }
+                            let return_value = !![node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().find(el => {
                                 try {
                                     return el && el.selectNodes(el instanceof Document && key.replace(/^self::/, '') || key).includes(this)
                                 } catch (e) {
                                     console.warn(`No a valid xpath was provided: ${key}`)
                                 }
-                            })
+                            });
+                            if (remove) this.remove({ silent: true });
+                            store && store.observer.connect();
+                            return return_value;
                         }
                     }
                 }
@@ -6811,7 +6829,7 @@ xover.modernize = function (targetWindow) {
                         return false;
                     }
                     let node = this.documentElement;
-                    return node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node))
+                    return !!(node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node)))
                 }
             })
 
@@ -6826,9 +6844,19 @@ xover.modernize = function (targetWindow) {
                         return original_attr_matches && original_attr_matches.value.apply(node, args);
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
-                            node = node.parentNode || node.previousParentNode;
+                            node = node.parentNode || node.formerParentNode;
                             let key = args[0];
-                            return [node.selectNodes('self::*|ancestor::*'), node.ownerDocument].flat().reverse().find(el => el && el.selectNodes(key).includes(this))
+                            let remove;
+                            let store = this.ownerDocument.store;
+                            if (!this.ownerElement) {
+                                store && store.observer.disconnect();
+                                this.parentNode.setAttributeNode(this);
+                                remove = true;
+                            }
+                            let return_value = !![this, node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().find(el => el && el.selectNodes(key).includes(this));
+                            if (remove) this.remove({ silent: true });
+                            store && store.observer.connect();
+                            return return_value;
                         }
                     }
                 }
@@ -7493,6 +7521,7 @@ xover.modernize = function (targetWindow) {
                 window.top.dispatchEvent(beforeRemove);
                 if (beforeRemove.cancelBubble || beforeRemove.defaultPrevented) return;
                 let parentNode = this.parentNode;
+                let nextSibling = this.nextSibling;
                 let parentElement = this.parentElement;
 
                 //var store = this.ownerDocument.store
@@ -7505,13 +7534,14 @@ xover.modernize = function (targetWindow) {
                 //    context_store.save();
                 //}
                 let event_type = 'remove', node = this;
-                let matching_listeners = xover.listener.matches(node, event_type);
+                let matching_listeners; //= xover.listener.matches(node, event_type);
 
                 original_remove.apply(this, arguments);
 
-                let descriptor = Object.getPropertyDescriptor(this, 'previousParentNode') || { writable: true };
-                if (!this.previousParentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
-                    Object.defineProperty(this, 'previousParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
+                let descriptor = Object.getPropertyDescriptor(this, 'formerParentNode') || { writable: true };
+                if (!this.formerParentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
+                    Object.defineProperty(this, 'formerNextSibling', { get: function () { return nextSibling } });
+                    Object.defineProperty(this, 'formerParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                 }
                 //if (this.ownerDocument.selectSingleNode && store) {
                 //    //let refresh = !parent.selectSingleNode('//@state:refresh');
@@ -7546,9 +7576,9 @@ xover.modernize = function (targetWindow) {
             Node.prototype.removeChild = function (child) {
                 let parentNode = this;
                 original_removeChild.call(this, child);
-                let descriptor = Object.getPropertyDescriptor(child, 'previousParentNode') || { writable: true };
+                let descriptor = Object.getPropertyDescriptor(child, 'formerParentNode') || { writable: true };
                 if (!child.parentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
-                    Object.defineProperty(child, 'previousParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
+                    Object.defineProperty(child, 'formerParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                 }
                 return child;
             }
@@ -7659,7 +7689,7 @@ xover.modernize = function (targetWindow) {
                 }
             );
 
-            Object.defineProperty(Array.prototype, 'removeAll', {
+            var removeAll = {
                 value: function (...args) {
                     let items = this instanceof Array && this || args;
                     args = this instanceof Array && args || [];
@@ -7674,7 +7704,10 @@ xover.modernize = function (targetWindow) {
                     return removed;
                 },
                 writable: false, enumerable: false, configurable: false
-            });
+            }
+
+            Object.defineProperty(Array.prototype, 'removeAll', removeAll);
+            Object.defineProperty(Array.prototype, 'remove', removeAll);
 
             var element_proxy = new Proxy(Node, {
                 get: function (target, name) {
@@ -8287,14 +8320,21 @@ xover.modernize = function (targetWindow) {
                 return new_node;
             }
 
-            Attr.prototype.remove = function (refresh) {
-                var refresh = Array.prototype.coalesce(refresh, true);
+            Attr.prototype.remove = function (settings = {}) {
+                if (settings.silent) {
+                    if (this.namespaceURI) {
+                        return_value = original_removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
+                    } else {
+                        return_value = original_removeAttribute.call(this.parentNode, this.name)
+                    }
+                    return this;
+                }
                 let parentNode = this.parentNode;
                 let ownerElement = this.ownerElement;
                 if (ownerElement) {
                     let return_value;
                     let event_type = 'remove', node = this;
-                    let matching_listeners = xover.listener.matches(node, event_type);
+                    let matching_listeners; //= xover.listener.matches(node, event_type);
                     if (this.namespaceURI) {
                         return_value = original_removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
                     } else {
@@ -8314,13 +8354,13 @@ xover.modernize = function (targetWindow) {
                 return Object.fromEntries([this, ...this.querySelectorAll("*")].map(el => [...el.attributes].filter(attr => attr.namespaceURI === 'http://www.w3.org/2000/xmlns/')).flat(Infinity).map(attr => [attr.localName, attr.value]));
             }
 
-            var insertBefore = Element.prototype.insertBefore
-            Element.prototype.insertBefore = function (new_node) {
+            var original_insertBefore = Element.prototype.insertBefore
+            Element.prototype.insertBefore = function (new_node, settings) {
                 if ((this.ownerDocument || this) instanceof XMLDocument) {
                     //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
                     //    return;
                     //}
-                    insertBefore.apply(this, arguments);
+                    original_insertBefore.apply(this, arguments);
                     if (this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                         /*Update of session variables*/
                         let attribute = new_node;
@@ -8334,7 +8374,7 @@ xover.modernize = function (targetWindow) {
                     window.top.dispatchEvent(new xover.listener.Event('change', { node: this }, this));
                     window.top.dispatchEvent(new xover.listener.Event('insert', { node: this }, this));
                 } else {
-                    insertBefore.apply(this, arguments);
+                    original_insertBefore.apply(this, arguments);
                 }
             }
 
@@ -9385,6 +9425,12 @@ xover.dom.toExcel = (function (table, name) {
     a.download = name.replace(/^[^\d\w]/, '');
     a.click();
     setTimeout(function () { window.URL.revokeObjectURL(url); }, 0);
+});
+
+document.addEventListener('mousedown', function (event) {
+    if (event.shiftKey) {
+        event.preventDefault();
+    }
 });
 
 addEventListener("unhandledrejection", (event) => {
