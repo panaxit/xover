@@ -7035,12 +7035,13 @@ xover.modernize = function (targetWindow) {
                         if (!(this.ownerDocument instanceof HTMLDocument)) {
                             return null;
                         }
+                        let selector_type = this.preferredSelectorType || event instanceof FocusEvent && 'full_path' || 'fast';
                         let buildQuerySelector = function (target, path = []) {
                             if (!(target && target.parentNode)) {
                                 return path.filter(el => el).join(" > ");
                             } else if (target.id) {
                                 path.unshift(`${target.tagName}#${target.id}`);
-                            } else if ((target.classList || []).length) {
+                            } else if ((target.classList || []).length && selector_type != 'full_path') {
                                 let classes = [...target.classList].filter(class_name => !class_name.match("[.]"));
                                 path.unshift(target.tagName + (classes.length && '.' + classes.join(".") || ""));
                             } else if (target.nodeName == '#text') {
