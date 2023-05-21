@@ -597,7 +597,12 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 
         let fns = xover.listener.matches(context, event.type);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
+        context.eventHistory = context.eventHistory || new Map();
         for (let handler of [...handlers.values()].reverse()) {
+            if (context.eventHistory.get(handler)) {
+                console.warn(`Event ${event.type} recursed`)
+            }
+            context.eventHistory.set(handler, true);
             //console.log(`Dispatching event: ${event.type}`)
             //console.log(handler)
             let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
@@ -618,6 +623,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             }
             if (event.propagationStopped) break;
         }
+        delete context.eventHistory;
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -889,7 +895,7 @@ xover.server = new Proxy({}, {
             delete settings["query"];
 
             try {
-                [return_value, request, response] = await xover.fetch(url, settings).then(response => [response.body, response.request, response]);
+                [return_value, request, response] = await xover.fetch.call(this, url, settings).then(response => [response.body, response.request, response]);
             } catch (e) {
                 [return_value, request, response] = [e.body, e.request, e]
                 if (e instanceof DOMException) {
@@ -3544,7 +3550,7 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         }
     }
 
-    let source = settings["source"] instanceof xover.Source && settings["source"] || undefined;
+    let source = settings["source"] instanceof xover.Source && settings["source"] || this instanceof xover.Source && this || undefined;
     if (source || settings.progress) {
         source.abortFetch = function () { controller.abort() };
         let res = original_response.clone();
@@ -3650,7 +3656,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
     settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "text/xml, text/xsl")
 
     try {
-        let response = await xover.fetch(url, settings, on_success);
+        let response = await xover.fetch.call(this, url, settings, on_success);
         let return_value = response.document || response;
         //if (!return_value.documentElement && response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
         //    return_value = xover.xml.fromJSON(return_value.documentElement);
@@ -3727,7 +3733,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
 xover.fetch.json = async function (url, settings = { rejectCodes: 400 }, on_success) {
     settings["headers"] = (settings["headers"] || {});
     settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "application/json")
-    let return_value = await xover.fetch(url, settings, on_success).then(response => response.json);
+    let return_value = await xover.fetch.call(this, url, settings, on_success).then(response => response.json);
     return return_value;
 }
 
@@ -7153,56 +7159,62 @@ xover.modernize = function (targetWindow) {
                 return this.selectSingleNode('//*[@xo:id="' + xo_id + '"]')
             }
 
-            XMLDocument.prototype.fetch = async function (...args) {
-                if (!this.hasOwnProperty("source")) {
-                    throw (new Error("Document is not associated to a Source and can't be fetched"));
+            Object.defineProperty(XMLDocument.prototype, `fetch`, {
+                get: function () {
+                    let self = this;
+                    return async function (...args) {
+                        let context = this;
+                        if (!self.hasOwnProperty("source")) {
+                            return Promise.reject("Document is not associated to a Source and can't be fetched");
+                        }
+                        let __document = self;
+                        let new_document;
+                        let store = self.store;
+                        self.fetching = self.fetching || new Promise((resolve, reject) => {
+                            self.source && self.source.fetch.apply(context, args).then(new_document => {
+                                if (!(new_document instanceof Document)) {
+                                    Promise.reject(new_document);
+                                }
+                                __document.href = new_document.href;
+                                __document.url = new_document.url;
+                                //if (self.href in xover.sources && xover.sources[self.href].document != self && !xover.sources[self.href].document) {
+                                //    xover.sources[self.href].replaceBy(new_document.cloneNode(true))
+                                //}
+                                if (new_document) {
+                                    if (__document == new_document) {
+                                        Object.values(xover.stores).forEach(store => {
+                                            Object.values(store.sources).filter(stylesheet => stylesheet.source === new_document.source).forEach(document => document = new_document.cloneNode(true))
+                                        })
+                                    } else {
+                                        __document.replaceBy(new_document.cloneNode(true)); //document is cloned to keep the original document in the source
+                                    }
+                                }
+                                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store }, __document));
+                                resolve(__document);
+                            }).catch(async (e) => {
+                                if (!e) {
+                                    return reject(e);
+                                }
+                                let document = e.document;
+                                let targets = []
+                                if (e.status != 404 && document && document.render) {
+                                    targets = await document.render();
+                                    if (!(targets && targets.length)) {
+                                        return reject(e)
+                                    }
+                                } else {
+                                    return reject(e);
+                                }
+                            }).finally(() => {
+                                self.fetching = undefined;
+                            });
+                        }).catch(async (e) => {
+                            return Promise.reject(e);
+                        });
+                        return self.fetching;
+                    }
                 }
-                let __document = this;
-                let new_document;
-                let store = this.store;
-                this.fetching = this.fetching || new Promise((resolve, reject) => {
-                    this.source && this.source.fetch.apply(this, args).then(new_document => {
-                        if (!(new_document instanceof Document)) {
-                            Promise.reject(new_document);
-                        }
-                        __document.href = new_document.href;
-                        __document.url = new_document.url;
-                        //if (this.href in xover.sources && xover.sources[this.href].document != this && !xover.sources[this.href].document) {
-                        //    xover.sources[this.href].replaceBy(new_document.cloneNode(true))
-                        //}
-                        if (new_document) {
-                            if (__document == new_document) {
-                                Object.values(xover.stores).forEach(store => {
-                                    Object.values(store.sources).filter(stylesheet => stylesheet.source === new_document.source).forEach(document => document = new_document.cloneNode(true))
-                                })
-                            } else {
-                                __document.replaceBy(new_document.cloneNode(true)); //document is cloned to keep the original document in the source
-                            }
-                        }
-                        window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store }, __document));
-                        resolve(__document);
-                    }).catch(async (e) => {
-                        if (!e) {
-                            return reject(e);
-                        }
-                        let document = e.document;
-                        let targets = []
-                        if (e.status != 404 && document && document.render) {
-                            targets = await document.render();
-                            if (!(targets && targets.length)) {
-                                return reject(e)
-                            }
-                        } else {
-                            return reject(e);
-                        }
-                    }).finally(() => {
-                        this.fetching = undefined;
-                    });
-                }).catch(async (e) => {
-                    return Promise.reject(e);
-                });
-                return this.fetching;
-            }
+            })
 
 
             //XMLDocument.prototype.initialize = async function () {
@@ -7513,7 +7525,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.remove = function (settings = {}) {
-                if (settings.silent) {
+                if (this.disconnected || settings.silent) {
                     original_remove.apply(this);
                     return this;
                 }
@@ -7736,8 +7748,29 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            if (!Node.prototype.hasOwnProperty('disconnect')) {
+                Object.defineProperty(Node.prototype, 'disconnect', {
+                    value: function (reconnect) {
+                        this.disconnected = true;
+                        if (reconnect) {
+                            xover.delay(reconnect).then(async () => {
+                                this.connect();
+                            });
+                        }
+                    }
+                })
+            }
+
+            if (!Node.prototype.hasOwnProperty('connect')) {
+                Object.defineProperty(Node.prototype, 'connect', {
+                    value: function () {
+                        delete this.disconnected
+                    }
+                })
+            }
+
             Element.prototype.setAttributeNS = function (namespace, attribute, value, settings = {}) {
-                if (settings.silent) {
+                if (this.disconnected || settings.silent) {
                     original_setAttributeNS.call(this, namespace, attribute, value);
                     return this;
                 }
@@ -7767,7 +7800,7 @@ xover.modernize = function (targetWindow) {
                     namespace = this.resolveNS(prefix) || xover.spaces[prefix];
                     target.setAttributeNS(namespace, attribute, value, settings);
                 } else {
-                    if (settings.silent) {
+                    if (this.disconnected || settings.silent) {
                         original_setAttribute.call(this, attribute, value);
                     } else {
                         target.setAttributeNS("", attribute, value, settings);
@@ -8013,11 +8046,11 @@ xover.modernize = function (targetWindow) {
                 this.value = this.value.replace(new RegExp(`\\b(${property_name}):([^;]+)`, 'g'), (match, property) => `${property}:${value}`)
             }
 
-            Object.defineProperty(Attr.prototype, 'source', {
-                get: function () {
-                    return xover.sources[this.nodeName]
-                }
-            })
+            //Object.defineProperty(Attr.prototype, 'source', {
+            //    get: function () {
+            //        return xover.sources[this.nodeName]
+            //    }
+            //})
 
             //var original_document_documentElement = Object.getOwnPropertyDescriptor(Document.prototype, 'documentElement');
             //Object.defineProperty(Document.prototype, 'documentElement', {
@@ -8321,7 +8354,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Attr.prototype.remove = function (settings = {}) {
-                if (settings.silent) {
+                if (this.disconnected || settings.silent) {
                     if (this.namespaceURI) {
                         return_value = original_removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
                     } else {
@@ -8385,7 +8418,7 @@ xover.modernize = function (targetWindow) {
                 if ((args[args.length - 1] || '').constructor === {}.constructor) {
                     settings = args.pop();
                 }
-                if (settings.silent) {
+                if (this.disconnected || settings.silent) {
                     try {
                         original_append.apply(this, args);
                     } catch (e) {
@@ -9195,7 +9228,7 @@ xover.modernize = function (targetWindow) {
 
                             let unbound_elements = dom.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
                             if (unbound_elements.length) {
-                                console.error(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`)
+                                console.error(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
                             }
 
                             _applyScripts(document, scripts);
