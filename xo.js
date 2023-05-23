@@ -3284,11 +3284,17 @@ Object.defineProperty(URL.prototype, 'href', {
 });
 
 xover.QUERI = function (href) {
+    function encodeValue(value) {
+        if (!value) return value;
+        value = value.replace(/%/, '%25');
+        return value
+    }
     class Predicate extends URLSearchParams {
         constructor(queryString) {
             super(queryString);
         }
         append(name, value) {
+            value = encodeValue(value);
             if (value === undefined) {
                 url.searchParams.delete(name)
             } else {
@@ -3296,6 +3302,7 @@ xover.QUERI = function (href) {
             }
         }
         set(name, value) {
+            value = encodeValue(value);
             url.searchParams.set(name, value)
         }
         delete(name) {
