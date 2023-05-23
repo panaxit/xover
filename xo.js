@@ -577,7 +577,7 @@ Object.defineProperty(xover.listener, 'matches', {
         //event_type = event_type.split(/(?<!::.*)::/)[0];
         let tag = (event && event.detail || {}).tag || '';
         let fns = new Map();
-        if (xover.listener.get(event_type)) {
+        if (!context.disconnected && xover.listener.get(event_type)) {
             for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate))) {
                 fns.set(handler.toString(), handler);
             }
@@ -594,7 +594,6 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
         let context = event.context || event.target;
-
         let fns = xover.listener.matches(context, event.type);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         context.eventHistory = context.eventHistory || new Map();
@@ -622,8 +621,8 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 event.srcEvent.stopPropagation();
             }
             if (event.propagationStopped) break;
+            context.eventHistory.set(handler, undefined);
         }
-        delete context.eventHistory;
     },
     writable: true, enumerable: false, configurable: false
 });
@@ -4832,7 +4831,7 @@ xover.Store = function (xml, ...args) {
             }
 
             const callback = (mutationList) => {
-                mutationList = mutationList.filter(mutation => mutation.attributeName == 'value' || !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
+                mutationList = mutationList.filter(mutation => !mutation.target.disconnected && (mutation.attributeName == 'value' || !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)))//.filter(mutation => !(mutation.target instanceof Document));
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
                 mutated_targets = new Map();
@@ -6847,16 +6846,18 @@ xover.modernize = function (targetWindow) {
                 value: function (...args) {
                     let node = this;
                     try {
-                        if (!(node.ownerElement instanceof HTMLElement)) {
+                        if (!(original_attr_matches && node.ownerElement instanceof HTMLElement)) {
                             throw new DOMException('not a valid selector');
                         }
-                        return original_attr_matches && original_attr_matches.value.apply(node, args);
+                        return (original_attr_matches || {}).value && original_attr_matches.value.apply(node, args);
                     } catch (e) {
                         if (e.message.indexOf('not a valid selector') != -1) {
                             node = node.parentNode || node.formerParentNode;
                             let key = args[0];
                             let remove;
                             let store = this.ownerDocument.store;
+                            let reconnect = !this.disconnected
+                            this.disconnect();
                             if (!this.ownerElement) {
                                 store && store.observer.disconnect();
                                 this.parentNode.setAttributeNode(this);
@@ -6865,7 +6866,53 @@ xover.modernize = function (targetWindow) {
                             let return_value = !![this, node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().find(el => el && el.selectNodes(key).includes(this));
                             if (remove) this.remove({ silent: true });
                             store && store.observer.connect();
+                            reconnect && this.connect();
                             return return_value;
+                        }
+                    }
+                }
+            })
+
+            var original_element_closest = Object.getOwnPropertyDescriptor(Element.prototype, 'closest');
+            Object.defineProperty(Element.prototype, 'closest', {
+                value: function (...args) {
+                    let node = this;
+                    try {
+                        return original_element_closest && original_element_closest.value.apply(node, args);
+                    } catch (e) {
+                        if (e.message.indexOf('not a valid selector') != -1) {
+                            node = node.parentNode || node.formerParentNode;
+                            let key = args[0];
+                            try {
+                                let return_value = this.selectFirst(`ancestor::${key}[1]`);
+                                return return_value;
+                            } catch (err) {
+                                return undefined;
+                            }
+                        }
+                    }
+                }
+            })
+
+            var original_attr_closest = Object.getOwnPropertyDescriptor(Attr.prototype, 'closest');
+            Object.defineProperty(Attr.prototype, 'closest', {
+                value: function (...args) {
+                    let node = this;
+                    try {
+                        if (!(original_attr_closest && node.ownerElement instanceof HTMLElement)) {
+                            throw new DOMException('not a valid selector');
+                        }
+                        return (original_attr_closest || {}).value && original_attr_closest.value.apply(node, args) || (original_element_closest || {}).value && original_element_closest.value.apply(node.parentNode, args);
+                    } catch (e) {
+                        if (e.message.indexOf('not a valid selector') != -1) {
+                            node = node.parentNode || node.formerParentNode;
+                            let key = args[0];
+                            try {
+                                let return_value = this.matches(key) || this.ownerElement && this.ownerElement.selectFirst(`ancestor-or-self::${key}[1]`);
+                                return return_value;
+                            } catch (err) {
+                                return undefined;
+                            }
                         }
                     }
                 }
@@ -7754,7 +7801,7 @@ xover.modernize = function (targetWindow) {
 
             if (!Node.prototype.hasOwnProperty('disconnect')) {
                 Object.defineProperty(Node.prototype, 'disconnect', {
-                    value: function (reconnect) {
+                    value: function (reconnect = 1) {
                         this.disconnected = true;
                         if (reconnect) {
                             xover.delay(reconnect).then(async () => {
@@ -7769,6 +7816,27 @@ xover.modernize = function (targetWindow) {
                 Object.defineProperty(Node.prototype, 'connect', {
                     value: function () {
                         delete this.disconnected
+                    }
+                })
+            }
+
+            if (!Node.prototype.hasOwnProperty('freeze')) {
+                Object.defineProperty(Node.prototype, 'freeze', {
+                    value: function (reconnect = 1) {
+                        this.frozen = true;
+                        if (reconnect) {
+                            xover.delay(reconnect).then(async () => {
+                                this.unfreeze();
+                            });
+                        }
+                    }
+                })
+            }
+
+            if (!Node.prototype.hasOwnProperty('unfreeze')) {
+                Object.defineProperty(Node.prototype, 'unfreeze', {
+                    value: function () {
+                        delete this.frozen
                     }
                 })
             }
@@ -8075,6 +8143,7 @@ xover.modernize = function (targetWindow) {
                         return this.nil ? null : original_attr_value.get.call(this);
                     },
                     set: function (value) {
+                        if (this.frozen) return this;
                         if (event && (event.type || "").split(/::/, 1).shift() == 'beforeChange' && this.name == ((event.detail || {}).target || {}).name) {
                             event.preventDefault();
                         }
@@ -8086,9 +8155,6 @@ xover.modernize = function (targetWindow) {
                         } else if (value && value.constructor === {}.constructor) {
                             value = JSON.stringify(value)
                         }
-                        if (value != null) {
-                            value = String(value)
-                        };
 
                         if (!this.ownerElement && value !== undefined && value !== null) {
                             original_attr_value.set.call(this, value);
@@ -8100,18 +8166,23 @@ xover.modernize = function (targetWindow) {
                         //let store = /*this.store || */this.ownerDocument.store;
                         //let source = store && store.source || null;
                         let old_value = this.value;
-
-                        let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
-                        if (!(event && (event.type || "").split(/::/, 1).shift() == 'beforeChange')) {
-                            (old_value != value || event && (event.type || "").split(/::/, 1).shift() == 'change') && window.top.dispatchEvent(before);
-                        }
-                        if (before.cancelBubble || before.defaultPrevented) return;
-
                         let return_value;
                         let beforeset_event = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
                         window.top.dispatchEvent(beforeset_event);
-                        if (beforeset_event.cancelBubble || beforeset_event.defaultPrevented) return;
+                        //if (beforeset_event.cancelBubble || beforeset_event.defaultPrevented) return;
+                        value = (beforeset_event.detail || {}).hasOwnProperty("returnValue") ? beforeset_event.detail.returnValue : value;
+                        if (value != null) {
+                            value = `${value}`
+                        };
 
+                        if (old_value !== value) {
+                            let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
+                            if (!(event && (event.type || "").split(/::/, 1).shift() == 'beforeChange')) {
+                                (old_value != value || event && (event.type || "").split(/::/, 1).shift() == 'change') && window.top.dispatchEvent(before);
+                            }
+                            value = (before.detail || {}).hasOwnProperty("returnValue") ? before.detail.returnValue : value;
+                            //if (before.cancelBubble || before.defaultPrevented) return;
+                        }
                         if (value === null || value === undefined) {
                             this.nil = true;
                             this.ownerElement && this.remove()
@@ -8192,16 +8263,7 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(HTMLSelectElement.prototype, 'value', value_handler);
 
             Attr.prototype.set = function (value) {
-                if (typeof value === 'function') {
-                    value = value.call(this, this);
-                }
-                value = value instanceof Attr && value.value || value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
-                //if (this.value != value) {
-                //this.ownerElement.store && this.ownerElement.store.render();
-                //}
                 this.value = value;
-                //let source = this.ownerDocument.source;
-                //source && source.save();
                 return this;
             }
 
@@ -8437,6 +8499,7 @@ xover.modernize = function (targetWindow) {
 
             var original_append = Element.prototype.append
             Element.prototype.append = function (...args) {
+                if (this.frozen) return this;
                 if (!args.length) return;
                 let settings = {};
                 if ((args[args.length - 1] || '').constructor === {}.constructor) {
