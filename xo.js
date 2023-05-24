@@ -6940,7 +6940,7 @@ xover.modernize = function (targetWindow) {
                         if (arg instanceof Array) {
                             detail.args = detail.args || []
                             detail.args.concat(arg)
-                        } else if (arg.constructor === {}.constructor) {
+                        } else if (arg && arg.constructor === {}.constructor) {
                             detail.assign(arg)
                         } else {
                             detail.args = detail.args || []
@@ -8155,7 +8155,7 @@ xover.modernize = function (targetWindow) {
                             event.preventDefault();
                         }
                         if (typeof value === 'function') {
-                            value = value.apply(this, [{ el: this.parentNode, attr: this }])
+                            value = value.call(this, this);
                         }
                         if (value instanceof Attr) {
                             value = value.value
