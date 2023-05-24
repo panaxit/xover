@@ -3537,6 +3537,7 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         }
         await Promise.all(pending);
     }
+    settings.headers = new Headers([...new Headers(this instanceof xover.Source && this.headers || {}), ...new Headers(this instanceof xover.Source && (this.settings || {}).headers || {}), ...new Headers(settings.headers)]);
     let req = new xover.Request(request, settings);
     var original_response;
     const controller = new AbortController();
@@ -3669,10 +3670,13 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
         //}
         if (xover.session.debug) {
             return_value.$$(`//xsl:template[not(contains(@mode,'-attribute'))]/*[not(contains(string(@mode),'-attribute'))][not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy)]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).forEach(el => {
+                let ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
                 let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template 
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
 file="${new xover.URL(url).href}"
->${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}&lt;/template></xsl:comment>`);
+>${ancestor.localName == 'template' ? '' : `
+&lt;!- -${ancestor.nodeName} ${[...ancestor.attributes].filter(attr => !['xo:id'].includes(attr.nodeName)).map(attr => `${attr.nodeName}="${attr.value.replace(/--/g, '- -')}"`)}- -&gt;`}
+${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}&lt;/template></xsl:comment>`);
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
                 } else if (el.selectSingleNode('self::html:textarea')) {
@@ -3682,16 +3686,19 @@ file="${new xover.URL(url).href}"
                 }
             });
         }
-        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//html:*[not(self::html:script)][not(ancestor-or-self::*[@xo-scope or @xo-attribute])]|//svg:*[not(ancestor::svg:*)]`).forEach(el => {
-            el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
-            if (!el.getAttribute("xo-attribute")) {
-                el.set("xo-attribute", "{name(current()[not(self::*)])}")
+        if (return_value.documentElement.resolveNS('xo')) {
+            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`)) {
+                el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
+                if (!el.getAttribute("xo-attribute")) {
+                    el.set("xo-attribute", "{name(current()[not(self::*)])}")
+                }
             }
-        });
-        return_value.documentElement.resolveNS('xo') && return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`).forEach(el => {
-            el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
-            el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
-        });
+
+            for (let el of return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`)) {
+                el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
+                el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
+            }
+        }
         return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").map(async node => {
             let href = node.href || node.getAttribute("href");
             if (!href.match(/^\//)) {
@@ -7583,7 +7590,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.remove = function (settings = {}) {
-                if (this.disconnected || settings.silent) {
+                if (!this.reactive || settings.silent) {
                     original_remove.apply(this);
                     return this;
                 }
@@ -7806,6 +7813,26 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            if (!Element.prototype.hasOwnProperty('reactive')) {
+                Object.defineProperty(Element.prototype, 'reactive', {
+                    get: function () {
+                        return !(this.disconnected || this.disconnected === undefined && (this instanceof HTMLElement || this instanceof SVGElement || ['http://www.w3.org/1999/XSL/Transform'].includes(this.namespaceURI)))
+                    },
+                    enumerable: true, // Optional
+                    configurable: true // Optional
+                })
+            }
+
+            if (!Attr.prototype.hasOwnProperty('reactive')) {
+                Object.defineProperty(Attr.prototype, 'reactive', {
+                    get: function () {
+                        return this.disconnected === undefined ? this.ownerElement && this.ownerElement.reactive : !this.disconnected;
+                    },
+                    enumerable: true, // Optional
+                    configurable: true // Optional
+                })
+            }
+
             if (!Node.prototype.hasOwnProperty('disconnect')) {
                 Object.defineProperty(Node.prototype, 'disconnect', {
                     value: function (reconnect = 1) {
@@ -7849,7 +7876,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Element.prototype.setAttributeNS = function (namespace, attribute, value, settings = {}) {
-                if (this.disconnected || settings.silent) {
+                if (!this.reactive || settings.silent) {
                     original_setAttributeNS.call(this, namespace, attribute, value);
                     return this;
                 }
@@ -7879,7 +7906,7 @@ xover.modernize = function (targetWindow) {
                     namespace = this.resolveNS(prefix) || xover.spaces[prefix];
                     target.setAttributeNS(namespace, attribute, value, settings);
                 } else {
-                    if (this.disconnected || settings.silent) {
+                    if (!this.reactive || settings.silent) {
                         original_setAttribute.call(this, attribute, value);
                     } else {
                         target.setAttributeNS("", attribute, value, settings);
@@ -8162,11 +8189,6 @@ xover.modernize = function (targetWindow) {
                         } else if (value && value.constructor === {}.constructor) {
                             value = JSON.stringify(value)
                         }
-
-                        if (!this.ownerElement && value !== undefined && value !== null) {
-                            original_attr_value.set.call(this, value);
-                            this.parentNode.setAttributeNode(this);
-                        }
                         let target = this;
                         let target_node = this.parentNode;
                         let attribute_name = this.localName;
@@ -8189,6 +8211,10 @@ xover.modernize = function (targetWindow) {
                             }
                             value = (before.detail || {}).hasOwnProperty("returnValue") ? before.detail.returnValue : value;
                             //if (before.cancelBubble || before.defaultPrevented) return;
+                        }
+                        if (!this.ownerElement && value !== undefined && value !== null) {
+                            original_attr_value.set.call(this, value);
+                            this.parentNode.setAttributeNode(this);
                         }
                         if (value === null || value === undefined) {
                             this.nil = true;
@@ -8283,7 +8309,7 @@ xover.modernize = function (targetWindow) {
 
             Object.defineProperty(Comment.prototype, 'source', {
                 get: function () {
-                    let info = xo.xml.createNode(this.data);
+                    let info = xo.xml.createNode(this.data.replace(/- -/g, '--'));
                     let attributes = xo.json.fromAttributes(info.textContent);
                     let xpath = Object.entries(attributes).map(([key, value]) => `@${key}="${value}"`).join(' and ');
                     let source = xo.sources[info.getAttribute("file")].cloneNode(true);
@@ -8447,7 +8473,7 @@ xover.modernize = function (targetWindow) {
             }
 
             Attr.prototype.remove = function (settings = {}) {
-                if (this.disconnected || settings.silent) {
+                if (!this.reactive || settings.silent) {
                     if (this.namespaceURI) {
                         return_value = original_removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
                     } else {
@@ -8512,7 +8538,7 @@ xover.modernize = function (targetWindow) {
                 if ((args[args.length - 1] || '').constructor === {}.constructor) {
                     settings = args.pop();
                 }
-                if (this.disconnected || settings.silent) {
+                if (!this.reactive || settings.silent) {
                     try {
                         original_append.apply(this, args);
                     } catch (e) {
@@ -9199,7 +9225,9 @@ xover.modernize = function (targetWindow) {
                                 self.render();
                                 //self.isActive = false;
                                 continue;
-                            } else if (dom.tagName.toLowerCase() == "html") {
+                            }
+                            target.disconnected = false;
+                            if (dom.tagName.toLowerCase() == "html") {
                                 //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
                                 //target = document.body;
                                 xover.dom.setEncryption(dom, 'UTF-7');
