@@ -212,6 +212,28 @@ Object.defineProperty(Array.prototype, 'coalesce',
     }
 );
 
+Object.defineProperty(Array.prototype, 'distinct',
+    {
+        value: function () {
+            return [... new Set(this)];
+        },
+        writable: true, enumerable: false, configurable: false
+    }
+);
+
+Object.defineProperty(Array.prototype, 'order',
+    {
+        value: function (direction = 'ASC') {
+            return this.sort((a, b) => {
+                const orderA = parseInt(a.value || a);
+                const orderB = parseInt(b.value || b);
+                return (direction || '').toUpperCase() == 'ASC' ? orderA - orderB : orderB - orderA;
+            })
+        },
+        writable: true, enumerable: false, configurable: false
+    }
+);
+
 xover.custom = {};
 xover.data = {};
 xover.stores = new Proxy({}, {
@@ -292,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -3659,8 +3681,8 @@ xover.fetch.from = async function () {
 
 xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_success) {
     if (!url) return null;
-    settings["headers"] = (settings["headers"] || {});
-    settings["headers"]["Accept"] = (settings["headers"]["Accept"] || "text/xml, text/xsl")
+    settings["headers"] = new Headers(settings["headers"]);
+    settings["headers"].set("Accept", settings["headers"].get("Accept") || "text/xml, text/xsl")
 
     try {
         let response = await xover.fetch.call(this, url, settings, on_success);
@@ -8100,8 +8122,11 @@ xover.modernize = function (targetWindow) {
                 attribute_node && attribute_node.remove();
             }
 
-
-            Element.prototype.removeAttribute = async function (attribute, refresh = true, delay) {
+            Element.prototype.removeAttribute = async function (attribute, settings) {
+                if (!this.reactive || settings.silent) {
+                    return_value = original_removeAttribute.call(this, attribute)
+                    return this;
+                }
                 //if (attribute instanceof Attr) {
                 //    value = [value, attribute.value].coalesce();
                 //    attribute = attribute.name;
