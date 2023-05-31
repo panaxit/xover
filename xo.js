@@ -3559,7 +3559,7 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         }
         await Promise.all(pending);
     }
-    settings.headers = new Headers([...new Headers(this instanceof xover.Source && this.headers || {}), ...new Headers(this instanceof xover.Source && (this.settings || {}).headers || {}), ...new Headers(settings.headers)]);
+    settings.headers = new Headers(Object.fromEntries([...new Headers(this instanceof xover.Source && this.headers || {}), ...new Headers(this instanceof xover.Source && (this.settings || {}).headers || {}), ...new Headers(settings.headers)]));
     let req = new xover.Request(request, settings);
     var original_response;
     const controller = new AbortController();
