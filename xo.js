@@ -3697,8 +3697,8 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
 file="${new xover.URL(url).href}"
 >${ancestor.localName == 'template' ? '' : `
-&lt;!- -${ancestor.nodeName} ${[...ancestor.attributes].filter(attr => !['xo:id'].includes(attr.nodeName)).map(attr => `${attr.nodeName}="${attr.value.replace(/--/g, '- -')}"`)}- -&gt;`}
-${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}&lt;/template></xsl:comment>`);
+&lt;!- -${ancestor.nodeName} ${[...ancestor.attributes].filter(attr => !['xo:id'].includes(attr.nodeName)).map(attr => `${attr.nodeName}="${attr.value.replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/--/g, '- -')}"`)}- -&gt;`}
+${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
                 } else if (el.selectSingleNode('self::html:textarea')) {
@@ -3754,7 +3754,7 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                     })
                 }
                 if (rejections.length) {
-                    return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, los siguientes archivos no se pudieron descargar</legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}</li>`)}</ol></fieldset>`));
+                    return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status==404?' - No encontrado':''}</li>`)}</ol></fieldset>`));
                 }
                 return_value = return_value.consolidate();
             } catch (e) {
@@ -6715,7 +6715,12 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
+            HTMLTextAreaElement.native = {};
+            HTMLTextAreaElement.native.select = HTMLTextAreaElement.prototype.select;
             Node.prototype.selectNodes = function (xpath, context) {
+                if (this instanceof HTMLTextAreaElement && xpath == undefined) {
+                    return HTMLTextAreaElement.native.select.apply(this)
+                }
                 context = context || this instanceof Node && this || this.document;
                 //if (!xpath.match(/[^\w\d\-\_]/g)) {
                 //    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
@@ -6781,8 +6786,9 @@ xover.modernize = function (targetWindow) {
                 if (xItems.length > 0) { return xItems[0]; }
                 else { return null; }
             }
-            Node.prototype.select = Node.prototype.selectNodes
-            Node.prototype.selectFirst = Node.prototype.selectSingleNode
+            Node.prototype.select = Node.prototype.selectNodes;
+            Node.prototype.selectFirst = Node.prototype.selectSingleNode;
+            HTMLTextAreaElement.prototype.select = Node.prototype.selectNodes;
 
             var original_select = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'select');
             Object.defineProperty(HTMLInputElement.prototype, 'select', {
@@ -8122,7 +8128,7 @@ xover.modernize = function (targetWindow) {
                 attribute_node && attribute_node.remove();
             }
 
-            Element.prototype.removeAttribute = async function (attribute, settings) {
+            Element.prototype.removeAttribute = async function (attribute, settings = {}) {
                 if (!this.reactive || settings.silent) {
                     return_value = original_removeAttribute.call(this, attribute)
                     return this;
@@ -8328,7 +8334,7 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Comment.prototype, 'metadata', {
                 get: function () {
                     let info = xo.xml.createNode(this.data);
-                    return `template ${info.textContent}`
+                    return `template ${info.textContent.replace(/\n/g, '')}`
                 }
             });
 
@@ -8532,7 +8538,7 @@ xover.modernize = function (targetWindow) {
             }
 
             var original_insertBefore = Element.prototype.insertBefore
-            Element.prototype.insertBefore = function (new_node, settings) {
+            Element.prototype.insertBefore = function (new_node, settings = {}) {
                 if ((this.ownerDocument || this) instanceof XMLDocument) {
                     //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
                     //    return;
