@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -576,7 +576,7 @@ xover.listener.Event = function (event_name, params = {}, context) {
         _event.detail["target"] = _event.detail["target"] || context.documentElement;
     } else if (context instanceof Response) {
         _event.detail["response"] = _event.detail["response"] || context;
-        _event.detail["resquest"] = _event.detail["request"] || context.request;
+        _event.detail["request"] = _event.detail["request"] || context.request;
         _event.detail["target"] = _event.detail["target"] || context.documentElement;
         _event.detail["document"] = _event.detail["document"] || context.document;
         _event.detail["body"] = _event.detail["body"] || context.body;
@@ -600,7 +600,7 @@ Object.defineProperty(xover.listener, 'matches', {
         let tag = (event && event.detail || {}).tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate))) {
+            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !predicate || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || handler.scope.name && existsFunction(handler.scope.name))) {
                 fns.set(handler.toString(), handler);
             }
         }
@@ -610,9 +610,9 @@ Object.defineProperty(xover.listener, 'matches', {
 })
 
 Object.defineProperty(xover.listener, 'dispatcher', {
-    value: async function (event) {
+    value: function (event) {
         if (xover.init.status != 'initialized') {
-            await xover.init();
+            xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
         let context = event.context || event.target;
@@ -653,11 +653,13 @@ Object.defineProperty(xover.listener, 'on', {
     value: function (name__or_list, handler, options = {}) {
         name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
         for (let event_name of name__or_list) {
-            let [base_event, ...predicate] = event_name.split(/::/);
-            predicate = predicate.join("::");
-            window.top.removeEventListener(event_name, xover.listener.dispatcher);
-            window.top.addEventListener(event_name, xover.listener.dispatcher, options);
+            let [scoped_event, ...predicate] = event_name.split(/::/);
+            [base_event, scope] = scoped_event.split(/:/).reverse();
+            window.top.removeEventListener(base_event, xover.listener.dispatcher);
+            window.top.addEventListener(base_event, xover.listener.dispatcher, options);
 
+            predicate = predicate.join("::");
+            handler.scope = scope && eval(scope) || undefined;
             let event_array = xover.listener.get(base_event) || new Map();
             let handler_map = event_array.get(handler.toString()) || new Map();
             handler_map.set(predicate, handler);
@@ -3270,6 +3272,7 @@ xover.Response.prototype = Object.create(Response.prototype);
 
 var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 xover.URL = function (url, base, settings = {}) {
+    if (url instanceof xover.URL) return url;
     if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
     if (url === null) {
         return Promise.reject(`${url} is not a valid value for xover.URL`)
@@ -3627,11 +3630,11 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
             }
         });
     }
-    window.top.dispatchEvent(new xover.listener.Event(`response`, { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
+    window.top.dispatchEvent(new xover.listener.Event(`response`, { request, tag: ((`${request.pathname || request}`).replace(/^\//, '')) }, response));
     if (response.ok) {
-        window.top.dispatchEvent(new xover.listener.Event(`success`, { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`success`, { request, tag: ((`${request.pathname || request}`).replace(/^\//, '')) }, response));
     } else {
-        window.top.dispatchEvent(new xover.listener.Event(`failure`, { request, tag: ((request.pathname || '').replace(/^\//, '') || request) }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`failure`, { request, tag: ((`${request.pathname || request}`).replace(/^\//, '')) }, response));
     }
 
     if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
@@ -3754,7 +3757,7 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                     })
                 }
                 if (rejections.length) {
-                    return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status==404?' - No encontrado':''}</li>`)}</ol></fieldset>`));
+                    return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
                 }
                 return_value = return_value.consolidate();
             } catch (e) {
@@ -9619,12 +9622,21 @@ document.addEventListener('mousedown', function (event) {
     }
 });
 
+xover.listener.on('Response:rejection', function ({ response, request }) {
+    if (!response.ok && ((request.url || {}).pathname || '').indexOf(`.manifest`) != -1) {
+        event.preventDefault();
+    }
+})
+
 addEventListener("unhandledrejection", (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
     }
     try {
         let reason = event.message || event.reason;
+        let unhandledrejection_event = new xover.listener.Event(`rejection`, {}, reason);
+        window.top.dispatchEvent(unhandledrejection_event);
+        if (unhandledrejection_event.defaultPrevented) return;
         if (reason instanceof TypeError || reason instanceof DOMException) {
             String(event.message || event.reason).alert()
             console.error(event.message || event.reason)
