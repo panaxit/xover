@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -610,12 +610,13 @@ Object.defineProperty(xover.listener, 'matches', {
 })
 
 Object.defineProperty(xover.listener, 'dispatcher', {
-    value: function (event) {
+    value: async function (event) {
         if (xover.init.status != 'initialized') {
-            xover.init();
+            await xover.init();
         }
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
         let context = event.context || event.target;
+        if (typeof (context) == 'string') return;
         let fns = xover.listener.matches(context, event.type);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         context.eventHistory = context.eventHistory || new Map();
@@ -1561,7 +1562,7 @@ Object.defineProperty(xover.site, 'save', {
             console.error(e)
         }
         if (srcElement) {
-            this.activeElement = srcElement.selector;
+            this.activeElement = srcElement.selector || srcElement;
             this.activeCaret = xover.dom.getCaretPosition(srcElement);
         }
         history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
@@ -2503,13 +2504,17 @@ xover.listener.on("render", function ({ dom }) {
 });
 
 window.addEventListener("focusin", function (event) {
-    xover.site.save(event.target);
+    xover.site.save(event.target.selector);
+});
+
+window.addEventListener("input", function (event) {
+    xover.site.save(event.target.selector);
 });
 
 document.addEventListener("selectionchange", function (event) {
     let target = document.getSelection().focusNode;
     if (target && target.nodeName == '#text') {
-        xover.site.save(target);
+        xover.site.save(target.selector);
     }
 });
 
@@ -4905,28 +4910,28 @@ xover.Store = function (xml, ...args) {
                 //if (event) {
                 //    console.log(`${event.type}`)
                 //}
-                let stylesheets_to_render = new Map();
-                for (let stylesheet of xover.site.sections.filter(stylesheet => stylesheet.store === self)) {
-                    if (event && event.type == 'input' && stylesheet.contains(event.srcElement)) {
+                let sections_to_render = new Map();
+                for (let section of xover.site.sections.filter(section => section.store === self)) {
+                    if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section !== section) {
                         continue
                     }
-                    stylesheets_to_render.set(stylesheet); continue; /* let's skip all checkings and render every change*/
+                    sections_to_render.set(section); continue; /* let's skip all checkings and render every change*/
 
-                    if (!stylesheet.stylesheet.documentElement || mutationList.find(mutation => mutation.type === 'childList')) {
-                        stylesheet.render()
+                    if (!section.stylesheet.documentElement || mutationList.find(mutation => mutation.type === 'childList')) {
+                        section.render()
                     }
-                    //if (!stylesheets_to_render.get(stylesheet)) {
+                    //if (!sections_to_render.get(section)) {
                     //    if (mutationList.find(mutation => mutation.target instanceof Document)) {
-                    //        stylesheets_to_render.set(stylesheet);
+                    //        sections_to_render.set(section);
                     //    }
                     //}
-                    let listeners = [...stylesheet.querySelectorAll('xo-listener')].filter(el => el.store === self && el.closest('[xo-stylesheet]') === stylesheet);
+                    let listeners = [...section.querySelectorAll('xo-listener')].filter(el => el.store === self && el.closest('[xo-stylesheet]') === section);
                     for (listener of listeners) {
                         for (let mutation of mutationList) {
-                            if (!stylesheets_to_render.get(stylesheet)) {
+                            if (!sections_to_render.get(section)) {
                                 if (listener.getAttribute("node")) {
                                     if (mutation.target instanceof Element && mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes, ...mutation.addedNodes].find(el => el.matches(listener.getAttribute("node")))) {
-                                        stylesheets_to_render.set(stylesheet);
+                                        sections_to_render.set(section);
                                     }
                                 }
                                 if (mutation.type === 'attributes') {
@@ -4945,14 +4950,14 @@ xover.Store = function (xml, ...args) {
                                                 if (prefix && name == '*') {
                                                     let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
                                                     if (attr.namespaceURI == ns) {
-                                                        stylesheets_to_render.set(stylesheet)
+                                                        sections_to_render.set(section)
                                                     }
                                                 }
                                                 continue;
                                             }
                                         }
                                         if (attrib_node.isEqualNode(attr)) {
-                                            stylesheets_to_render.set(stylesheet)
+                                            sections_to_render.set(section)
                                         }
                                     }
                                 }
@@ -4960,11 +4965,11 @@ xover.Store = function (xml, ...args) {
                         }
                     }
 
-                    let attrs = [...stylesheet.select('.//@xo-attribute')].filter(el => el.parentNode.store === self && el.parentNode.closest('[xo-stylesheet]') === stylesheet);
+                    let attrs = [...section.select('.//@xo-attribute')].filter(el => el.parentNode.store === self && el.parentNode.closest('[xo-stylesheet]') === section);
                     for (attrib of attrs) {
                         for (mutation of mutationList) {
-                            if (!stylesheets_to_render.get(stylesheet)) {
-                                if (event && event.type == 'input' && stylesheet.contains(event.srcElement)) {
+                            if (!sections_to_render.get(section)) {
+                                if (event && event.type == 'input' && section.contains(event.srcElement)) {
                                     continue
                                 }
                                 let scoped_element = attrib.parentNode.closest('[xo-scope]');
@@ -5000,7 +5005,7 @@ xover.Store = function (xml, ...args) {
                                         render = true
                                     }
                                     if (render) {
-                                        stylesheets_to_render.set(stylesheet)
+                                        sections_to_render.set(section)
                                     }
                                 }
                             }
@@ -5008,8 +5013,8 @@ xover.Store = function (xml, ...args) {
                     }
                 }
 
-                for (let [stylesheet] of [...stylesheets_to_render.entries()]) {
-                    stylesheet.render()
+                for (let [section] of [...sections_to_render.entries()]) {
+                    section.render()
                 }
                 for (const [target, mutation] of [...mutated_targets]) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
@@ -5924,7 +5929,7 @@ xover.listener.keypress.streak_count = 0;
 document.onkeydown = function (event) {
     if (![9].includes(event.keyCode)) {
         xover.delay(1).then(() => {
-            xover.site.save(event.srcElement);
+            xover.site.save(event.srcElement.selector);
         })
     }
     if (event.keyCode == xover.listener.keypress.last_key) {
@@ -6327,7 +6332,7 @@ function isNumber(value) {
 
 xover.dom.getCaretPosition = function (elem) {
     let caret_pos, caret_start, caret_end;
-
+    elem = elem instanceof Element && elem || typeof (elem) == 'string' && document.querySelector(elem);
     if (!(elem && elem.value)) return;
     if (elem.isContentEditable || (elem.selectionStart || elem.selectionStart == 0)) {
         caret_start = elem.selectionStart;
@@ -7130,7 +7135,7 @@ xover.modernize = function (targetWindow) {
                         if (!(this.ownerDocument instanceof HTMLDocument)) {
                             return null;
                         }
-                        let selector_type = this.preferredSelectorType || event instanceof FocusEvent && 'full_path' || 'fast';
+                        let selector_type = this.preferredSelectorType || this.event instanceof Event && 'full_path' || 'fast';
                         let buildQuerySelector = function (target, path = []) {
                             if (!(target && target.parentNode)) {
                                 return path.filter(el => el).join(" > ");
@@ -7143,6 +7148,12 @@ xover.modernize = function (targetWindow) {
                                 path.unshift(buildQuerySelector(target.parentNode, path.flat()));
                             } else {
                                 path.unshift(target.tagName || '*');
+                            }
+                            if (target instanceof Element && target.hasAttribute("xo-stylesheet")) {
+                                path[0] = path[0] + `[xo-stylesheet='${target.getAttribute("xo-stylesheet")}']`;
+                            }
+                            if (target instanceof Element && target.hasAttribute("xo-store")) {
+                                path[0] = path[0] + `[xo-store='${target.getAttribute("xo-store")}']`;
                             }
 
                             if (target.ownerDocument.querySelector(path.filter(el => el).join(" > ")) === target) {
@@ -7609,6 +7620,19 @@ xover.modernize = function (targetWindow) {
                             let node = this.parentElement && this || this.parentNode || this;
                             let stylesheet_name = [node.closest("[xo-stylesheet]")].map(el => el && el.getAttribute("xo-stylesheet") || null)[0];
                             return (((node || {}).store || {}).sources || {})[stylesheet_name] || undefined;
+                        }
+                    }
+                });
+            }
+
+            if (!Element.prototype.hasOwnProperty('section')) {
+                Object.defineProperty(Element.prototype, 'section', {
+                    get: function () {
+                        if (this.ownerDocument instanceof XMLDocument) {
+                            return undefined
+                        } else {
+                            let node = this.parentElement && this || this.parentNode || this;
+                            return node.closest("[xo-stylesheet],[xo-store]")
                         }
                     }
                 });
@@ -8201,6 +8225,16 @@ xover.modernize = function (targetWindow) {
             //    set: function (value) { }
             //});
 
+
+            Event.native = {};
+            Event.native.srcElement = Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
+            Object.defineProperty(Event.prototype, 'srcElement', {
+                get: function () {
+                    let return_value = Event.native.srcElement.get.call(this);
+                    return_value.event = this;
+                    return return_value
+                }
+            })
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
             Object.defineProperty(Attr.prototype, 'value',
@@ -9634,9 +9668,11 @@ addEventListener("unhandledrejection", (event) => {
     }
     try {
         let reason = event.message || event.reason;
-        let unhandledrejection_event = new xover.listener.Event(`rejection`, {}, reason);
-        window.top.dispatchEvent(unhandledrejection_event);
-        if (unhandledrejection_event.defaultPrevented) return;
+        if (!(typeof (reason) == 'string' || reason instanceof Error)) {
+            let unhandledrejection_event = new xover.listener.Event(`rejection`, {}, reason);
+            window.top.dispatchEvent(unhandledrejection_event);
+            if (unhandledrejection_event.defaultPrevented) return;
+        }
         if (reason instanceof TypeError || reason instanceof DOMException) {
             String(event.message || event.reason).alert()
             console.error(event.message || event.reason)
