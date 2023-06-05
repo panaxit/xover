@@ -600,7 +600,7 @@ Object.defineProperty(xover.listener, 'matches', {
         let tag = (event && event.detail || {}).tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !predicate || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || handler.scope.name && existsFunction(handler.scope.name))) {
+            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !predicate || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(handler.toString(), handler);
             }
         }
@@ -8502,27 +8502,6 @@ xover.modernize = function (targetWindow) {
                 })
             }
 
-            if (!XSLTProcessor.prototype.hasOwnProperty('asyncTransformToDocument')) {
-                Object.defineProperty(XSLTProcessor.prototype, 'asyncTransformToDocument', {
-                    value: function (xml, xsl) {
-                        return new Promise((resolve, reject) => {
-                            const worker = new Worker('/xover/transform.js');
-                            worker.postMessage([xml.toString(), xsl.toString()]);
-                            worker.addEventListener('message', (event) => {
-                                const result = event.data;
-                                resolve(result);
-                                worker.terminate();
-                            });
-                            worker.addEventListener('error', (error) => {
-                                reject(error);
-                                worker.terminate();
-                            });
-                        });
-                    },
-                    writable: false, enumerable: false, configurable: false
-                });
-            }
-
             if (!Node.prototype.hasOwnProperty('transform')) {
                 Object.defineProperty(Node.prototype, 'transform', {
                     value: function (xml_document) {
@@ -8664,7 +8643,6 @@ xover.modernize = function (targetWindow) {
                                 }
                                 if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"]')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
                                     let transformed = xsltProcessor.transformToFragment(xml, document);
-                                    console.log(xsltProcessor.asyncTransformToDocument(xml, xsl))
                                     var newDoc;
                                     //if (transformed.children.length && transformed.firstElementChild.namespaceURI == "http://www.w3.org/1999/xhtml") {
                                     //newDoc = document.implementation.createDocument("http://www.w3.org/1999/xhtml", "html", null);
