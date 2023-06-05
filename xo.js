@@ -3800,289 +3800,6 @@ xover.xml.normalizeNamespaces = function (xml) {
     return xml.transform(xsl_transform);
 }
 
-xover.xml.transform = function (xml, xsl, target) {
-    var xmlDoc;
-    var result = undefined;
-    if (xml && !xsl/* && ((arguments || {}).callee || {}).caller != xover.xml.transform*/) {
-        for (let stylesheet of xml.stylesheets) {
-            xml = xml.transform(stylesheet.document || stylesheet.href);
-        }
-    }
-    if (typeof (xsl) == "string") {
-        if (!(xsl in xover.sources)) {
-            if (xover.browser.isIphone()) {
-                (async () => {
-                    xover.sources[xsl] = await xover.fetch.xml(xsl);
-                    xsl = xover.sources[xsl];
-                })();
-            } else {
-                xsl = xover.xml.createDocument(`                          
-                <xsl:stylesheet version="1.0"                        
-                    xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-                    <xsl:import href="${xsl}" />
-                </xsl:stylesheet>`);
-            }
-        } else {
-            xsl = xover.sources[xsl];
-        }
-    }
-    if (!(xml && xsl)) {
-        return xml;//false;
-    }
-    var original_doc = xml;
-    if (xml instanceof xover.Store) {
-        xml = xml.document;
-    }
-    if (xsl instanceof xover.Store) {
-        xsl = xsl.document;
-    }
-    if (!(typeof (xsl.selectSingleNode) != 'undefined' && xsl.selectSingleNode('xsl:*'))) {
-        throw (new Error("XSL document is empty or invalid"));
-        return xml;//null;
-    }
-    if (typeof (xml) == "string") {
-        xml = xover.xml.createDocument(xml);
-    }
-    if (!xml.selectSingleNode("self::*|*|comment()") && xml.createComment) {
-        xml.appendChild(xml.createComment("empty"))
-    }
-    if (window.ActiveXObject || "ActiveXObject" in window) {
-        var xslt = new ActiveXObject("Msxml2.XSLTemplate.3.0");
-        var xslDoc = new ActiveXObject("Msxml2.FreeThreadedDOMDocument.3.0");
-        var xslProc;
-        xslDoc.async = false;
-        xslDoc.loadXML(xsl.toString());
-        xslDoc.setProperty("SelectionLanguage", "XPath");
-        var namespaces = xover.xml.createNamespaceDeclaration(xml, xsl);
-        xslDoc.setProperty("SelectionNamespaces", namespaces);
-        if (xslDoc.parseError.errorCode != 0) {
-            var myErr = xslDoc.parseError;
-            throw (new Error("xsl: You have an error in transform: " + myErr.reason));
-            return null;
-        } else {
-            if (target) {
-                xmlDoc = target
-            } else {
-                xmlDoc = new ActiveXObject("Msxml2.DOMDocument.3.0");
-                xmlDoc.async = false;
-                xmlDoc.setProperty("SelectionLanguage", "XPath");
-                xmlDoc.setProperty("SelectionNamespaces", namespaces);
-            }
-            if (typeof (xml.transformNodeToObject) != "undefined") {
-                //xml.loadXML(xml.xml)
-                //xmlDoc = xml//xover.xml.createDocument(xml);//xml.selectSingleNode(".");
-            } else {
-                xmlDoc.loadXML(xml.toString());
-                if (xmlDoc.parseError.errorCode != 0) {
-                    var myErr = xmlDoc.parseError;
-                    throw (new Error("doc: You have an error in transform: " + myErr.reason));
-                    return null;
-                } /*else {
-                xslProc = xslt.createProcessor();
-                xslProc.input = xmlDoc;
-                xslProc.addParameter("param1", "Hello");
-                xslProc.render();
-                console.log(xslProc.output);
-            }*/
-            }
-        }
-        //result = xover.xml.createDocument(xmlDoc.transformNode(xslDoc))
-        try {
-            xml.transformNodeToObject(xslDoc, xmlDoc);
-        } catch (e) {
-            //xover.xhr.upload(xml.toString());
-            //xover.xhr.upload(xslDoc.toString());
-            console.error("xover.xml.transform: " + xmlDoc.parseError.reason);
-            return xml;
-        }
-        result = xmlDoc;
-    }
-    else if (document.implementation && document.implementation.createDocument) {
-        var xsltProcessor = new XSLTProcessor();
-        //target = (target || xml.ownerDocument)
-        //if (target) {
-        //    result = xsltProcessor.transformToFragment(xml, xml.ownerDocument).firstElementChild;
-        //} else {
-        try {
-            if (navigator.userAgent.indexOf("Firefox") != -1) {
-                var invalid_node = xsl.selectSingleNode("//*[contains(@select,'namespace::')]");
-                if (invalid_node) {
-                    console.warn('There is an unsupported xpath in then file');
-                }
-            }
-            //if (navigator.userAgent.indexOf("iPhone") != -1 || xover.debug["xover.xml.consolidate"]) {
-            //    xsl = xsl.consolidate();//xover.xml.consolidate(xsl); //Corregir casos cuando tiene apply-imports
-            //}
-
-            //////if (xsl.url) {
-            ////xsl.documentElement.selectNodes("xsl:import|xsl:include").map(node => {
-            ////    let href = node.getAttribute("href");
-            ////    //if (!href.match(/^\//)) {
-            ////    //let new_href = new URL(href, xsl.url);
-            ////    //node.setAttributeNS(null, "href", new_href.pathname);
-            ////    //node.setAttributeNS(null, "href", href);
-            ////    if (xover.sources[href]) {
-            ////        //xsltProcessor.importStylesheet(xover.sources[href]);
-            ////        let fragment = document.createDocumentFragment();
-            ////        fragment.append(xml.createComment(` ========== Imported from "${href}" ==========> `));
-            ////        let sources = xover.sources[href].cloneNode(true);
-            ////        fragment.append(...sources.documentElement.childNodes);
-            ////        fragment.append(xml.createComment(` <========== Imported from "${href}" ========== `));
-            ////        node.replace(fragment);
-
-            ////        var xsl_remove_duplicated = xover.xml.createDocument(`
-            ////                <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-            ////                    <xsl:output method="xml" indent="no" omit-xml-declaration="yes"/>
-            ////                    <xsl:key name="node_by_name" use="@name" match="/*/xsl:*"/>
-            ////                    <xsl:key name="node_by_name" use="@method" match="/*/xsl:output"/>
-            ////                    <xsl:template match="@* | * | text() | processing-instruction() | comment()" priority="-1">
-            ////                        <xsl:if test="count(key('node_by_name',concat(@name,@method))[last()]|.)&lt;=1">
-            ////                            <xsl:copy-of select="."/>
-            ////                        </xsl:if>
-            ////                    </xsl:template>
-            ////                    <xsl:template match="/*">                                
-            ////                    <xsl:copy>
-            ////                      <xsl:copy-of select="@*"/>
-            ////                      <xsl:apply-templates/>
-            ////                    </xsl:copy>
-            ////                  </xsl:template>
-            ////                </xsl:stylesheet>
-            ////                `, 'text/xml');
-            ////        xsl = xover.xml.transform(xsl, xsl_remove_duplicated);
-            ////    }
-            ////    //}
-            ////});
-            //////}
-            xsltProcessor.importStylesheet(xsl);
-            xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:')]`).filter(param => param.textContent).map(param => {
-                try {
-                    xsltProcessor.setParameter(null, param.getAttribute("name"), eval(param.textContent))
-                } catch (e) {
-                    //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                    console.error(e.message);
-                    xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                }
-            });
-            xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:')]`).map(param => {
-                try {
-                    let param_name = param.getAttribute("name").split(":").pop();
-                    if (!(param_name in xover.session)) xover.session[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
-                    let session_value = xover.session.getKey(param.getAttribute("name").split(/:/).pop());
-                    if (session_value !== undefined) {
-                        xsltProcessor.setParameter(null, param.getAttribute("name"), session_value);
-                    }
-                } catch (e) {
-                    //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                    console.error(e.message);
-                }
-            });
-            xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`).map(param => {
-                try {
-                    let state_value = xover.stores.active.state[param.getAttribute("name").split(/:/).pop()];
-                    if (state_value !== undefined) {
-                        xsltProcessor.setParameter(null, param.getAttribute("name"), state_value);
-                    }
-                } catch (e) {
-                    //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                    console.error(e.message);
-                }
-            });
-            xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
-                try {
-                    let param_value = xover.site[param.getAttribute("name").split(/:/).pop()];
-                    if (param_value !== undefined) {
-                        xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
-                    }
-                } catch (e) {
-                    console.error(e.message);
-                }
-            });
-
-            ////if (!xml.documentElement) {
-            ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
-            ////}
-            if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
-                console.time();
-            }
-            if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"]')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
-                let transformed = xsltProcessor.transformToFragment(xml, document);
-                var newDoc;
-                //if (transformed.children.length && transformed.firstElementChild.namespaceURI == "http://www.w3.org/1999/xhtml") {
-                //newDoc = document.implementation.createDocument("http://www.w3.org/1999/xhtml", "html", null);
-                //} else {
-                //}
-
-                if (transformed && transformed.children.length > 1) {
-                    newDoc = document.implementation.createDocument("http://www.mozilla.org/TransforMiix", "result", null);
-                    [...transformed.children].map(el => newDoc.documentElement.append(el))
-                } else {
-                    newDoc = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
-                    if (transformed && transformed.firstElementChild) {
-                        newDoc.append(transformed.firstElementChild)
-                    }
-                }
-                result = newDoc;
-            } else {
-                result = xsltProcessor.transformToDocument(xml);
-            }
-            if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
-                console.timeEnd();
-            }
-        } catch (e) {
-            let default_document = xover.sources.defaults[(xsl.selectSingleNode("//xsl:import") || document.createElement('p')).getAttribute("href")];
-            if (default_document /*&& arguments.callee.caller != xover.xml.transform*/) {
-                result = xml.transform(default_document);
-            } else if (!xml.documentElement) {
-                return xml;
-            } else {
-                console.error("xover.xml.transform: " + (e.message || e.name)); //TODO: No está entrando en esta parte, por ejemplo cuando hay un error 404. net::ERR_ABORTED 404 (Not Found)
-                return xml;
-            }
-        }
-        //}
-        if (!result) {
-            if (/*((arguments || {}).callee || {}).caller != xover.xml.transform && */xsl.selectSingleNode('//xsl:import[@href="login.xslt"]')) {
-                result = xover.xml.transform(xml, xover.sources.defaults["login.xslt"]);
-            } else if (/*((arguments || {}).callee || {}).caller != xover.xml.transform && */xsl.selectSingleNode('//xsl:import[@href="shell.xslt"]')) {
-                result = xover.xml.transform(xml, xover.sources.defaults["shell.xslt"]);
-            } else if (!xml.documentElement) {
-                return xml;
-            } else {
-                throw (new Error(xover.messages.transform_exception || "There must be a problem with the transformation file. A misplaced attribute, maybe?")); //Podría ser un atributo generado en un lugar prohibido. Se puede enviar al servidor y aplicar ahí la transformación //TODO: Hacer una transformación del XSLT para identificar los problemas comúnes.
-                result = xml;
-            }
-        }
-        else if (typeof (result.selectSingleNode) == "undefined" && result.documentElement) {
-            result = xover.xml.createDocument(result.documentElement);
-        }
-        [...result.querySelectorAll('parsererror div')].map(message => {
-            if (String(message.textContent).match(/prefix|prefijo/)) {
-                var prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
-                if (!xover.spaces[prefix]) {
-                    var message = xover.data.createMessage(message.textContent.match("(error [^:]+):(.+)").pop());
-                    xml.documentElement.appendChild(message.documentElement);
-                    return xml;
-                }
-                (xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
-                result = xml.transform(xsl, target);
-                return result;
-            } else if (String(message.textContent).match(/Extra content at the end of the document/)) {
-                message.remove();
-            } else if (String(message.textContent).match(/Document is empty/)) {
-                if (xsl.documentElement.selectNodes('xsl:template').length == 1 && xsl.documentElement.selectNodes('xsl:template[not(*) and text()]')) {
-                    message.textContent = `Template can't return text without a wrapper`
-                }
-            }
-        });
-    }
-    try {
-        //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-        window.top.dispatchEvent(new xover.listener.Event('xmlTransformed', { original: xml, transformed: result }));
-        //}
-    } catch (e) { }
-    return result
-}
-
 xover.xml.isValid = function (input) {
     return (input instanceof XMLDocument);
 }
@@ -8748,6 +8465,27 @@ xover.modernize = function (targetWindow) {
                 })
             }
 
+            if (!XSLTProcessor.prototype.hasOwnProperty('asyncTransformToDocument')) {
+                Object.defineProperty(XSLTProcessor.prototype, 'asyncTransformToDocument', {
+                    value: function (xml, xsl) {
+                        return new Promise((resolve, reject) => {
+                            const worker = new Worker('/xover/transform.js');
+                            worker.postMessage([xml.toString(), xsl.toString()]);
+                            worker.addEventListener('message', (event) => {
+                                const result = event.data;
+                                resolve(result);
+                                worker.terminate();
+                            });
+                            worker.addEventListener('error', (error) => {
+                                reject(error);
+                                worker.terminate();
+                            });
+                        });
+                    },
+                    writable: false, enumerable: false, configurable: false
+                });
+            }
+
             if (!Node.prototype.hasOwnProperty('transform')) {
                 Object.defineProperty(Node.prototype, 'transform', {
                     value: function (xml_document) {
@@ -8819,7 +8557,7 @@ xover.modernize = function (targetWindow) {
                         }
 
                         if (document.implementation && document.implementation.createDocument) {
-                            var xsltProcessor = new XSLTProcessor();
+                            let xsltProcessor = new XSLTProcessor();
                             try {
                                 if (navigator.userAgent.indexOf("Firefox") != -1) {
                                     var invalid_node = xsl.selectSingleNode("//*[contains(@select,'namespace::')]");
@@ -8889,6 +8627,7 @@ xover.modernize = function (targetWindow) {
                                 }
                                 if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"]')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
                                     let transformed = xsltProcessor.transformToFragment(xml, document);
+                                    console.log(xsltProcessor.asyncTransformToDocument(xml, xsl))
                                     var newDoc;
                                     //if (transformed.children.length && transformed.firstElementChild.namespaceURI == "http://www.w3.org/1999/xhtml") {
                                     //newDoc = document.implementation.createDocument("http://www.w3.org/1999/xhtml", "html", null);
@@ -8907,6 +8646,7 @@ xover.modernize = function (targetWindow) {
                                     result = newDoc;
                                 } else {
                                     result = xsltProcessor.transformToDocument(xml);
+                                    console.log(xsltProcessor.asyncTransformToDocument(xml))
                                 }
                                 result && [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                 if (!(result && result.documentElement) && !xml.documentElement) {
