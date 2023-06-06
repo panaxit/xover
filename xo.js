@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -705,16 +705,10 @@ xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
 
 xover.listener.on('keyup', async function (event) {
     if (event.keyCode == 27) {
-        let first_alert = document.querySelector("[role='alertdialog']");
+        let first_alert = document.querySelector("[role='alertdialog']:last-of-type");
         first_alert && first_alert.remove();
     }
 })
-
-//Continue here
-//xover.listener.on('change::@source:*', async function () {
-//    let source = this.source;
-//    console.log(source.fetch());
-//})
 
 xover.listener.on('error', async function ({ event }) {
     if (!(event && !(event.defaultPrevented))) return;
@@ -2723,7 +2717,7 @@ Object.defineProperty(xover.sources, 'xover/databind.xslt', {
 
 Object.defineProperty(xover.stores, '#', {
     get: function () {
-        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] })) || xover.stores['#shell']; //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
+        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] })); //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
     }
 });
 
@@ -3309,7 +3303,7 @@ xover.URL = function (url, base, settings = {}) {
 Object.defineProperty(URL.prototype, 'href', {
     get: function (...args) {
         let href = original_href.get.apply(this, args);
-        return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '');
+        return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "")//.replace(/^\/+/, '');
     }
 });
 
@@ -4025,30 +4019,8 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
      omit-xml-declaration="yes"
      indent="yes" standalone="no"/>
 
-  <!--Mostrar mensajes en la aplicación-->
   <xsl:template match="xo:message">
-    <div class="{@type}" role="alertdialog">
-      <div class="messages" style="z-index: 1090">
-        <div class="modal-dialog" role="document" style="padding-top: 160px;">
-          <div class="modal-content message-error w-100">
-            <div class="modal-header alert">
-              <h2 class="modal-title font-weight-bold mt-2" style="margin-left: 4rem !important;">¡Aviso!</h2>
-              <button type="button" class="close" data-dismiss="modal" aria-label="Close" onclick="this.closest('[role=\\'alertdialog\\']').remove(); ">
-                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24">
-                  <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-                  <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-                </svg>
-              </button>
-            </div>
-            <div class="modal-body ">
-              <h4 style="margin-left: 3rem !important;">
-                <xsl:apply-templates/>
-              </h4>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <dialog open="open" style="width: 300px; margin: 0 auto; top: 50vh;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
   </xsl:template>
 
   <xsl:template match="html:*"><xsl:copy-of select="."/></xsl:template>
@@ -4058,13 +4030,13 @@ xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" 
 
 xover.init = async function () {
     this.init.initializing = this.init.initializing || new Promise(async (resolve) => {
+        xover.modernize();
         if (history.state) delete history.state.active;
-        let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '') + '.manifest', { headers: { Accept: "*/*" } });
-        let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } }) || await xover.fetch.json('manifest.json', { headers: { Accept: "*/*" } }) || {};
+        let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '') + '.manifest', { headers: { Accept: "*/*" } }).catch(e => console.log(e));
+        let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } }).catch(e => console.log(e)) || await xover.fetch.json('manifest.json', { headers: { Accept: "*/*" } }).catch(e => console.log(e)) || {};
         manifest = manifest.merge(local_manifest);
         xover.manifest = new xover.Manifest(xover.manifest.merge(manifest));
         Object.assign(xover.spaces, xover.manifest.spaces);
-        xover.modernize();
         xover.manifest.stylesheets.map(href => xover.sources[href]).forEach(source => {
             source.fetch().catch(e => Promise.reject(e))
         });
@@ -4072,7 +4044,8 @@ xover.init = async function () {
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
         this.init.status = 'initialized';
-        xover.stores.active.render();
+        let active = xover.stores.active;
+        active && active.render();
         xover.session.checkStatus();
     }).catch(e => {
         return Promise.reject(e);
@@ -6531,6 +6504,36 @@ xover.modernize = function (targetWindow) {
                 this.append(node);
                 return node;
             }
+
+            Document.native = {};
+            Document.native.find = Object.getOwnPropertyDescriptor(Document.prototype, 'find');
+            Object.defineProperty(Document.prototype, 'find', {
+                value: function (selector) {
+                    try {
+                        return this.querySelector(selector)
+                    } catch (e) {
+                        if (e.message.indexOf('not a valid selector') != -1) {
+                            try {
+                                return this.selectFirst(`//${selector}`)
+                            } catch (e) {
+                                return null;
+                            }
+                        }
+                    }
+                }
+            })
+
+            HTMLCollection.prototype.native = {};
+            HTMLCollection.prototype.native.filter = Object.getOwnPropertyDescriptor(HTMLCollection.prototype, 'filter');
+            Object.defineProperty(HTMLCollection.prototype, 'filter', {
+                value: function (...args) {
+                    if (typeof (args[0]) === 'string') {
+                        return [...this].filter(el => el.selectSingleNode(args[0]))
+                    } else if (typeof (args[0]) === 'function') {
+                        return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
+                    }
+                }
+            })
 
             Node.prototype.filter = function (...args) {
                 if (typeof (args[0]) === 'string') {
@@ -9380,9 +9383,12 @@ xover.listener.on('Response:rejection', function ({ response, request }) {
     }
 })
 
-addEventListener("unhandledrejection", (event) => {
+addEventListener("unhandledrejection", async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
+    }
+    if (xover.init.status != 'initialized') {
+        await xover.init();
     }
     try {
         let reason = event.message || event.reason;
