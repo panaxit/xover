@@ -1668,7 +1668,7 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
     return result;
 }
 
-xover.Source = function (source, tag, manifest_key) {
+xover.Source = function (tag/*source, tag, manifest_key*/) {
     let expiration_ms = function (expiry) {
         if (expiry == null) return null;
         let ms = 0;
@@ -1683,13 +1683,11 @@ xover.Source = function (source, tag, manifest_key) {
         }
         return ms
     }
-    if (!(this instanceof xover.Source)) return new xover.Source(source, tag, manifest_key);
-    if ((xover.session.debug || {})["Source"]) {
-        console.log(`${tag}: ${source && source.constructor == {}.constructor && JSON.stringify(source) || source}`);
-    }
+    if (!(this instanceof xover.Source)) return new xover.Source(tag/*source, tag, manifest_key*/);
     let _isActive = undefined;
     let self = this;
-    let __document = typeof (source) == 'string' && source[0] == '#' && source !== tag ? xover.sources[source] : xover.xml.createDocument();
+    let __document = xover.xml.createDocument();
+    let manifest_key;
     //__document.url = new xover.URL(tag);
     if (!__document.hasOwnProperty("source")) {
         Object.defineProperty(__document, 'source', {
@@ -1724,15 +1722,29 @@ xover.Source = function (source, tag, manifest_key) {
 
     if (!this.hasOwnProperty("manifest_key")) {
         Object.defineProperty(this, 'manifest_key', {
-            value: manifest_key,
-            writable: false, enumerable: false, configurable: false
+            get: function () {
+                let _manifest = xover.manifest.sources || {};
+                manifest_key = Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && tag.match(new RegExp(manifest_key, "i")) || manifest_key === tag || tag[0] == '#' && manifest_key === '#' + xover.URL(tag.substring(1)).pathname.substring(1)).pop();
+                return manifest_key;
+            }, enumerable: false, configurable: false
         });
     }
 
     if (!__document.hasOwnProperty("definition")) {
         Object.defineProperty(this, 'definition', {
-            value: xover.manifest.sources[manifest_key],
-            writable: false, enumerable: false, configurable: false
+            get: function () {
+                let manifest_key = self.manifest_key;
+                let source = xover.manifest.sources[manifest_key];
+                source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
+                    if (typeof (source) == 'string') {
+                        source = tag.replace(new RegExp(manifest_key, "i"), source)
+                    } else {
+                        Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+                    }
+                }) || source || tag;
+                source = manifest_key !== tag && JSON.parse(JSON.stringify(source)) || source;
+                return source;
+            }, enumerable: false, configurable: false
         });
     }
 
@@ -1819,16 +1831,20 @@ xover.Source = function (source, tag, manifest_key) {
     })
     Object.defineProperty(this, `fetch`, {
         value: async function (...args) {
+            if (xover.init.status != 'initialized') {
+                await xover.init();
+            }
+            let manifest_key = self.manifest_key;
+            let source = self.definition;
+            __document = typeof (source) == 'string' && source[0] == '#' && source !== tag ? xover.sources[source] : __document;
+
+            //if ((xover.session.debug || {})["Source"]) {
+            //    console.log(`${tag}: ${source && source.constructor == {}.constructor && JSON.stringify(source) || source}`);
+            //}
+            if (__document.documentElement) return __document;
+
             let url, href;
-            let payload;
             //let qri = xover.QUERI(tag.replace(/^#/, ''));
-            source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
-                if (typeof (source) == 'string') {
-                    source = tag.replace(new RegExp(manifest_key, "i"), source)
-                } else {
-                    Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
-                }
-            }) || source;
             self.fetching = self.fetching || new Promise(async (resolve, reject) => {
                 let document;
                 let endpoint_settings;
@@ -1941,7 +1957,6 @@ xover.Source = function (source, tag, manifest_key) {
 
 xover.sources = new Proxy({}, {
     get: function (self, key) {
-        let _manifest = xover.manifest.sources;
         if (key in self) {
             return self[key];
         }
@@ -1949,11 +1964,8 @@ xover.sources = new Proxy({}, {
         if (key in self) {
             return self[key];
         }
-        let manifest_key = Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key || key[0] == '#' && manifest_key === '#' + xover.URL(key.substring(1)).pathname.substring(1)).pop();
-        let source;
-        source = _manifest[manifest_key] || key;
-        source = manifest_key !== key && JSON.parse(JSON.stringify(source)) || source;
-        xover.sources[key] = new xover.Source(source, key, manifest_key).document;
+
+        xover.sources[key] = new xover.Source(key).document;
         return self[key];
     },
     set: function (self, key, input) {
@@ -2770,15 +2782,15 @@ Object.defineProperty(xover.stores, 'find', {
                 return_array.push(target);
             }
         }
-        Object.entries(sessionStorage).filter(([key]) => key.match(/^#/) && !xover.stores.hasOwnProperty(key)).map(([hashtag, value]) => {
-            let restored_document = xover.session.getKey(hashtag)
-            if (restored_document) {
-                restored_document = new xover.Store(new xover.Source(restored_document.source).document, { tag: hashtag });
-                if (restored_document.find(ref)) {
-                    return_array.push(xover.stores[hashtag].find(ref));
-                }
-            }
-        })
+        //Object.entries(sessionStorage).filter(([key]) => key.match(/^#/) && !xover.stores.hasOwnProperty(key)).map(([hashtag, value]) => {
+        //    let restored_document = xover.session.getKey(hashtag)
+        //    if (restored_document) {
+        //        restored_document = new xover.Store(new xover.Source(restored_document.source).document, { tag: hashtag });
+        //        if (restored_document.find(ref)) {
+        //            return_array.push(xover.stores[hashtag].find(ref));
+        //        }
+        //    }
+        //})
         return_array = [...new Set(return_array)];
         return new xover.NodeSet(return_array);
     },
@@ -4020,7 +4032,7 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
      indent="yes" standalone="no"/>
 
   <xsl:template match="xo:message">
-    <dialog open="open" style="width: 300px; margin: 0 auto; top: 50vh;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
+    <dialog open="open" style="width: fit-content; margin: 0 auto; top: 50vh;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
   </xsl:template>
 
   <xsl:template match="html:*"><xsl:copy-of select="."/></xsl:template>
@@ -4029,8 +4041,7 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
 xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:xo="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" xo:id="shell" xo:hash=""></shell:shell>');
 
 xover.init = async function () {
-    this.init.initializing = this.init.initializing || new Promise(async (resolve) => {
-        xover.modernize();
+    this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
         if (history.state) delete history.state.active;
         let local_manifest = await xover.fetch.json(location.pathname.replace(/\.[^\.]+/g, '') + '.manifest', { headers: { Accept: "*/*" } }).catch(e => console.log(e));
         let manifest = await xover.fetch.json('.manifest', { headers: { Accept: "*/*" } }).catch(e => console.log(e)) || await xover.fetch.json('manifest.json', { headers: { Accept: "*/*" } }).catch(e => console.log(e)) || {};
@@ -4047,6 +4058,7 @@ xover.init = async function () {
         let active = xover.stores.active;
         active && active.render();
         xover.session.checkStatus();
+        return Promise.resolve();
     }).catch(e => {
         return Promise.reject(e);
     }).finally(() => {
@@ -4542,6 +4554,9 @@ xover.Store = function (xml, ...args) {
             //    //__document.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
             //}
             //xover.stores[this.tag] = self;
+            if (!(input instanceof Document)) {
+                return Promise.reject(`Invalid input document for store`)
+            }
             input.reseed();
             if (input instanceof Document) {
                 __document.replaceBy(input)
@@ -5052,7 +5067,9 @@ xover.Store = function (xml, ...args) {
             //let before = new xover.listener.Event('beforeRender', this);
             //xover.listener.dispatchEvent(before, this);
             //if (before.cancelBubble || before.defaultPrevented) return;
-
+            if (xover.init.status != 'initialized') {
+                await xover.init();
+            }
             _render_manager = _render_manager || xover.delay(1).then(async () => {
                 let tag = self.tag;
                 if (!__document.documentElement) {
@@ -9411,3 +9428,4 @@ addEventListener("unhandledrejection", async (event) => {
         console.error(e);
     }
 });
+xover.modernize();
