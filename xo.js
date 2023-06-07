@@ -8664,7 +8664,6 @@ xover.modernize = function (targetWindow) {
                                     result = newDoc;
                                 } else {
                                     result = xsltProcessor.transformToDocument(xml);
-                                    console.log(xsltProcessor.asyncTransformToDocument(xml))
                                 }
                                 result && [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                 if (!(result && result.documentElement) && !xml.documentElement) {
