@@ -8924,7 +8924,7 @@ xover.modernize = function (targetWindow) {
                                 await Promise.all(dependencies);
                                 stylesheet_target = stylesheet.target instanceof HTMLElement && stylesheet.target || document.querySelector(stylesheet.target || stylesheet_target);
                                 if (!stylesheet_target) {
-                                    throw (new Error(`Couldn't render store ${store.tag}`));
+                                    return Promise.reject(`Couldn't render store ${store.tag}`);
                                 }
                             }
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
