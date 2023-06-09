@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -1730,20 +1730,31 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
         });
     }
 
+    let definition;
     if (!__document.hasOwnProperty("definition")) {
         Object.defineProperty(this, 'definition', {
             get: function () {
+                if (definition !== undefined) return definition;
                 let manifest_key = self.manifest_key;
-                let source = xover.manifest.sources[manifest_key];
-                source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
-                    if (typeof (source) == 'string') {
-                        source = tag.replace(new RegExp(manifest_key, "i"), source)
-                    } else {
-                        Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+                if (manifest_key) {
+                    let source = xover.manifest.sources[manifest_key];
+                    source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
+                        if (typeof (source) == 'string') {
+                            source = tag.replace(new RegExp(manifest_key, "i"), source)
+                        } else {
+                            Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+                        }
+                    }) || source;
+                    source = JSON.parse(JSON.stringify(source));
+                    if (typeof (source) == 'string' && source[0] == '#') {
+                        __document = xover.sources[source];
+                        source = __document.source.definition;
                     }
-                }) || source || tag;
-                source = manifest_key !== tag && JSON.parse(JSON.stringify(source)) || source;
-                return source;
+                    definition = source;
+                } else {
+                    definition = tag;
+                }
+                return definition;
             }, enumerable: false, configurable: false
         });
     }
@@ -1834,21 +1845,21 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             if (xover.init.status != 'initialized') {
                 await xover.init();
             }
+            window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, self));
             let manifest_key = self.manifest_key;
             let source = self.definition;
-            __document = typeof (source) == 'string' && source[0] == '#' && source !== tag ? xover.sources[source] : __document;
+            //__document = typeof (source) == 'string' && source[0] == '#' && source !== tag ? xover.sources[source] : __document;
 
             //if ((xover.session.debug || {})["Source"]) {
             //    console.log(`${tag}: ${source && source.constructor == {}.constructor && JSON.stringify(source) || source}`);
             //}
-            if (__document.documentElement) return __document;
+            if (__document.source !== self) return __document.fetch();
 
             let url, href;
             //let qri = xover.QUERI(tag.replace(/^#/, ''));
             self.fetching = self.fetching || new Promise(async (resolve, reject) => {
                 let document;
                 let endpoint_settings;
-                window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, self));
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
@@ -1911,7 +1922,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                         return reject(e);
                     }
                     document = documents[0];
-                } else if (source[0] !== '#') {
+                } else if (source && source[0] !== '#') {
                     try {
                         document = await xover.fetch.xml.apply(self, [source, self["settings"]]);
                     } catch (e) {
@@ -6552,6 +6563,18 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            NodeList.prototype.native = {};
+            NodeList.prototype.native.filter = Object.getOwnPropertyDescriptor(NodeList.prototype, 'filter');
+            Object.defineProperty(NodeList.prototype, 'filter', {
+                value: function (...args) {
+                    if (typeof (args[0]) === 'string') {
+                        return [...this].filter(el => el.selectSingleNode(args[0]))
+                    } else if (typeof (args[0]) === 'function') {
+                        return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
+                    }
+                }
+            })
+
             Node.prototype.filter = function (...args) {
                 if (typeof (args[0]) === 'string') {
                     if (this.selectSingleNode(args[0])) {
@@ -9096,11 +9119,13 @@ xover.modernize = function (targetWindow) {
                                     target = target.replaceWith(dom)//target = [target.replace(dom)];
                                     //let to_be_replaced = target.querySelector(active_element_selector)
                                     //to_be_replaced && to_be_replaced.replaceWith(active_element)
+                                    target.document = data;
                                 } else {//if (action == "append") {
                                     //target.append(dom);
                                     //} else {
                                     //    xover.dom.clear(target);
                                     //target.append(...dom.cloneNode(true).childNodes);
+                                    dom.parentNode.childNodes.filter(el => el instanceof Element).forEach(el => el.document = data)
                                     target.append(...dom.parentNode.childNodes);
                                 }
 
