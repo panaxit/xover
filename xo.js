@@ -809,14 +809,14 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
     xover.site.seed = xover.site.seed || location.hash
     if (history.state) delete history.state.active;
-    if (!history.state && !location.hash && positionLastShown || xover.site.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.site.seed])) {
-        history.back();
-        event.stopPropagation()
-    } else if (history.state && positionLastShown > xover.site.position) {
-        window.top.dispatchEvent(new CustomEvent('navigatedBack', { bubbles: false }));
-    } else if (history.state && positionLastShown < xover.site.position) {
-        window.top.dispatchEvent(new CustomEvent('navigatedForward', { bubbles: false }));
-    }
+    //if (!history.state && !location.hash && positionLastShown || xover.site.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.site.seed])) {
+    //    //history.back();
+    //    event.stopPropagation()
+    //} else if (history.state && positionLastShown > xover.site.position) {
+    //    window.top.dispatchEvent(new CustomEvent('navigatedBack', { bubbles: false }));
+    //} else if (history.state && positionLastShown < xover.site.position) {
+    //    window.top.dispatchEvent(new CustomEvent('navigatedForward', { bubbles: false }));
+    //}
 })
 
 xover.listener.on('navigatedForward', function (event) {
@@ -1485,7 +1485,7 @@ Object.defineProperty(xover.site, 'active', {
         //xover.dom.navigateTo(hashtag)
         input = input || "#";
         let store = xover.stores[input];
-        if ([this.seed, (xover.stores[this.seed] || {}).tag, ...this.activeTags()].filter(store => store).includes(store.tag) || store.isRendered) { //TODO: Revisar si isRendered siempre
+        if (store && ([this.seed, (xover.stores[this.seed] || {}).tag, ...this.activeTags()].filter(store => store).includes(store.tag) || store.isRendered)) { //TODO: Revisar si isRendered siempre
             //history.state.active = input; //No lo tiene que guardar, porque en el caso del login, sobreescribiría el estado y lo perderíamos. Este truco se va a tener que hacer directo con history.state.active
             let active_store = xover.stores[this.active];
             if (active_store) {
@@ -1493,8 +1493,9 @@ Object.defineProperty(xover.site, 'active', {
             }
             xover.stores.active.render()
         } else if (input in xover.stores) {
-            this.seed = input
-            xover.stores.active.render()
+            this.seed = input;
+            let active = xover.stores.active;
+            active && active.render();
         } else {
             throw (new Error(`Store ${input} doesn't exist`));
         }
@@ -5098,9 +5099,9 @@ xover.Store = function (xml, ...args) {
                     let source = __document.source;
                     source && source.save && source.save();
                 }
-                if (!(_store_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
-                    store.addStylesheet({ href: store.tag.substring(1).split(/\?/, 1).shift() + '.xslt', target: "@#shell main" })
-                }
+                //if (!(_store_stylesheets.filter(stylesheet => stylesheet.role != 'init').length || __document.stylesheets.length)) {
+                //    store.addStylesheet({ href: store.tag.substring(1).split(/\?/, 1).shift() + '.xslt', target: "main" })
+                //}
                 await store.sources.load();
                 let isActive = self.isActive
                 let active_tag = xover.site.active;
@@ -6563,6 +6564,13 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            HTMLCollection.prototype.native.toArray = Object.getOwnPropertyDescriptor(HTMLCollection.prototype, 'toArray');
+            Object.defineProperty(HTMLCollection.prototype, 'toArray', {
+                value: function () {
+                    return [...this];
+                }
+            })
+
             NodeList.prototype.native = {};
             NodeList.prototype.native.filter = Object.getOwnPropertyDescriptor(NodeList.prototype, 'filter');
             Object.defineProperty(NodeList.prototype, 'filter', {
@@ -6572,6 +6580,13 @@ xover.modernize = function (targetWindow) {
                     } else if (typeof (args[0]) === 'function') {
                         return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
                     }
+                }
+            })
+
+            NodeList.prototype.native.toArray = Object.getOwnPropertyDescriptor(NodeList.prototype, 'toArray');
+            Object.defineProperty(NodeList.prototype, 'toArray', {
+                value: function () {
+                    return [...this];
                 }
             })
 
@@ -6900,7 +6915,7 @@ xover.modernize = function (targetWindow) {
                             if (!(target && target.parentNode)) {
                                 return path.filter(el => el).join(" > ");
                             } else if (target.id) {
-                                path.unshift(`${target.tagName}#${target.id}`);
+                                path.unshift(`${target.tagName}[id="${target.id}"]`);
                             } else if ((target.classList || []).length && selector_type != 'full_path') {
                                 let classes = [...target.classList].filter(class_name => !class_name.match("[.]"));
                                 path.unshift(target.tagName + (classes.length && '.' + classes.join(".") || ""));
