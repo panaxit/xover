@@ -1865,10 +1865,11 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
                     //parameters = parameters.concat([...qri.predicate]);
-                    //if (location.search && tag === xover.site.active) {
-                    //    parameters.concat((new URLSearchParams(location.search)).entries())
-                    //}
                     //parameters = parameters.constructor === [].constructor && parameters || [parameters];
+                    let url = xover.URL(location.hash.replace(/^#/, ''));
+                    if (location.hash && url.pathname === xover.URL(tag.replace(/^#/, '')).pathname) {
+                        parameters = parameters.concat([...url.searchParams.entries()])
+                    }
                     if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
                         parameters = [parameters];
                     }
@@ -7643,10 +7644,20 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            if (!Document.prototype.hasOwnProperty('reactive')) {
+                Object.defineProperty(Document.prototype, 'reactive', {
+                    get: function () {
+                        return !(this.disconnected)
+                    },
+                    enumerable: true, // Optional
+                    configurable: true // Optional
+                })
+            }
+
             if (!Element.prototype.hasOwnProperty('reactive')) {
                 Object.defineProperty(Element.prototype, 'reactive', {
                     get: function () {
-                        return !(this.disconnected || this.disconnected === undefined && (this instanceof HTMLElement || this instanceof SVGElement || ['http://www.w3.org/1999/XSL/Transform'].includes(this.namespaceURI)))
+                        return this.ownerDocument.reactive && !(this.disconnected || this.disconnected === undefined && (this instanceof HTMLElement || this instanceof SVGElement || ['http://www.w3.org/1999/XSL/Transform'].includes(this.namespaceURI)))
                     },
                     enumerable: true, // Optional
                     configurable: true // Optional
@@ -8952,6 +8963,7 @@ xover.modernize = function (targetWindow) {
                                 original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
                             }
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
+                            data.disconnect();
                             let dom = await data.transform(xsl);
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
