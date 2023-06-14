@@ -1302,6 +1302,12 @@ Object.defineProperty(xover.site, 'sections', {
     , enumerable: false
 });
 
+Object.defineProperty(xover.site.sections, 'render', {
+    value() {
+        this.forEach(section => section.render())
+    }, writable: false, configurable: false, enumerable: false
+});
+
 Object.defineProperty(xover.site, 'set', {
     value(input, value) {
         let prop;
@@ -4068,6 +4074,7 @@ xover.init = async function () {
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
         this.init.status = 'initialized';
+        xover.site.sections.forEach(section => section.render())
         let active = xover.stores.active;
         active && active.render();
         xover.session.checkStatus();
