@@ -678,6 +678,7 @@ Object.defineProperty(xover.listener, 'on', {
 
 xover.listener.on('hashchange', function (new_hash, old_hash) {
     xover.site.active = location.hash;
+    xover.restoreDocument(document);    
 });
 
 xover.listener.on('pushState', function ({ state }) {
@@ -4074,7 +4075,8 @@ xover.init = async function () {
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
         this.init.status = 'initialized';
-        xover.site.sections.forEach(section => section.render())
+        xover.site.sections.forEach(section => section.render());
+        xover.evaluateParams(document);
         let active = xover.stores.active;
         active && active.render();
         xover.session.checkStatus();
@@ -4085,6 +4087,23 @@ xover.init = async function () {
         this.init.initializing = undefined;
     });
     return this.init.initializing;
+}
+
+xover.evaluateParams = function (document) {
+    let params = document.select(`//*[name()="xsl:param"]/@name`);
+    if (!params.length) return;
+    document.original = document.cloneNode(true);
+    //params.forEach(el => (function () { return eval.apply(this, arguments) }(`var $${el.value}=eval(\`${el.parentNode.textContent}\`)`)));
+    parameters = Object.fromEntries(params.map(el => [`$${el.value}`, (function () { return eval.apply(this, arguments) }(el.parentNode.textContent))]));
+    document.select(`//*[name()="xsl:value-of"]/@select`).forEach(el => el.parentNode.replaceWith(new Text(parameters[el.value])));
+    document.select(`//@*[contains(.,'{$')]`).forEach(attr => attr.set(attr.value.replace(/\{\$[^\}]*\}/g, (match) => match.substr(1, match.length - 2) in parameters ? parameters[match.substr(1, match.length - 2)] : match)));
+}
+
+xover.restoreDocument = function (document) {
+    if (!document.original) return;
+    document.body.replaceWith(document.original.body);
+    xover.site.sections.forEach(section => section.render());
+    xover.evaluateLive(document);
 }
 
 xover.xml.Empty = function () {
