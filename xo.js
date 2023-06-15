@@ -4090,20 +4090,25 @@ xover.init = async function () {
 }
 
 xover.evaluateParams = function (document) {
-    let params = document.select(`//*[name()="xsl:param"]/@name`);
+    let params = document.select(`//xo-param/@name`);
     if (!params.length) return;
-    document.original = document.cloneNode(true);
-    //params.forEach(el => (function () { return eval.apply(this, arguments) }(`var $${el.value}=eval(\`${el.parentNode.textContent}\`)`)));
-    parameters = Object.fromEntries(params.map(el => [`$${el.value}`, (function () { return eval.apply(this, arguments) }(el.parentNode.textContent))]));
-    document.select(`//*[name()="xsl:value-of"]/@select`).forEach(el => el.parentNode.replaceWith(new Text(parameters[el.value])));
-    document.select(`//@*[contains(.,'{$')]`).forEach(attr => attr.set(attr.value.replace(/\{\$[^\}]*\}/g, (match) => match.substr(1, match.length - 2) in parameters ? parameters[match.substr(1, match.length - 2)] : match)));
+    //document.original = document.cloneNode(true);
+    document.parameters = document.parameters || new Map();
+
+    parameters = Object.fromEntries(params.map(el => [`$${el.value}`, (function () { return eval.apply(this, arguments) }(el.parentNode.textContent || el.parentNode.getParameter("value")))]));
+    document.select(`//*[name()="xsl:value-of"]/@select`).forEach(el => el.parentNode.textContent = parameters[el.value]);
+    document.select(`//@*[contains(.,'{$')]`).forEach(attr => document.parameters.set(attr, attr.value))
+    for (let [attr, formula] of document.parameters.entries()) {
+        //if (!document.contains(attr.ownerElement)) continue;
+        attr.set(formula.replace(/\{\$[^\}]*\}/g, (match) => match.substr(1, match.length - 2) in parameters ? parameters[match.substr(1, match.length - 2)] : match));
+    }
 }
 
 xover.restoreDocument = function (document) {
-    if (!document.original) return;
-    document.body.replaceWith(document.original.body);
+    //if (!document.original) return;
+    //document.body.replaceWith(document.original.body);
     xover.site.sections.forEach(section => section.render());
-    xover.evaluateLive(document);
+    xover.evaluateParams(document);
 }
 
 xover.xml.Empty = function () {
