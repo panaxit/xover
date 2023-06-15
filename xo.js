@@ -6598,6 +6598,14 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            NamedNodeMap.prototype.native = {};
+            NamedNodeMap.prototype.native.toArray = Object.getOwnPropertyDescriptor(NamedNodeMap.prototype, 'toArray');
+            Object.defineProperty(NamedNodeMap.prototype, 'toArray', {
+                value: function () {
+                    return [...this];
+                }
+            })
+
             Node.prototype.filter = function (...args) {
                 if (typeof (args[0]) === 'string') {
                     if (this.selectSingleNode(args[0])) {
@@ -9000,6 +9008,9 @@ xover.modernize = function (targetWindow) {
                             }
                             dom.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
 
+                            let target_attributes = target.attributes.toArray();
+                            target_attributes.filter(attr => !['class'].includes(attr.nodeName)).forEach(attr => dom.setAttribute(attr.name, attr.value));
+                            target.classList.forEach(class_name => dom.classList.add(class_name));
                             if (target === document.body && action === 'replace') {
                                 action = null;
                             }
