@@ -532,7 +532,7 @@ xover.delay = function (ms) {
 xover.json = {};
 
 xover.listener = new Map();
-xover.listener.Event = function (event_name, params = {}, context) {
+xover.listener.Event = function (event_name, params = {}, context = (event || {}).srcElement) {
     if (!(this instanceof xover.listener.Event)) return new xover.listener.Event(event_name, params, context);
     let _event = new CustomEvent(event_name, { detail: params, cancelable: true });
     let _srcEvent = event;
@@ -1850,9 +1850,9 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
     })
     Object.defineProperty(this, `fetch`, {
         value: async function (...args) {
-            if (xover.init.status != 'initialized') {
-                await xover.init();
-            }
+            //if (!xover.manifest || xover.init.status != 'initialized') {
+            //    await xover.init();
+            //}
             window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, self));
             let manifest_key = self.manifest_key;
             let source = self.definition;
@@ -5383,6 +5383,9 @@ xover.json.difference = function () {
 xover.json.toAttributes = function (json) {
     json = Object.entries(json).reduce((filtered, [key, value]) => { if (value !== undefined) { filtered[key] = value; } return filtered; }, {})
     let attribs = new URLSearchParams(json);
+    //let dummy = document.createElement("p");
+    //[...attribs.entries()].forEach(([attr, value]) => dummy.setAttribute(attr, value));
+    //return dummy.outerHTML.replace(/^<p\s|><\/p>$/g, '') //TODO: Evalute what approach is better
     return [...attribs.entries()].reduce((params, entry) => { params.push(`${entry[0]}=${JSON.stringify(entry[1])}`); return params }, []).join(" ")
 }
 
@@ -6955,7 +6958,7 @@ xover.modernize = function (targetWindow) {
                             if (!(target && target.parentNode)) {
                                 return path.filter(el => el).join(" > ");
                             } else if (target.id) {
-                                path.unshift(`${target.tagName}[id="${target.id}"]`);
+                                path.unshift(`${target.tagName}[id='${target.id}']`);
                             } else if ((target.classList || []).length && selector_type != 'full_path') {
                                 let classes = [...target.classList].filter(class_name => !class_name.match("[.]"));
                                 path.unshift(target.tagName + (classes.length && '.' + classes.join(".") || ""));
@@ -7413,7 +7416,7 @@ xover.modernize = function (targetWindow) {
                         return this.ownerDocument.store
                     } else {
                         let node = this.parentElement && this.closest && this || this.parentNode || this;
-                        let store_name = [node.closest && node.closest("[xo-store]")].map(el => el && el.getAttribute("xo-store") || null)[0];
+                        let store_name = [node.closest && node.closest("[xo-store],[xo-stylesheet]")].map(el => el && el.getAttribute("xo-store") || null)[0];
                         let store = store_name && store_name in xover.stores && xover.stores[store_name] || null;
                         return store;
                     }
@@ -8850,10 +8853,17 @@ xover.modernize = function (targetWindow) {
                     if (section) {
                         let stylesheet = this.getAttribute("xo-stylesheet");
                         let target_store = this.store;
-                        if (target_store && !stylesheet) return this.store.render();
-                        let target_document = target_store && target_store.document;
-
-                        return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector, action: "replace" })) || null;
+                        if (target_store) {
+                            if (!stylesheet) {
+                                return this.store.render();
+                            } else {
+                                let target_document = target_store && target_store.document;
+                                return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector, action: "replace" })) || null;
+                            }
+                        } else {
+                            let document = xo.sources[stylesheet];
+                            return document.render();
+                        }
                     }
                 }).finally(async () => {
                     this._render_manager = undefined;
