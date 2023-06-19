@@ -930,6 +930,7 @@ xover.mimeTypes["json"] = "application/json"
 xover.mimeTypes["map"] = "text/plain"
 xover.mimeTypes["pdf"] = "application/pdf"
 xover.mimeTypes["png"] = "image/png"
+xover.mimeTypes["resx"] = "application/xml"
 xover.mimeTypes["text"] = "text/plain"
 xover.mimeTypes["xml"] = "text/xml"
 xover.mimeTypes["xsl"] = "text/xsl,application/xslt+xml,text/xml"
@@ -2031,8 +2032,10 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     document = documents[0];
                 } else if (source && source[0] !== '#') {
                     try {
-                        let headers = new Headers(self["settings"].headers || {});
-                        let accept_header = headers.get("accept") || xover.mimeTypes[source.substring(source.lastIndexOf(".") + 1)];
+                        self["settings"].headers = new Headers(self["settings"].headers || {});
+                        let headers = self["settings"].headers;
+                        headers.set("accept", headers.get("accept") || xover.mimeTypes[source.substring(source.lastIndexOf(".") + 1)]);
+                        let accept_header = headers.get("accept");
                         if (accept_header && (accept_header.indexOf('xml') != -1 || accept_header.indexOf('xsd') != -1 || accept_header.indexOf('xsl') != -1)) {
                             document = await xover.fetch.xml.apply(self, [source, self["settings"]]);
                         } else if (accept_header && accept_header.indexOf('json') != -1) {
@@ -9111,9 +9114,9 @@ xover.modernize = function (targetWindow) {
                             }
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
 
-                            let target_attributes = target.attributes.toArray();
-                            target_attributes.filter(attr => !['class'].includes(attr.nodeName)).forEach(attr => documentElement.setAttribute(attr.name, attr.value));
-                            target.classList.forEach(class_name => documentElement.classList.add(class_name));
+                            let copied_attributes = documentElement.attributes.toArray();
+                            copied_attributes.filter(attr => !['class','xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
+                            target.classList.forEach(class_name => target.classList.add(class_name));
 
                             if (target === document.body && action === 'replace') {
                                 action = null;
@@ -9272,7 +9275,8 @@ xover.modernize = function (targetWindow) {
                                 target.document = data;
                                 target.context = data;
                                 if (action == "replace") {
-                                    target = target.replaceWith(dom.firstElementChild);//target = [target.replace(dom)];
+                                    target.replaceChildren(...dom.firstElementChild.childNodes)
+                                    //target = target.replaceWith(dom.firstElementChild);//target = [target.replace(dom)];
                                     //let to_be_replaced = target.querySelector(active_element_selector)
                                     //to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
@@ -9306,14 +9310,14 @@ xover.modernize = function (targetWindow) {
                                 }
                                 xover.site.restore(target);
                             }
-                            window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target, dom: dom }, self));
+                            window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target, dom: target }, self));
 
-                            targets.push(dom);
+                            targets.push(target);
 
-                            xover.initializeElementListeners(dom);
+                            xover.initializeElementListeners(target);
                             if (window.MathJax) {
                                 MathJax.typeset && MathJax.typeset();
-                            } else if (dom.selectSingleNode('//mml:math') || ((dom || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
+                            } else if (target.selectSingleNode('//mml:math') || ((target || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
                                 if (!window.MathJax) {
                                     window.MathJax = {
                                         loader: { load: ['[mml]/mml3'] }
@@ -9324,22 +9328,22 @@ xover.modernize = function (targetWindow) {
                                 document.head.appendChild(script);
                             }
 
-                            let unbound_elements = dom.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
+                            let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
                             if (unbound_elements.length) {
                                 console.error(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
                             }
 
                             _applyScripts(document, scripts);
-                            dom.querySelectorAll('[xo-stylesheet]:not([xo-store]').forEach(el => data.render(
+                            target.querySelectorAll('[xo-stylesheet]:not([xo-store]').forEach(el => data.render(
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
-                            dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
+                            target.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
                             /*TODO: Mover este código a algún script diferido*/
-                            dom.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
+                            target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
                             })
-                            dependants = [...dom.querySelectorAll('*[xo-store],*[xo-stylesheet]')];
-                            window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: dom }, store));
+                            dependants = [...target.querySelectorAll('*[xo-store],*[xo-stylesheet]')];
+                            window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
                             dependants.forEach(el => el.render());
                             delete xover.site.renderingTo;
                         }
