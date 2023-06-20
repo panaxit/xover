@@ -594,7 +594,7 @@ xover.evaluateParams = function (document = window.document) {
     document.parameters = document.parameters || new Map();
 
     parameters = Object.fromEntries(params.map(el => [`$${el.value}`, (function () { return eval.apply(this, arguments) }(el.parentNode.textContent || el.parentNode.getParameter("value")))]));
-    document.select(`//*[name()="xsl:value-of"]/@select`).forEach(el => el.parentNode.textContent = parameters[el.value]);
+    document.select(`//xo-value/@select`).forEach(el => el.parentNode.textContent = parameters[el.value]);
     document.select(`//@*[contains(.,'{$')]`).forEach(attr => document.parameters.set(attr, attr.value))
     for (let [attr, formula] of document.parameters.entries()) {
         //if (!document.contains(attr.ownerElement)) continue;
