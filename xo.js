@@ -935,7 +935,7 @@ xover.mimeTypes["json"] = "application/json"
 xover.mimeTypes["map"] = "text/plain"
 xover.mimeTypes["pdf"] = "application/pdf"
 xover.mimeTypes["png"] = "image/png"
-xover.mimeTypes["resx"] = "application/xml"
+xover.mimeTypes["resx"] = "application/xml,application/octet-stream"
 xover.mimeTypes["text"] = "text/plain"
 xover.mimeTypes["xml"] = "text/xml"
 xover.mimeTypes["xsl"] = "text/xsl,application/xslt+xml,text/xml"
@@ -3834,6 +3834,7 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
     if (response.ok) {
         if (
             (req.headers.get("Accept") || "").indexOf("*/*") != -1 ||
+            req.headers.get("Accept").split(/\s*,\s*/g).includes(response.headers.get("content-type")) ||
             xover.mimeTypes[response.bodyType] == req.headers.get("Accept") ||
             (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
             (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
