@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -534,11 +534,16 @@ xover.init = async function () {
     this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
         xover.modernize();
         if (history.state) delete history.state.active;
-        for (let link of [...document.querySelectorAll('link[rel="manifest"]')].filter(manifest => (manifest.getAttribute("href") || {}).indexOf('.manifest') != -1 || (manifest.getAttribute("href") || {}).indexOf('manifest.json') != -1)) {
+        for (let link of [...document.querySelectorAll('link[rel="xover-manifest"]')].filter(manifest => (manifest.getAttribute("href") || {}).indexOf('.manifest') != -1 || (manifest.getAttribute("href") || {}).indexOf('manifest.json') != -1)) {
             let url = xover.URL(link.getAttribute("href"));
-            let manifest = await xover.fetch.json(url, { headers: { Accept: "*/*" } }).catch(e => console.log(e));
-            manifest.stylesheets = manifest.stylesheets.map(el => new URL(el, url).href);
-            Object.assign(xover.manifest, manifest)
+            try {
+                let manifest = await xover.fetch.json(url, { headers: { Accept: "*/*" } }).catch(e => console.log(e));
+                manifest = new xo.Manifest(manifest);
+                manifest.stylesheets = (manifest.stylesheets || []).map(el => new URL(el, url).href);
+                xover.manifest.merge(manifest)
+            } catch (e) {
+                Promise.reject(e);
+            }
         }
         Object.assign(xover.spaces, xover.manifest.spaces);
         xover.manifest.stylesheets.map(href => xover.sources[href]).forEach(source => {
@@ -767,7 +772,7 @@ Object.defineProperty(xover.listener, 'on', {
 
 xover.listener.on('hashchange', function (new_hash, old_hash) {
     xover.site.active = location.hash;
-    xover.restoreDocument(document);    
+    xover.restoreDocument(document);
 });
 
 xover.listener.on('pushState', function ({ state }) {
@@ -937,12 +942,47 @@ xover.mimeTypes["xsl"] = "text/xsl,application/xslt+xml,text/xml"
 xover.mimeTypes["xslt"] = "text/xsl,application/xslt+xml"
 
 xover.Manifest = function (manifest = {}) {
+    function hasMatchingStructure(input, template) {
+        // Check if both objects are of type 'object'
+        if (typeof template !== 'object' || typeof input !== 'object') {
+            return false;
+        }
+
+        for (const key in input) {
+            // Check if the key exists in the JSON object
+            if (!(key in template)) {
+                return false;
+            }
+
+            //const jsonValue = template[key];
+            //const templateValue = input[key];
+
+            //// Check if the types match
+            //if (typeof jsonValue !== typeof templateValue) {
+            //    return false;
+            //}
+
+            //// Recursively check nested objects/arrays
+            //if (typeof jsonValue === 'object' && typeof templateValue === 'object') {
+            //    if (!hasMatchingStructure(jsonValue, templateValue)) {
+            //        return false;
+            //    }
+            //}
+        }
+
+        return true;
+    }
+
     let base_manifest = {
         "server": {},
         "sources": {},
+        "stores": {},
         "stylesheets": [],
         "spaces": {},
         "settings": {}
+    }
+    if (manifest && !hasMatchingStructure(manifest, base_manifest)) {
+        throw (`Manifest has an invalid structure`);
     }
     let _manifest = Object.assign(base_manifest, manifest);
 
@@ -2055,14 +2095,14 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     body_element.innerHTML = document.body;
                     document = xover.xml.createDocument(body_element);
                 }
-                if (!(document instanceof Document || document.instance)) {
+                if (!(document instanceof Document || document instanceof DocumentFragment)) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
                 settings.stylesheets && settings.stylesheets.forEach(stylesheet => document.addStylesheet(stylesheet));
                 __document.url = document.url || url;
                 __document.href = document.href || href;
+                __document.replaceChildren(...document.childNodes)
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: __document, tag: tag, store: __document.store }, self));
-                __document.replaceBy(document);
                 return resolve(__document);
             }).catch(async (e) => {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
@@ -2260,7 +2300,7 @@ xover.dom.createDialog = function (message) {
     if (!dialog) {
         let frag = window.document.createDocumentFragment();
         let p = window.document.createElement('p');
-        p.innerHTML = `<dialog id="${dialog_id}"><form method="dialog" onsubmit="closest('dialog').remove()"><store></store><menu><button type="submit">Close</button></menu></form></dialog>`;
+        p.innerHTML = `<dialog id="${dialog_id}" class="xover-component"><form method="dialog" onsubmit="closest('dialog').remove()"><store></store><menu><button type="submit">Close</button></menu></form></dialog>`;
         frag.append(...p.childNodes);
         window.document.body.appendChild(frag);
         dialog = document.querySelector(`#${dialog_id}`);
@@ -6501,7 +6541,7 @@ xover.modernize = function (targetWindow) {
                     let self = this;
                     for (let a = 0; a < arguments.length; a++) {
                         let object = arguments[a]
-                        if (object && object.constructor == {}.constructor) {
+                        if (object && typeof (object) == 'object') {
                             for (let key in object) {
                                 if (object[key] && object[key].constructor == {}.constructor) {
                                     self[key] = Object.prototype.merge.call(self[key] || {}, object[key]);
@@ -8812,6 +8852,13 @@ xover.modernize = function (targetWindow) {
                                         Promise.reject(e.message);
                                     }
                                 });
+                                for (let param_name of xsl.selectNodes(`//xsl:stylesheet/xsl:param/@name`).filter(name => this.target && this.target.getAttribute(name.value))) {
+                                    let param = param_name.parentNode;
+                                    let prefix = param_name.prefix || '';
+                                    param_name = param_name.value;
+
+                                    xsltProcessor.setParameter(null, param_name, this.target.getAttribute(param_name))
+                                }
 
                                 ////if (!xml.documentElement) {
                                 ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
@@ -9076,6 +9123,7 @@ xover.modernize = function (targetWindow) {
                             }
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
                             data.disconnect();
+                            data.target = target;
                             let dom = await data.transform(xsl);
                             //if (current_cursor_style) delete current_cursor_style;
                             //target.select("xhtml:div[@class='loading']").remove()
@@ -9115,7 +9163,7 @@ xover.modernize = function (targetWindow) {
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
 
                             let copied_attributes = documentElement.attributes.toArray();
-                            copied_attributes.filter(attr => !['class','xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
+                            copied_attributes.filter(attr => !['class', 'xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
                             target.classList.forEach(class_name => target.classList.add(class_name));
 
                             if (target === document.body && action === 'replace') {
@@ -9186,7 +9234,7 @@ xover.modernize = function (targetWindow) {
                             let header_tags = xover.xml.createNode(`<header xmlns="http://www.w3.org/1999/xhtml"/>`)
                             scripts_external = dom.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]');
                             scripts_external.forEach(script => header_tags.append(script));
-                            
+
                             _applyScripts(document, scripts_external);
                             dom.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el))
                             if (!target) {
@@ -9305,7 +9353,7 @@ xover.modernize = function (targetWindow) {
                                 for (let l = 0; l < lines.length; ++l) {
                                     lines[l].remove();
                                 }
-                                if (dom.selectNodes) { 
+                                if (dom.selectNodes) {
                                     _applyScripts(document, dom.selectNodes('//*[self::html:script][text()]'));
                                 }
                                 xover.site.restore(target);
@@ -9334,6 +9382,7 @@ xover.modernize = function (targetWindow) {
                             }
 
                             _applyScripts(document, scripts);
+                            xover.evaluateParams(target);
                             target.querySelectorAll('[xo-stylesheet]:not([xo-store]').forEach(el => data.render(
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
@@ -9583,6 +9632,7 @@ addEventListener("unhandledrejection", async (event) => {
     }
     try {
         let reason = event.message || event.reason;
+        if (!reason) return;
         if (!(typeof (reason) == 'string' || reason instanceof Error)) {
             let unhandledrejection_event = new xover.listener.Event(`rejection`, {}, reason);
             window.top.dispatchEvent(unhandledrejection_event);
