@@ -9409,7 +9409,7 @@ xover.modernize = function (targetWindow) {
 
                             _applyScripts(document, scripts);
                             xover.evaluateParams(target);
-                            target.querySelectorAll('[xo-stylesheet]:not([xo-store]').forEach(el => data.render(
+                            target.querySelectorAll('[xo-stylesheet]:not([xo-store])').forEach(el => data.render(
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
                             target.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
