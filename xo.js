@@ -8414,6 +8414,15 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
+            if (typeof Node.prototype.replaceChildren !== 'function') {
+                Node.prototype.replaceChildren = function (...nodes) {
+                    while (this.firstChild) {
+                        this.firstChild.remove();
+                    }
+                    this.appendChild(...nodes);
+                };
+            }
+
             Node.prototype.replaceBy = function (new_node) {
                 let parent_node = this.parentNode;
                 if (!parent_node) {
