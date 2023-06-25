@@ -6433,6 +6433,22 @@ xover.modernize = function (targetWindow) {
             return result;
         }
 
+        if (!String.prototype.matchAll) {
+            String.prototype.matchAll = function (regex) {
+                const text = this;
+                const matches = [];
+                const regexGlobal = new RegExp(regex, "g");
+
+                let match;
+                while ((match = regexGlobal.exec(text)) !== null) {
+                    const capturingGroups = Array.prototype.slice.call(match, 1);
+                    matches.push(capturingGroups);
+                }
+
+                return matches[Symbol.iterator]();
+            };
+        }
+
         if (!Object.hasOwnProperty('getPropertyDescriptor')) {
             Object.defineProperty(Object, 'getPropertyDescriptor', {
                 value: function (source, key) {
