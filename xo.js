@@ -2173,7 +2173,8 @@ xover.ProcessingInstruction = function (stylesheet) {
     attribs["dependencies"] = [];
     if (attribs.target) {
         attribs["target"] = ((attribs["target"] || '').replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-store="$1"]`) || undefined);
-        attribs["dependencies"] = [...attribs["target"].matchAll(new RegExp(`\\[xo-store=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []);
+        let store_regex = new RegExp(`\\[xo-store=('|")([^\\1\\]]+)\\1\\]`, 'g');
+        attribs["dependencies"] = [...attribs["target"].match(store_regex)].map(match => match.replace(store_regex, '$2'));
     } else {
         attribs["target"] = undefined;
     }
