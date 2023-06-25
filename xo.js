@@ -686,8 +686,7 @@ xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
 Object.defineProperty(xover.listener, 'matches', {
     value: function (context, event_type) {
-        context = context instanceof Window && event_type.split(/(?<!::.*)::/)[1] || context;
-        //event_type = event_type.split(/(?<!::.*)::/)[0];
+        context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
         let tag = (event && event.detail || {}).tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
