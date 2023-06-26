@@ -8482,7 +8482,7 @@ xover.modernize = function (targetWindow) {
                     while (this.firstChild) {
                         this.firstChild.remove();
                     }
-                    if (nodes.length) {
+                    if (nodes && nodes.length) {
                         this.appendChild(...nodes)
                     }
                 };
