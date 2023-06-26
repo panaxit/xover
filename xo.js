@@ -2100,7 +2100,8 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 settings.stylesheets && settings.stylesheets.forEach(stylesheet => document.addStylesheet(stylesheet));
                 __document.url = document.url || url;
                 __document.href = document.href || href;
-                __document.replaceChildren(...document.childNodes)
+                __document.replaceChildren();
+                __document.append(...document.childNodes);
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: __document, tag: tag, store: __document.store }, self));
                 return resolve(__document);
             }).catch(async (e) => {
@@ -2299,12 +2300,12 @@ xover.dom.createDialog = function (message) {
     if (!dialog) {
         let frag = window.document.createDocumentFragment();
         let p = window.document.createElement('p');
-        p.innerHTML = `<dialog id="${dialog_id}" class="xover-component"><form method="dialog" onsubmit="closest('dialog').remove()"><menu><button type="submit">Close</button></menu></form></dialog>`;
+        p.innerHTML = `<dialog id="${dialog_id}" class="xover-component"><form method="dialog" onsubmit="closest('dialog').remove()"><section></section><menu><button type="submit">Close</button></menu></form></dialog>`;
         frag.append(...p.childNodes);
         window.document.body.appendChild(frag);
         dialog = document.querySelector(`#${dialog_id}`);
     }
-    dialog.querySelector("store").innerHTML = '';
+    dialog.querySelector("section").innerHTML = '';
     if (message.documentElement instanceof HTMLElement) {
         let frag = window.document.createDocumentFragment();
         let p = window.document.createElement('p');
@@ -2317,7 +2318,7 @@ xover.dom.createDialog = function (message) {
         message = message.statusText;
     }
 
-    dialog.querySelector("store").append(message);
+    dialog.querySelector("section").append(message);
     document.querySelector(`#${dialog_id}`);
     dialog.showModal();
     return dialog;
