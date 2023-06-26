@@ -2173,8 +2173,7 @@ xover.ProcessingInstruction = function (stylesheet) {
     attribs["dependencies"] = [];
     if (attribs.target) {
         attribs["target"] = ((attribs["target"] || '').replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-store="$1"]`) || undefined);
-        let store_regex = new RegExp(`\\[xo-store=('|")([^\\1\\]]+)\\1\\]`, 'g');
-        attribs["dependencies"] = [...attribs["target"].match(store_regex)].map(match => match.replace(store_regex, '$2'));
+        attribs["dependencies"] = [...attribs["target"].matchAll(new RegExp(`\\[xo-store=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []);
     } else {
         attribs["target"] = undefined;
     }
@@ -2300,7 +2299,7 @@ xover.dom.createDialog = function (message) {
     if (!dialog) {
         let frag = window.document.createDocumentFragment();
         let p = window.document.createElement('p');
-        p.innerHTML = `<dialog id="${dialog_id}" class="xover-component"><form method="dialog" onsubmit="closest('dialog').remove()"><store></store><menu><button type="submit">Close</button></menu></form></dialog>`;
+        p.innerHTML = `<dialog id="${dialog_id}" class="xover-component"><form method="dialog" onsubmit="closest('dialog').remove()"><menu><button type="submit">Close</button></menu></form></dialog>`;
         frag.append(...p.childNodes);
         window.document.body.appendChild(frag);
         dialog = document.querySelector(`#${dialog_id}`);
@@ -3897,7 +3896,14 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 }
             });
         }
-        if (return_value.documentElement.resolveNS('xo')) {
+        if (return_value.selectFirst('xsl:*')) {
+            //if (!return_value.documentElement.resolveNS('')) {
+            //    return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns", xover.spaces["xhtml"])
+            //}/*desn't work properly as when declared from origin */
+            if (!return_value.documentElement.resolveNS('xo')) {
+                return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
+            }
+
             for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
                 if (!el.getAttribute("xo-attribute")) {
@@ -7506,7 +7512,7 @@ xover.modernize = function (targetWindow) {
                             attribute = null;
                         }
                         let node = store.find(dom_scope.getAttribute("xo-scope") || id);
-
+                        if (!attribute && this instanceof Text) attribute = 'text()';
                         if (node && attribute) {
                             if (attribute === 'text()') {
                                 [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
@@ -8889,7 +8895,8 @@ xover.modernize = function (targetWindow) {
                                 ////if (!xml.documentElement) {
                                 ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                 ////}
-                                window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { document: xml, store: xml.store, stylesheet: xsl }, xml));
+                                let listeners = xover.listener.matches(xml, 'beforeTransform')
+                                window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: listeners, document: xml, store: xml.store, stylesheet: xsl }, this));
                                 let timer_id = `${xsl.href || "Transform"}-${Date.now()}`;
                                 if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                     console.time(timer_id);
@@ -9188,9 +9195,11 @@ xover.modernize = function (targetWindow) {
                             }
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
 
-                            let copied_attributes = documentElement.attributes.toArray();
-                            copied_attributes.filter(attr => !['class', 'xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
-                            target.classList.forEach(class_name => target.classList.add(class_name));
+                            if (action === 'replace') {
+                                let copied_attributes = documentElement.attributes.toArray();
+                                copied_attributes.filter(attr => !['class', 'xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
+                                target.classList.forEach(class_name => target.classList.add(class_name));
+                            }
 
                             if (target === document.body && action === 'replace') {
                                 action = null;
