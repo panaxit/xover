@@ -567,6 +567,19 @@ xover.init = async function () {
 }
 
 xover.initializeElementListeners = function (document = window.document) {
+    const observer = new MutationObserver((mutationsList, observer) => {
+        if (event && event.type == 'input') return;
+        for (const mutation of mutationsList) {
+            if (mutation.type === 'characterData') {
+                // Handle text node changes here
+                const changedTextNode = mutation.target;
+                let scope = changedTextNode.scope;
+                if (!scope) continue;
+                scope.set(changedTextNode.nodeValue);
+            }
+        }
+    });
+
     document.querySelectorAll('img').forEach(el => el.addEventListener('error', function () {
         if (event && (event.srcEvent || event).type == 'error') {
             window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
@@ -590,6 +603,14 @@ xover.initializeElementListeners = function (document = window.document) {
         //    scope.set('state:width', el.offsetWidth, { silent: true });
         //}
     }));
+
+    document.querySelectorAll('[xo-attribute="text()"]').forEach(el => observer.observe(el, { characterData: true, subtree: true }));
+    document.querySelectorAll('[xo-attribute="text()"]').forEach(el => el.addEventListener('blur', function () {
+        let target = event.target;
+        let new_text = target.textContent;
+        let scope = target.scope;
+        if (scope) scope.set(new_text);
+    }))
 }
 
 xover.evaluateParams = function (document = window.document) {
@@ -686,8 +707,11 @@ xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
 Object.defineProperty(xover.listener, 'matches', {
     value: function (context, event_type) {
+        let [scoped_event, predicate] = event_type.split(/::/);
+        event_type = scoped_event;
+
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
-        let tag = (event && event.detail || {}).tag || '';
+        let tag = predicate || (event && event.detail || {}).tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
             for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !predicate || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
@@ -761,8 +785,8 @@ Object.defineProperty(xover.listener, 'on', {
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
-                window.top.removeEventListener(base_event, xover.listener.dispatcher);
-                window.top.addEventListener(base_event, xover.listener.dispatcher, options);
+                window.top.removeEventListener(event_name, xover.listener.dispatcher);
+                window.top.addEventListener(event_name, xover.listener.dispatcher, options);
             }
         }
     },
@@ -1149,12 +1173,12 @@ xover.session = new Proxy({}, {
     },
     set: async function (self, key, new_value) {
         let old_value = xover.session.getKey(key);
-        let before = new xover.listener.Event('beforeChange::session:${key}', { attribute: key, value: new_value, old: old_value }, new_value);
+        let before = new xover.listener.Event(`beforeChange::session:${key}`, { attribute: key, value: new_value, old: old_value }, this);
         window.top.dispatchEvent(before);
         if (before.cancelBubble || before.defaultPrevented) return;
         xover.session.setKey(key, new_value);
         var key = key, new_value = new_value;
-        window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }));
+        window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }, this));
         xover.site.sections.map(el => [el, el.store && el.store.sources[el.getAttribute("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
 
         ["status"].includes(key) && await xover.stores.active.render();
@@ -1403,6 +1427,13 @@ Object.defineProperty(xover.site, 'hash', {
     , set(input) {
         input = input[input.length - 1] != '#' ? input : '';
         history.replaceState(Object.assign({ position: history.length - 1 }, history.state, { active: history.state.active }), ((event || {}).target || {}).textContent, location.pathname + location.search + (input || ''));
+    }
+    , enumerable: false
+});
+
+Object.defineProperty(xover.site, 'querystring', {
+    get() {
+        return new URLSearchParams(location.search)
     }
     , enumerable: false
 });
@@ -3880,7 +3911,7 @@ xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_succe
         //    return_value = xover.xml.fromJSON(return_value.documentElement);
         //}
         if (xover.session.debug) {
-            return_value.$$(`//xsl:template[not(contains(@mode,'-attribute'))]/*[not(contains(string(@mode),'-attribute'))][not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy)]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.select(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`)).forEach(el => {
+            for (let el of return_value.select(`//xsl:template[not(contains(@mode,'-attribute'))]/*[not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy)]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
                 let ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
                 let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template 
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
@@ -3895,7 +3926,7 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 } else {
                     el.appendBefore(debug_node)
                 }
-            });
+            }
         }
         if (return_value.selectFirst('xsl:*')) {
             //if (!return_value.documentElement.resolveNS('')) {
@@ -4394,7 +4425,6 @@ xover.Store = function (xml, ...args) {
     let _undo = [];
     let _redo = [];
     let config = args[0] && args[0].constructor === {}.constructor && args[0];
-    let on_complete = !config && args[0] && isFunction(args[0]) && args[0] || config && config["onComplete"];
     let _tag;
     let _hash = config && config['hash'] || undefined;
     let _initiator = config && config["initiator"] || undefined;
@@ -5203,17 +5233,6 @@ xover.Store = function (xml, ...args) {
         },
         writable: false, enumerable: false, configurable: false
     });
-
-    onComplete = function () {
-        if (['completing', 'ready'].includes(__document.status)) {
-            return;
-        }
-        __document.status = 'completing';
-        if (on_complete && on_complete.apply) {
-            on_complete.apply(self, _this_arguments);
-        };
-        __document.status = "ready";
-    }
 
     if (!__document) throw (new Error("__document is empty"));
     if (typeof (__document) == 'string') {
@@ -6972,7 +6991,10 @@ xover.modernize = function (targetWindow) {
 
             Object.defineProperty(Text.prototype, 'matches', {
                 value: function (...args) {
-                    return false;
+                    let node = this.parentNode;
+                    let xpath = args[0];
+                    let return_value = !![this, node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().find(el => el && el.selectNodes(xpath).includes(this));
+                    return return_value;
                 }
             })
 
@@ -7824,8 +7846,8 @@ xover.modernize = function (targetWindow) {
                     get: function () {
                         return !(this.disconnected)
                     },
-                    enumerable: true, // Optional
-                    configurable: true // Optional
+                    enumerable: true,
+                    configurable: true
                 })
             }
 
@@ -7834,8 +7856,8 @@ xover.modernize = function (targetWindow) {
                     get: function () {
                         return this.ownerDocument.reactive && !(this.disconnected || this.disconnected === undefined && (this instanceof HTMLElement || this instanceof SVGElement || ['http://www.w3.org/1999/XSL/Transform'].includes(this.namespaceURI)))
                     },
-                    enumerable: true, // Optional
-                    configurable: true // Optional
+                    enumerable: true,
+                    configurable: true
                 })
             }
 
@@ -7844,8 +7866,18 @@ xover.modernize = function (targetWindow) {
                     get: function () {
                         return this.disconnected === undefined ? this.ownerElement && this.ownerElement.reactive : !this.disconnected;
                     },
-                    enumerable: true, // Optional
-                    configurable: true // Optional
+                    enumerable: true,
+                    configurable: true
+                })
+            }
+
+            if (!Text.prototype.hasOwnProperty('reactive')) {
+                Object.defineProperty(Text.prototype, 'reactive', {
+                    get: function () {
+                        return this.disconnected === undefined ? this.parentElement && this.parentElement.reactive : !this.disconnected;
+                    },
+                    enumerable: true,
+                    configurable: true
                 })
             }
 
@@ -8382,14 +8414,22 @@ xover.modernize = function (targetWindow) {
                 return this;
             }
 
+            Text.prototype.reactive = function (value) {
+            }
+
             Text.prototype.set = function (value) {
                 value = typeof value === 'function' && value(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
-                //if (this.textContent != value) {
-                //    this.parentNode.store.render();
-                //}
-                this.textContent = value;
-                let source = this.ownerDocument.source;
-                source && source.save();
+                let new_value = this.ownerDocument.createTextNode(value);
+                if (this.reactive) {
+                    let old_value = this.textContent;
+                    let before_set = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
+                    window.top.dispatchEvent(before_set);
+                    if (before_set.defaultPrevented || event.cancelBubble) return;
+                    if (old_value == new_value) return;
+                    let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
+                    window.top.dispatchEvent(before);
+                }
+                this.textContent = new_value;
                 return this;
             }
 
@@ -9113,18 +9153,6 @@ xover.modernize = function (targetWindow) {
                         //        return Promise.reject(String(message))
                         //    }
                         //}
-                        const observer = new MutationObserver((mutationsList, observer) => {
-                            for (const mutation of mutationsList) {
-                                if (mutation.type === 'characterData') {
-                                    // Handle text node changes here
-                                    const changedTextNode = mutation.target;
-                                    let scope = changedTextNode.scope;
-                                    if (!scope) continue;
-                                    scope.set(changedTextNode.nodeValue);
-                                }
-                            }
-                        });
-
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             let action = stylesheet.action;// || !stylesheet.target && "append";
@@ -9410,7 +9438,6 @@ xover.modernize = function (targetWindow) {
 
                             targets.push(target);
 
-                            xover.initializeElementListeners(target);
                             if (window.MathJax) {
                                 MathJax.typeset && MathJax.typeset();
                             } else if (target.selectSingleNode('//mml:math') || ((target || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
@@ -9435,7 +9462,8 @@ xover.modernize = function (targetWindow) {
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
                             target.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
-                            target.querySelectorAll('[xo-attribute="text()"]').forEach(el => observer.observe(el, { characterData: true, subtree: true }));
+                            xover.initializeElementListeners(target);
+
                             /*TODO: Mover este código a algún script diferido*/
                             target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
