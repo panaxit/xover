@@ -8478,12 +8478,12 @@ xover.modernize = function (targetWindow) {
             }
 
             if (typeof Node.prototype.replaceChildren !== 'function') {
-                Node.prototype.replaceChildren = function (...nodes=[]) {
+                Node.prototype.replaceChildren = function (...nodes) {
                     while (this.firstChild) {
                         this.firstChild.remove();
                     }
                     if (nodes && nodes.length) {
-                        this.appendChild(...nodes)
+                        this.appendChild(...nodes);
                     }
                 };
             }
