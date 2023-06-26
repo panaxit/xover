@@ -3904,11 +3904,12 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
 
-            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-scope or @xo-attribute])]`)) {
+            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-scope])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
-                if (!el.getAttribute("xo-attribute")) {
-                    el.set("xo-attribute", "{name(current()[not(self::*)])}")
-                }
+            }
+
+            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-attribute])]`)) {
+                el.set("xo-attribute", "{name(current()[not(self::*)])}")
             }
 
             for (let el of return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`)) {
@@ -4717,7 +4718,7 @@ xover.Store = function (xml, ...args) {
             } else {
                 __document = input;
             }
-            const config = { attributes: true, childList: true, subtree: true };
+            const config = { characterData: true, attributes: true, childList: true, subtree: true };
             let store = self;
             const distinctMutations = function (mutations) {
                 return mutations.filter((mutation, index, self) => {
@@ -4771,7 +4772,7 @@ xover.Store = function (xml, ...args) {
                 //}
                 let sections_to_render = new Map();
                 for (let section of xover.site.sections.filter(section => section.store === self)) {
-                    if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section !== section) {
+                    if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section == section) {
                         continue
                     }
                     sections_to_render.set(section); continue; /* let's skip all checkings and render every change*/
@@ -4902,13 +4903,15 @@ xover.Store = function (xml, ...args) {
                     }
                     window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes }, target));
 
-                    let attr = target instanceof Element && target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                    if (!attr) {
-                        //let target_copy = target.cloneNode();
-                        //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
-                        //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                        attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                    }
+                    //if (mutation.attributeName) {
+                    //    let attr = target instanceof Element && target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                    //    if (!attr) {
+                    //        //let target_copy = target.cloneNode();
+                    //        //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
+                    //        //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                    //        attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                    //    }
+                    //}
                     //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.store == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
                     /*stores.filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());*/
                 }
@@ -7693,9 +7696,6 @@ xover.modernize = function (targetWindow) {
                             original_textContent.set.call(this, value);
                             if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                                 this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
-                            } else if (this.ownerDocument && this.ownerDocument.selectSingleNode && this.ownerDocument.store) {
-                                //this.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
-                                this.ownerDocument.store.render();
                             }
                             return original_textContent.set.call(this, value);
                         } else {
@@ -8383,9 +8383,9 @@ xover.modernize = function (targetWindow) {
 
             Text.prototype.set = function (value) {
                 value = typeof value === 'function' && value(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
-                if (this.textContent != value) {
-                    this.parentNode.store.render();
-                }
+                //if (this.textContent != value) {
+                //    this.parentNode.store.render();
+                //}
                 this.textContent = value;
                 let source = this.ownerDocument.source;
                 source && source.save();
@@ -9112,6 +9112,18 @@ xover.modernize = function (targetWindow) {
                         //        return Promise.reject(String(message))
                         //    }
                         //}
+                        const observer = new MutationObserver((mutationsList, observer) => {
+                            for (const mutation of mutationsList) {
+                                if (mutation.type === 'characterData') {
+                                    // Handle text node changes here
+                                    const changedTextNode = mutation.target;
+                                    let scope = changedTextNode.scope;
+                                    if (!scope) continue;
+                                    scope.set(changedTextNode.nodeValue);
+                                }
+                            }
+                        });
+
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             let action = stylesheet.action;// || !stylesheet.target && "append";
@@ -9422,6 +9434,7 @@ xover.modernize = function (targetWindow) {
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
                             target.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
+                            target.querySelectorAll('[xo-attribute="text()"]').forEach(el => observer.observe(el, { characterData: true, subtree: true }));
                             /*TODO: Mover este código a algún script diferido*/
                             target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
