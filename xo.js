@@ -9399,8 +9399,6 @@ xover.modernize = function (targetWindow) {
                                 });
                                 let active_element = document.activeElement;
                                 let active_element_selector = active_element.selector
-                                target.document = data;
-                                target.context = data;
                                 if (action == "replace") {
                                     target.replaceChildren(...dom.firstElementChild.childNodes)
                                     //target = target.replaceWith(dom.firstElementChild);//target = [target.replace(dom)];
@@ -9414,6 +9412,8 @@ xover.modernize = function (targetWindow) {
                                     let inserted_nodes = target.append(...dom.childNodes);
                                     target = inserted_nodes.find(node => node.nodeType == 1)
                                 }
+                                target.document = this;
+                                target.context = data;
                                 _applyScripts(document, post_render_scripts);
                                 //if (action == "replace") {
                                 //    target = target.replaceWith(dom)//target = [target.replace(dom)];
