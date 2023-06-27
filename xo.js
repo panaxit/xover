@@ -773,8 +773,8 @@ Object.defineProperty(xover.listener, 'on', {
         for (let event_name of name__or_list) {
             let [scoped_event, ...predicate] = event_name.split(/::/);
             [base_event, scope] = scoped_event.split(/:/).reverse();
-            window.top.removeEventListener(base_event, xover.listener.dispatcher);
-            window.top.addEventListener(base_event, xover.listener.dispatcher, options);
+            window.top.removeEventListener(`${base_event}${predicate ? `::${predicate}`:''}`, xover.listener.dispatcher);
+            window.top.addEventListener(`${base_event}${predicate ? `::${predicate}` : ''}`, xover.listener.dispatcher, options);
 
             predicate = predicate.join("::");
             handler.scope = scope && eval(scope) || undefined;
@@ -785,8 +785,8 @@ Object.defineProperty(xover.listener, 'on', {
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
-                window.top.removeEventListener(event_name, xover.listener.dispatcher);
-                window.top.addEventListener(event_name, xover.listener.dispatcher, options);
+                window.top.removeEventListener(base_event, xover.listener.dispatcher);
+                window.top.addEventListener(base_event, xover.listener.dispatcher, options);
             }
         }
     },
