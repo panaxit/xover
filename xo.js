@@ -8940,6 +8940,7 @@ xover.modernize = function (targetWindow) {
                                 ////}
                                 let listeners = xover.listener.matches(xml, 'beforeTransform')
                                 window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: listeners, document: xml, store: xml.store, stylesheet: xsl }, this));
+                                xml = this.cloneNode(true);
                                 let timer_id = `${xsl.href || "Transform"}-${Date.now()}`;
                                 if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                     console.time(timer_id);
@@ -9457,7 +9458,7 @@ xover.modernize = function (targetWindow) {
 
                             let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
                             if (unbound_elements.length) {
-                                console.error(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
+                                console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
                             }
 
                             _applyScripts(document, scripts);
