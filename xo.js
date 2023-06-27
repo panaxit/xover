@@ -1898,7 +1898,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
         });
     }
     if (manifest_key) {
-        let source = xover.manifest.sources[manifest_key];
+        let source = JSON.parse(JSON.stringify(xover.manifest.sources[manifest_key]));
         source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
             if (typeof (source) == 'string') {
                 source = tag.replace(new RegExp(manifest_key, "i"), source)
