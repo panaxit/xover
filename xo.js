@@ -9277,7 +9277,7 @@ xover.modernize = function (targetWindow) {
                                                 //    }.call(scope)
                                                 //}
                                                 //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
-                                                let result = (function () { return eval.apply(this, arguments) }(script.textContent));
+                                                let result = (function () { return eval.apply(this, arguments) }(`/*${stylesheet.href}*/${script.textContent}`));
                                                 if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                                                     let target = document.getElementById(script.id);
                                                     target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
