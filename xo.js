@@ -8200,15 +8200,15 @@ xover.modernize = function (targetWindow) {
             //});
 
 
-            Event.native = {};
-            Event.native.srcElement = Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
-            Object.defineProperty(Event.prototype, 'srcElement', {
-                get: function () {
-                    let return_value = Event.native.srcElement.get.call(this);
-                    return_value.event = this;
-                    return return_value
-                }
-            })
+            //Event.native = {};
+            //Event.native.srcElement = Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
+            //Object.defineProperty(Event.prototype, 'srcElement', {
+            //    get: function () {
+            //        let return_value = Event.native.srcElement.get.call(this);
+            //        return_value.event = this;
+            //        return return_value
+            //    }
+            //})
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
             Object.defineProperty(Attr.prototype, 'value',
