@@ -955,11 +955,11 @@ xover.mimeTypes["json"] = "application/json"
 xover.mimeTypes["map"] = "text/plain"
 xover.mimeTypes["pdf"] = "application/pdf"
 xover.mimeTypes["png"] = "image/png"
-xover.mimeTypes["resx"] = "application/xml,application/octet-stream"
+xover.mimeTypes["resx"] = "text/xml,application/xml,application/octet-stream"
 xover.mimeTypes["text"] = "text/plain"
-xover.mimeTypes["xml"] = "text/xml"
-xover.mimeTypes["xsl"] = "text/xsl,application/xslt+xml,text/xml"
-xover.mimeTypes["xslt"] = "text/xsl,application/xslt+xml"
+xover.mimeTypes["xml"] = "text/xml,application/xslt+xml"
+xover.mimeTypes["xsl"] = "text/xml,text/xsl,application/xslt+xml"
+xover.mimeTypes["xslt"] = "text/xml,text/xsl,application/xslt+xml"
 
 xover.Manifest = function (manifest = {}) {
     function hasMatchingStructure(input, template) {
