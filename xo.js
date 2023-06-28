@@ -546,9 +546,11 @@ xover.init = async function () {
             }
         }
         Object.assign(xover.spaces, xover.manifest.spaces);
-        xover.manifest.stylesheets.map(href => xover.sources[href]).forEach(source => {
-            source.fetch().catch(e => Promise.reject(e))
-        });
+        let stylesheet_promises = []
+        for (let source of xover.manifest.stylesheets.map(href => xover.sources[href])) {
+            stylesheet_promises.push(source.fetch().catch(e => Promise.reject(e)));
+        }
+        await Promise.all(stylesheet_promises);
         await xover.stores.restore();
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
@@ -5326,6 +5328,7 @@ xover.Store = function (xml, ...args) {
     }
     this.document = __document;
     _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
+    _tag = _tag.split(/\?/)[0];
     //this.reseed();
     xover.manifest.getSettings(this, 'stylesheets').flat().forEach(stylesheet => store.addStylesheet(stylesheet, false));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }));
@@ -8200,15 +8203,15 @@ xover.modernize = function (targetWindow) {
             //});
 
 
-            Event.native = {};
-            Event.native.srcElement = Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
-            Object.defineProperty(Event.prototype, 'srcElement', {
-                get: function () {
-                    let return_value = Event.native.srcElement.get.call(this);
-                    return_value.event = this;
-                    return return_value
-                }
-            })
+            //Event.native = {};
+            //Event.native.srcElement = Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
+            //Object.defineProperty(Event.prototype, 'srcElement', {
+            //    get: function () {
+            //        let return_value = Event.native.srcElement.get.call(this);
+            //        return_value.event = this;
+            //        return return_value
+            //    }
+            //})
 
             var original_attr_value = Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
             Object.defineProperty(Attr.prototype, 'value',
