@@ -738,7 +738,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             context.eventHistory.set(handler, true);
             //console.log(`Dispatching event: ${event.type}`)
             //console.log(handler)
-            let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [event.detail, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
+            let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [{ event: event, ...event.detail }, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 event.returnValue = returnValue;
                 if (event.detail) {
@@ -1886,7 +1886,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                         __document = xover.sources[source];
                         source = __document.source.definition;
                     }
-                    definition = source;
+                    definition = source != null? source : tag;
                 } else {
                     definition = tag;
                 }
@@ -2112,7 +2112,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     new_document = xover.xml.createDocument(body_element);
                 }
                 if (!new_document) {
-                    new_document = xover.sources.defaults[tag];
+                    new_document = xover.sources.defaults[source];
                 }
                 if (!(new_document instanceof Document || new_document instanceof DocumentFragment)) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
