@@ -5522,7 +5522,7 @@ xover.json.toAttributes = function (json) {
     let attribs = new URLSearchParams(json);
     //let dummy = document.createElement("p");
     //[...attribs.entries()].forEach(([attr, value]) => dummy.setAttribute(attr, value));
-    //return dummy.outerHTML.replace(/^<p\s|><\/p>$/g, '') //TODO: Evalute what approach is better
+    //return dummy.outerHTML.replace(/^<p\s|><\/p>$/g, '') //TODO: Evaluate what approach is better
     return [...attribs.entries()].reduce((params, entry) => { params.push(`${entry[0]}=${JSON.stringify(entry[1])}`); return params }, []).join(" ")
 }
 
@@ -5946,6 +5946,10 @@ xover.listener.on('change::@state:*', async function ({ target, attribute: key }
     let documents = stylesheets.getDocuments();
     documents = await Promise.all(documents.map(document => document.documentElement || document.fetch())).then(document => document);
     documents.filter(stylesheet => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
+});
+
+xover.listener.on('change::@xo-store', function ({ target, attribute: key }) {
+    this.parentNode.section.render()
 });
 
 xover.listener.on('change::@state:busy', function ({ target, value }) {
