@@ -2040,10 +2040,10 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             //if (!xover.manifest || xover.init.status != 'initialized') {
             //    await xover.init();
             //}
-            window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, self));
+            window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, this));
             let source = self.definition;
 
-            self.fetching = self.fetching || new Promise(async (resolve, reject) => {
+            this.fetching = this.fetching || new Promise(async (resolve, reject) => {
                 let new_document;
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
@@ -2155,9 +2155,9 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     return Promise.reject(e);
                 }
             }).finally(() => {
-                self.fetching = undefined;
+                this.fetching = undefined;
             });
-            return self.fetching;
+            return this.fetching;
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -7259,9 +7259,8 @@ xover.modernize = function (targetWindow) {
                             return Promise.reject("Document is not associated to a Source and can't be fetched");
                         }
                         let __document = self;
-                        let new_document;
                         let store = self.store;
-                        self.fetching = self.fetching || new Promise((resolve, reject) => {
+                        context.fetching = context.fetching || new Promise((resolve, reject) => {
                             self.source && self.source.fetch.apply(context, args).then(new_document => {
                                 if (!(new_document instanceof Document)) {
                                     Promise.reject(new_document);
@@ -7286,12 +7285,12 @@ xover.modernize = function (targetWindow) {
                                     return reject(e);
                                 }
                             }).finally(() => {
-                                self.fetching = undefined;
+                                context.fetching = undefined;
                             });
                         }).catch(async (e) => {
                             return Promise.reject(e);
                         });
-                        return self.fetching;
+                        return context.fetching;
                     }
                 }
             })
