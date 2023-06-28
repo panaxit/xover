@@ -2040,10 +2040,10 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             //if (!xover.manifest || xover.init.status != 'initialized') {
             //    await xover.init();
             //}
-            window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, self));
+            window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, this));
             let source = self.definition;
 
-            self.fetching = self.fetching || new Promise(async (resolve, reject) => {
+            this.fetching = this.fetching || new Promise(async (resolve, reject) => {
                 let new_document;
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
@@ -2155,9 +2155,9 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     return Promise.reject(e);
                 }
             }).finally(() => {
-                self.fetching = undefined;
+                this.fetching = undefined;
             });
-            return self.fetching;
+            return this.fetching;
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -3375,7 +3375,7 @@ xover.Response = function (response, request) {
                         return "html";
                     } else if ((contentType.toLowerCase().indexOf("json") != -1 || contentType.toLowerCase().indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) && xover.json.isValid(xover.json.tryParse(responseText))) {
                         return "json";
-                    } else if ((contentType.toLowerCase().indexOf("xml") != -1 || contentType.toLowerCase().indexOf("xsl") != -1 || body.toLowerCase().indexOf("<?xml ") != -1) && xover.xml.isValid(xover.xml.tryParse(responseText))) {
+                    } else if ((contentType.toLowerCase().indexOf("xml") != -1 || contentType.toLowerCase().indexOf("xsl") != -1 || body.toLowerCase().indexOf("<?xml ") != -1 || contentType.toLowerCase().indexOf('application/octet-stream')!=-1) && xover.xml.isValid(xover.xml.tryParse(responseText))) {
                         return "xml"
                     } else {
                         return "text";
@@ -5522,7 +5522,7 @@ xover.json.toAttributes = function (json) {
     let attribs = new URLSearchParams(json);
     //let dummy = document.createElement("p");
     //[...attribs.entries()].forEach(([attr, value]) => dummy.setAttribute(attr, value));
-    //return dummy.outerHTML.replace(/^<p\s|><\/p>$/g, '') //TODO: Evalute what approach is better
+    //return dummy.outerHTML.replace(/^<p\s|><\/p>$/g, '') //TODO: Evaluate what approach is better
     return [...attribs.entries()].reduce((params, entry) => { params.push(`${entry[0]}=${JSON.stringify(entry[1])}`); return params }, []).join(" ")
 }
 
@@ -5946,6 +5946,10 @@ xover.listener.on('change::@state:*', async function ({ target, attribute: key }
     let documents = stylesheets.getDocuments();
     documents = await Promise.all(documents.map(document => document.documentElement || document.fetch())).then(document => document);
     documents.filter(stylesheet => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
+});
+
+xover.listener.on('change::@xo-store', function ({ target, attribute: key }) {
+    this.parentNode.section.render()
 });
 
 xover.listener.on('change::@state:busy', function ({ target, value }) {
@@ -7259,9 +7263,8 @@ xover.modernize = function (targetWindow) {
                             return Promise.reject("Document is not associated to a Source and can't be fetched");
                         }
                         let __document = self;
-                        let new_document;
                         let store = self.store;
-                        self.fetching = self.fetching || new Promise((resolve, reject) => {
+                        context.fetching = context.fetching || new Promise((resolve, reject) => {
                             self.source && self.source.fetch.apply(context, args).then(new_document => {
                                 if (!(new_document instanceof Document)) {
                                     Promise.reject(new_document);
@@ -7286,12 +7289,12 @@ xover.modernize = function (targetWindow) {
                                     return reject(e);
                                 }
                             }).finally(() => {
-                                self.fetching = undefined;
+                                context.fetching = undefined;
                             });
                         }).catch(async (e) => {
                             return Promise.reject(e);
                         });
-                        return self.fetching;
+                        return context.fetching;
                     }
                 }
             })
