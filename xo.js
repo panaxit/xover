@@ -1013,7 +1013,7 @@ xover.Manifest = function (manifest = {}) {
 
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
-        let tag_name = typeof (input) == 'string' && input || input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
+        let tag_name = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
         let settings = Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && (tag_name === key || key[0] === '.' && tag_name && tag_name.endsWith(key) || key[0] === '^' && tag_name && tag_name.match(RegExp(key, "i")) || !['#', '^', '.'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
         if (config_name) {
             settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => value.constructor === {}.constructor && Object.entries(value) || value);
@@ -1873,7 +1873,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             get: function () {
                 if (definition !== undefined) return definition;
                 if (manifest_key) {
-                    let source = xover.manifest.sources[manifest_key];
+                    let source = JSON.parse(JSON.stringify(xover.manifest.sources[manifest_key]));
                     source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                         if (typeof (source) == 'string') {
                             source = tag.replace(new RegExp(manifest_key, "i"), source)
@@ -1894,25 +1894,6 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             }, enumerable: false, configurable: false
         });
     }
-    if (manifest_key) {
-        let source = JSON.parse(JSON.stringify(xover.manifest.sources[manifest_key]));
-        source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
-            if (typeof (source) == 'string') {
-                source = tag.replace(new RegExp(manifest_key, "i"), source)
-            } else {
-                Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
-            }
-        }) || source;
-        source = JSON.parse(JSON.stringify(source));
-        if (typeof (source) == 'string' && source[0] == '#') {
-            __document = xover.sources[source];
-            source = __document.source.definition;
-        }
-        definition = source;
-    } else {
-        definition = tag;
-    }
-
 
     //__document.url = new xover.URL(tag);
     if (!__document.hasOwnProperty("source")) {
