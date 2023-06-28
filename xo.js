@@ -635,9 +635,6 @@ xover.evaluateParams = function (document = window.document) {
 }
 
 xover.restoreDocument = function (document = window.document) {
-    //if (!document.original) return;
-    //document.body.replaceWith(document.original.body);
-    xover.site.sections.forEach(section => section.render());
     xover.evaluateParams(document);
 }
 
@@ -795,7 +792,6 @@ Object.defineProperty(xover.listener, 'on', {
 
 xover.listener.on('hashchange', function (new_hash, old_hash) {
     xover.site.active = location.hash;
-    xover.restoreDocument(document);
 });
 
 xover.listener.on('pushState', function ({ state }) {
@@ -926,6 +922,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     if (event.defaultPrevented) return;
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
     xover.site.seed = xover.site.seed || location.hash
+    xover.restoreDocument(document);
     if (history.state) delete history.state.active;
     //if (!history.state && !location.hash && positionLastShown || xover.site.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.site.seed])) {
     //    //history.back();
@@ -3935,7 +3932,7 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 }
             }
         }
-        if (return_value.selectFirst('xsl:*')) {
+        if (return_value.documentElement && return_value.selectFirst('xsl:*')) {
             //if (!return_value.documentElement.resolveNS('')) {
             //    return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns", xover.spaces["xhtml"])
             //}/*desn't work properly as when declared from origin */
