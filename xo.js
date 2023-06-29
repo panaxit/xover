@@ -3927,7 +3927,7 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
-            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-attribute])]`)) {
+            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or @xo-scope="inherit")]|//svg:*[not(ancestor::svg:* or @xo-scope="inherit")])[not(ancestor-or-self::*[@xo-attribute])]`)) {
                 el.set("xo-attribute", "{name(current()[not(self::*)])}")
             }
 
