@@ -5231,17 +5231,14 @@ xover.Store = function (xml, ...args) {
                 //    xover.site.active = tag;
                 //}
 
-                let doc = __document.cloneNode(true);
-                _store_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
-                doc.store = store;
                 let stylesheets = xover.site.sections.filter(el => el.store && el.store === self);
-                //if (stylesheets.length) {
                 stylesheets.forEach((el) => el.render());
 
-                await (async (pending_stylesheets) => pending_stylesheets.length && await doc.render(pending_stylesheets))(((stylesheets) => doc.stylesheets.filter(stylesheet => !stylesheets.includes(stylesheet.href)))(stylesheets.map(el => el.getAttribute("xo-stylesheet"))));
-                //} else {
-                //}
-                return Promise.resolve(self);
+                let doc = __document;//.cloneNode(true); //Now is not cloned to keep reference of the original document
+                //_store_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
+                doc.store = store;
+                //await (async (pending_stylesheets) => pending_stylesheets.length && await doc.render(pending_stylesheets))(((stylesheets) => doc.stylesheets.filter(stylesheet => !stylesheets.includes(stylesheet.href)))(stylesheets.map(el => el.getAttribute("xo-stylesheet"))));
+                return doc.render(...[..._store_stylesheets, ...doc.stylesheets].distinct());
             }).then(async () => {
                 let tag = self.tag;
                 let targetDocument = ((document.activeElement || {}).contentDocument || document);
@@ -9080,7 +9077,6 @@ xover.modernize = function (targetWindow) {
                                 return null;
                             }
                         }
-                        //await xover.site.save() //TODO: Reubicar a un posición en donde se optimice más su uso, por ejemplo al scroll
                         let last_argument = [...arguments].pop();
                         let options = last_argument && typeof (last_argument) == 'object' && last_argument.constructor === {}.constructor && last_argument || undefined;
                         stylesheets = stylesheets !== options && stylesheets || this.stylesheets;
@@ -9096,8 +9092,8 @@ xover.modernize = function (targetWindow) {
                             this.action = options.action
                             return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed()).render(this);
                         }
-                        var data = this.cloneNode(true);
-                        data.reseed();
+                        //var data = this.cloneNode(true);
+                        //data.reseed();
                         let stylesheet_target = 'body';
                         let targets = [];
                         //if (stylesheets instanceof Array && !Object.fromEntries(stylesheets).length) {
@@ -9110,23 +9106,6 @@ xover.modernize = function (targetWindow) {
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             let action = stylesheet.action;// || !stylesheet.target && "append";
-                            if (stylesheet.assert && !data.selectSingleNode(stylesheet.assert)) continue;
-                            if (stylesheet.target == "self") {
-                                let i = 0;
-                                let dom = data;
-                                do {
-                                    data.selectNodes("//@binding:changed").remove(false);
-                                    ++i;
-                                    dom = await data.transform(xsl);
-                                    //if (!(dom.documentElement.namespaceURI && dom.documentElement.namespaceURI.indexOf("http://www.w3.org") != -1)) {
-                                    dom.reseed();
-                                    dom.store = data.store
-                                    data = dom;
-                                    //}
-                                } while (i < 20 && dom.selectSingleNode(stylesheet.assert || "*[1=0]") && (!xsl.documentElement.resolveNS('binding') || dom.selectSingleNode("//@binding:changed")));
-                                data.selectNodes("//@binding:changed").remove(false);
-                                continue;
-                            }
                             stylesheet_target = stylesheet.target instanceof HTMLElement && stylesheet.target || document.querySelector(stylesheet.target || stylesheet_target);
                             if (!stylesheet_target) {
                                 if (!(stylesheet.dependencies || {}).length) {
@@ -9140,6 +9119,7 @@ xover.modernize = function (targetWindow) {
                                     return Promise.reject();
                                 }
                             }
+                            let data = this.cloneNode(true);
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
                             let target = stylesheet_target;
                             xover.site.renderingTo = target;
