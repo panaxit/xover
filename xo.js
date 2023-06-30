@@ -695,6 +695,9 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         node = _event.detail["return_value"] || context.document;
         node = node instanceof Document && node.documentElement || node;
     }
+    if (context) {
+        _event.detail["tag"] = _event.detail["tag"] || context.tag;
+    }
     //if (_event.detail["store"]) {
     //    _event.detail["tag"] = _event.detail["tag"] || _event.detail["store"].tag;
     //}
@@ -710,7 +713,7 @@ Object.defineProperty(xover.listener, 'matches', {
         event_type = scoped_event;
 
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
-        let tag = predicate || (event && event.detail || {}).tag || '';
+        let tag = predicate || context.tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
             for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !predicate || !tag && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
@@ -773,7 +776,7 @@ Object.defineProperty(xover.listener, 'on', {
             let [scoped_event, ...predicate] = event_name.split(/::/);
             predicate = predicate.join("::");
             [base_event, scope] = scoped_event.split(/:/).reverse();
-            window.top.removeEventListener(`${base_event}${predicate ? `::${predicate}`:''}`, xover.listener.dispatcher);
+            window.top.removeEventListener(`${base_event}${predicate ? `::${predicate}` : ''}`, xover.listener.dispatcher);
             window.top.addEventListener(`${base_event}${predicate ? `::${predicate}` : ''}`, xover.listener.dispatcher, options);
 
             handler.scope = scope && eval(scope) || undefined;
@@ -1029,53 +1032,23 @@ xover.manifest = new xover.Manifest();
 xover.messages = {};
 xover.server = new Proxy({}, {
     get: function (self, key) {
+        if (key in self) {
+            return self[key]
+        }
         if (!(xover.manifest.server && xover.manifest.server[key])) {
             return Promise.reject(`Endpoint "${key}" not configured in manifest`);
         }
         let return_value, request, response;
-
-        let promise = Promise;
-        const thenable = {
-            then: function (onFulfilled) {
-                () => onFulfilled(return_value, request, response)
+        let handler = (async function (payload, ...args) {
+            let settings = {};
+            if (this instanceof xover.Source) {
+                settings = this.settings || {};
             }
-        };
-        let handler = (async function (...args) {
-            args = args.filter(el => el);
-            let responseHandler;
-            if (typeof (args[args.length - 1]) == 'function') {
-                responseHandler = args.pop();
-            }
-            let settings = args.length > 1 && args.pop() || {};
-            if (settings.constructor != {}.constructor) {
-                args.push(settings);
-                settings = {}
-            }
-            settings = Object.assign(Object.fromEntries(xo.manifest.getSettings(`server:${key}`)), settings)
-            let payload = args.pop() || settings["payload"];
-
-            let url, params = {};
-            let headers = new Headers(settings["headers"]);
-            settings["headers"] = headers;
-            payload && Object.keys(payload.constructor === {}.constructor || {}).filter(key => key[0].indexOf("^") == 0).forEach((key) => {
-                settings["headers"][key.substring(1)] = payload[key]
-                delete payload[key];
-            })
-
-            url = new xover.URL(xover.manifest.server[key], undefined, settings);
-            if (payload) {
-                if (url.method === 'POST' || payload instanceof Document || !Object.entries(Object.fromEntries(new URLSearchParams(payload).entries())).length) {
-                    settings["body"] = payload;
-                } else {
-                    settings["query"] = payload;
-                }
-            }
-            let query = args.pop() || settings["query"] || {};
-            [...new URLSearchParams(query).entries()].map(([key, value]) => url.searchParams.append(key, value));
-            delete settings["query"];
-
+            //let settings = this.settings || {};
+            //this.settings = settings.merge(Object.fromEntries(xo.manifest.getSettings(`server:${key}`) || []));
+            let url = new xover.URL(xover.manifest.server[key], undefined, { payload, ...settings.merge(Object.fromEntries(xo.manifest.getSettings(`server:${key}`) || [])) });
             try {
-                [return_value, request, response] = await xover.fetch.call(this, url, settings).then(response => [response.body, response.request, response]);
+                [return_value, request, response] = await xover.fetch.apply(this, [url, ...args]).then(response => [response.body, response.request, response]);
             } catch (e) {
                 [return_value, request, response] = [e.body, e.request, e]
                 if (e instanceof DOMException) {
@@ -1084,36 +1057,20 @@ xover.server = new Proxy({}, {
                     }
                 }
             }
-
-            Object.defineProperty(response, 'tag', {
-                get: function () {
-                    return `#server:${key}`
-                }
-            })
-
-            return_value instanceof XMLDocument && settings["stylesheets"] && settings["stylesheets"].reverse().map(stylesheet => {
+            response.tag = `#server:${key}`;
+            let manifest_settings = xover.manifest.getSettings(response.tag, "stylesheets");
+            document instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
                 return_value.addStylesheet(stylesheet);
             });
-
             response.response_value = return_value;
-            window.top.dispatchEvent(new xover.listener.Event(`response`, { response_value: return_value, response, payload, request, tag: `#server:${key}` }, response));
-
-            responseHandler && responseHandler(return_value, request, response)
             if (response.ok) {
-                window.top.dispatchEvent(new xover.listener.Event(`success`, { response, payload, request, tag: `#server:${key}` }, response));
+                window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.payload, request, tag: `#server:${key}` }, response));
                 return Promise.resolve(return_value);
             } else {
-                window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, payload, request, tag: `#server:${key}` }, response));
-                return Promise.reject(response);
+                window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.payload, request, tag: `#server:${key}` }, response));
+                return Promise.reject(response.body);
             }
         })
-
-        //Object.defineProperty(handler, 'handleResponse', {
-        //    get: function (...args) {
-        //        return promise.
-        //            then(() => thenable);
-        //    }
-        //});
 
         if (self.hasOwnProperty(key)) {
             Object.defineProperty(self[key], 'fetch', {
@@ -1396,13 +1353,13 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
             history.replaceState(Object.assign({ position: history.length - 1 }, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
 
-            //let pending_stylesheets = xover.site.sections.map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
+            ////let pending_stylesheets = xover.site.sections.map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
 
-            //Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
-            if (['active'].includes(key)) {
-                xover.site.sections.filter(el => el.closest('[xo-store="active"]')).forEach(el => el.render());
-            }
-            //})
+            ////Promise.all(pending_stylesheets.map(document => document.fetch())).then(() => {
+            //if (['active'].includes(key)) {
+            //    xover.site.sections.filter(el => el.closest('[xo-store="active"]')).forEach(el => el.render());
+            //}
+            ////})
         } catch (e) {
             console.error(e);
         }
@@ -1659,20 +1616,19 @@ Object.defineProperty(xover.site, 'active', {
         //let hash = [xover.stores[input].hash, (window.top || window).location.hash].coalesce();
         //xover.dom.navigateTo(hashtag)
         input = input || "#";
+        history.state.active = input;//Revisar si no lo tiene que guardar, porque en el caso del login, sobreescribiría el estado y lo perderíamos. Este truco se va a tener que hacer directo con history.state.active
         let store = xover.stores[input];
-        if (store && ([this.seed, (xover.stores[this.seed] || {}).tag, ...this.activeTags()].filter(store => store).includes(store.tag) || store.isRendered)) { //TODO: Revisar si isRendered siempre
-            //history.state.active = input; //No lo tiene que guardar, porque en el caso del login, sobreescribiría el estado y lo perderíamos. Este truco se va a tener que hacer directo con history.state.active
-            let active_store = xover.stores[this.active];
-            if (active_store) {
-                this.hash = active_store.hash;
-            }
-            xover.stores.active.render()
-        } else if (input in xover.stores) {
-            this.seed = input;
-            let active = xover.stores.active;
-            active && active.render();
+        if (!store) {
+            let source = xover.sources[input];
+            store = new xover.Store(source, { tag: source.tag });
+        }
+        if (store) {
+            this.hash = store.hash;
         } else {
-            throw (new Error(`Store ${input} doesn't exist`));
+            return Promise.reject(`${input} no available`)
+        }
+        if (!this.sections.find(section => section.store.tag == input)) {
+            store && store.render();
         }
     }
     , enumerable: false
@@ -1888,7 +1844,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                         __document = xover.sources[source];
                         source = __document.source.definition;
                     }
-                    definition = source != null? source : tag;
+                    definition = source != null ? source : tag;
                 } else {
                     definition = tag;
                 }
@@ -1897,28 +1853,12 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
         });
     }
 
-    //__document.url = new xover.URL(tag);
     if (!__document.hasOwnProperty("source")) {
         Object.defineProperty(__document, 'source', {
             value: this,
             writable: false, enumerable: false, configurable: false
         });
     }
-    //Object.defineProperty(__document, 'href', {
-    //    value: __document.url.href,
-    //    writable: false, enumerable: false, configurable: false
-    //});
-
-    //let _async_save;
-    // Object.defineProperty(this, 'save', {
-    //    value: async function () {
-    //        _async_save = _async_save || xover.delay(1).then(async () => {
-    //            xover.storehouse.write('sources', tag, __document);
-    //            _async_save = undefined;
-    //        });
-    //    },
-    //    writable: false, enumerable: false, configurable: false
-    //})
 
     let _progress = 0;
 
@@ -1953,63 +1893,6 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
         }
     });
 
-    //Object.defineProperty(this, 'find', {
-    //    value: [],
-    //    writable: false, enumerable: false, configurable: false
-    //});
-
-    //Object.defineProperty(this, 'selectSingleNode', {
-    //    enumerable: true,
-    //    get: function () {
-    //        return __document.selectSingleNode;
-    //    }
-    //});
-
-    //Object.defineProperty(this, 'selectNodes', {
-    //    enumerable: true,
-    //    get: function () {
-    //        return __document.selectNodes;
-    //    }
-    //});
-
-    //Object.defineProperty(this, '$', {
-    //    enumerable: true,
-    //    get: function () {
-    //        return __document.selectSingleNode;
-    //    }
-    //});
-
-    //Object.defineProperty(this, '$$', {
-    //    enumerable: true,
-    //    get: function () {
-    //        return __document.selectNodes;
-    //    }
-    //});
-    //Object.defineProperty(this, 'render', {
-    //    value: async function () {
-    //        try {
-    //            let store = await this.fetch();
-    //            if (store instanceof xover.Store && 'render' in store) {
-    //                return store.render();
-    //            }
-    //            return store;
-    //        } catch (e) {
-    //            Promise.reject(e);
-    //        }
-    //    },
-    //    writable: false, enumerable: false, configurable: false
-    //});
-    //Object.defineProperty(this, 'isActive', {
-    //    enumerable: true,
-    //    get: function () {
-    //        let tag = self.tag;
-    //        return _isActive !== false && (tag === xover.stores.active.tag || /*self.isRendered || */(xover.site.activeTags() || [tag]).includes(tag));
-    //    },
-    //    set: function (input) {
-    //        xover.site.active = self.tag;
-    //    }
-    //});
-
     this.state = new Proxy({}, {
         get: function (target, name) {
             return target[name];
@@ -2020,9 +1903,6 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
     })
     Object.defineProperty(this, `fetch`, {
         value: async function (...args) {
-            //if (!xover.manifest || xover.init.status != 'initialized') {
-            //    await xover.init();
-            //}
             window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, this));
             let source = self.definition;
 
@@ -2031,8 +1911,6 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
-                    //parameters = parameters.concat([...qri.predicate]);
-                    //parameters = parameters.constructor === [].constructor && parameters || [parameters];
                     let url = xover.URL(location.hash.replace(/^#/, ''));
                     if (location.hash && url.pathname === xover.URL(tag.replace(/^#/, '')).pathname) {
                         parameters = parameters.concat([...url.searchParams.entries()])
@@ -2125,7 +2003,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             }).catch(async (e) => {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
                 if (!e) {
-                    return reject(e);
+                    return Promise.reject(e);
                 }
                 let document = e.document;
                 let targets = []
@@ -3358,7 +3236,7 @@ xover.Response = function (response, request) {
                         return "html";
                     } else if ((contentType.toLowerCase().indexOf("json") != -1 || contentType.toLowerCase().indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) && xover.json.isValid(xover.json.tryParse(responseText))) {
                         return "json";
-                    } else if ((contentType.toLowerCase().indexOf("xml") != -1 || contentType.toLowerCase().indexOf("xsl") != -1 || body.toLowerCase().indexOf("<?xml ") != -1 || contentType.toLowerCase().indexOf('application/octet-stream')!=-1) && xover.xml.isValid(xover.xml.tryParse(responseText))) {
+                    } else if ((contentType.toLowerCase().indexOf("xml") != -1 || contentType.toLowerCase().indexOf("xsl") != -1 || body.toLowerCase().indexOf("<?xml ") != -1 || contentType.toLowerCase().indexOf('application/octet-stream') != -1) && xover.xml.isValid(xover.xml.tryParse(responseText))) {
                         return "xml"
                     } else {
                         return "text";
@@ -3475,31 +3353,52 @@ xover.Response.prototype = Object.create(Response.prototype);
 
 var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 xover.URL = function (url, base, settings = {}) {
-    if (url instanceof xover.URL) return url;
-    if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
     if (url === null) {
         return Promise.reject(`${url} is not a valid value for xover.URL`)
     }
-    url = url || '';
-    let method;
-    [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
-    if (settings.body) {
-        method = 'POST';
-    }
-    method = settings["method"] || method;
-    query = settings["query"];
-    url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+    if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
 
-    if (query instanceof URLSearchParams) {
-        [...query.entries()].map(([key, value]) => url.searchParams.set(key, value));
-    }
-    Object.defineProperty(url, 'method', {
-        get: function () {
-            return method;
-        }, set: function (input) {
-            return method = input;
+    let method;
+    if (!(url instanceof URL)) {
+        url = url || '';
+        [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
+        if (settings["payload"] instanceof Document) {
+            settings["body"] = settings["payload"];
+            delete settings["payload"];
         }
-    })
+        method = settings["method"] || method;
+        url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+        if (!method && settings["body"]) {
+            method = 'POST'
+        }
+    }
+    url.settings = url.settings || {};
+    url.settings.method = method || url.settings.method;
+    url.settings.merge(settings);
+    url.settings.headers = new Headers(url.settings.headers || {});
+    let query = new URLSearchParams(settings["query"] || settings["payload"] || {});
+    [...query.entries()].forEach(([key, value]) => url.searchParams.set(key, value));
+
+    [...new Headers(settings["headers"] || {}).entries()].forEach(([key, value]) => {
+        if (value) {
+            url.settings.headers.set(key, value);
+        }
+    });
+    [...url.searchParams.entries()].filter(([key]) => key[0].indexOf("^") == 0).forEach(([key, value]) => {
+        if (value) {
+            url.settings.headers.set(key, value);
+        }
+        url.searchParams.delete(key)
+    });
+    if (!url.hasOwnProperty('method')) {
+        Object.defineProperty(url, 'method', {
+            get: function () {
+                return method;
+            }, set: function (input) {
+                return method = input;
+            }
+        })
+    }
     Object.setPrototypeOf(url, URL.prototype);
     return url;
 }
@@ -3673,11 +3572,10 @@ xover.QRI = xover.qri;
 
 xover.Request = function (request, settings = {}) {
     if (!(this instanceof xover.Request)) return new xover.Request(request, settings);
+    settings.merge(request.settings);
     let url, req;
     let self = this;
     let _request = request;
-    let query = new URLSearchParams(settings["query"] || settings["parameters"] || settings["params"]);
-    //settings["query"] = query;
     if (request instanceof Request) {
         req = request;
         if (Object.keys(settings).length) {
@@ -3718,27 +3616,27 @@ xover.Request = function (request, settings = {}) {
         }
     }
 
-    var srcElement = event && event.target;
-    if (srcElement instanceof HTMLElement) {
-        let initiator_button = srcElement.closest('button, .btn')
-        initiator_button && initiator_button.classList.add("working");
-        //if (event && event.target && event.target.store && event.target.store.documentElement.selectSingleNode('self::xo:prompt')) { //TODO: Cambiar el método para identificar el initiator
-        //    req.initiator = event && event.target && event.target.store;
-        //}
-    }
-    if (req.initiator) {
-        req.initiator.state.loading = true;
-    }
+    //var srcElement = event && event.target;
+    //if (srcElement instanceof HTMLElement) {
+    //    let initiator_button = srcElement.closest('button, .btn')
+    //    initiator_button && initiator_button.classList.add("working");
+    //    //if (event && event.target && event.target.store && event.target.store.documentElement.selectSingleNode('self::xo:prompt')) { //TODO: Cambiar el método para identificar el initiator
+    //    //    req.initiator = event && event.target && event.target.store;
+    //    //}
+    //}
+    //if (req.initiator) {
+    //    req.initiator.state.loading = true;
+    //}
     Object.defineProperty(self, 'url', {
         get: function () {
             return url;
         }
     })
-    Object.defineProperty(self, 'initiator', {
-        get: function () {
-            return _request.initiator;
-        }
-    })
+    //Object.defineProperty(self, 'initiator', {
+    //    get: function () {
+    //        return _request.initiator;
+    //    }
+    //})
     Object.defineProperty(self, 'settings', {
         value: settings
     })
@@ -3747,16 +3645,66 @@ xover.Request = function (request, settings = {}) {
             return Object.fromEntries(new URL(url).searchParams.entries());
         }
     })
+    Object.defineProperty(self, 'body', {
+        get: function () {
+            return url.body;
+        }
+    })
     Object.setPrototypeOf(req, this);
     return req;
 }
 xover.Request.prototype = Object.create(Request.prototype);
 
-xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
-    if (settings.progress instanceof HTMLElement) {
-        settings.progress.value = 0;
+xover.fetch = async function (url, ...args) {
+    let endIndex = args.length - 1;
+    while (endIndex >= 0 && (args[endIndex] === undefined)) {
+        endIndex--;
     }
-    let payload = settings.payload || settings.body;
+    args.splice(endIndex + 1);
+    let tag = (url.pathname || url || '');
+    let handlers = [];
+    for (let i = args.length - 1; i >= 0; --i) {
+        if (typeof (args[i]) == 'function') {
+            handlers.push(args[i]);
+            args.splice(i, 1)
+        }
+    }
+    let settings = args.pop() || {};
+    settings.merge(Object.fromEntries(xo.manifest.getSettings(tag)));
+    url = new xover.URL(url, undefined, settings);
+
+    for (let i = args.length - 1; i >= 0; --i) {
+        if (args[i] instanceof Headers) {
+            let header = args[i];
+            for (let [key, value] of [...header.entries()]) {
+                url.settings.headers.set(key, value);
+            }
+            args.splice(i, 1)
+        }
+    }
+
+    for (let i = args.length - 1; i >= 0; --i) {
+        if (args[i] instanceof URLSearchParams) {
+            let searchParams = args[i];
+            for (let [key, value] of [...searchParams.entries()]) {
+                url.searchParams.append(key, value);
+            }
+            args.splice(i, 1)
+        }
+    }
+
+    let payload = args.pop();
+    if (payload) {
+        if (url.method === 'POST' || payload instanceof Document) {
+            url.method = 'POST';
+            url.body = payload;
+        } else {
+            for (let [key, value] of [...new URLSearchParams(payload).entries()]) {
+                url.searchParams.append(key, value);
+            }
+        }
+    }
+    payload = url.body;
     if (payload) {
         settings["method"] = 'POST';
         let pending = [];
@@ -3765,23 +3713,27 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         }
         await Promise.all(pending);
     }
-    settings.headers = new Headers(Object.fromEntries([...new Headers(this instanceof xover.Source && this.headers || {}), ...new Headers(this instanceof xover.Source && (this.settings || {}).headers || {}), ...new Headers(settings.headers)]));
-    let req = new xover.Request(request, settings);
+
+    if (settings.progress instanceof HTMLElement) {
+        settings.progress.value = 0;
+    }
+    //settings.headers = new Headers(Object.fromEntries([...new Headers(this instanceof xover.Source && this.headers || {}), ...new Headers(this instanceof xover.Source && (this.settings || {}).headers || {}), ...new Headers(settings.headers)]));
+    let request = new xover.Request(url, settings);
     var original_response;
     const controller = new AbortController();
     const signal = controller.signal;
     try {
-        original_response = await fetch(req.clone(), { signal })
+        original_response = await fetch(request.clone(), { signal })
     } catch (e) {
         try {
-            if (!original_response && req.method == 'POST') {
-                const body = await req.clone().text();
-                const { cache, credentials, headers, integrity, mode, redirect, referrer } = req;
+            if (!original_response && request.method == 'POST') {
+                const body = await request.clone().text();
+                const { cache, credentials, headers, integrity, mode, redirect, referrer } = request;
                 const init = { body, cache, credentials, headers, integrity, mode, redirect, referrer };
-                original_response = await fetch(req.url, init);
+                original_response = await fetch(request.url, init);
             }
         } catch (e) {
-            return Promise.reject([e, req, { bodyType: 'text' }]);
+            return Promise.reject([e, request, { bodyType: 'text' }]);
         }
     }
 
@@ -3815,12 +3767,12 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
         };
         progress();
     }
-    if (!original_response) return Promise.reject(`No response for ${request}!`);
-    let response = new xover.Response(original_response, req);
+    if (!original_response) return Promise.reject(`No response for ${url}!`);
+    let response = new xover.Response(original_response, request);
     let document = await response.processBody();
 
     if (document instanceof Document) {
-        let url = req.url;
+        let url = request.url;
         let href = url.href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '');
         Object.defineProperty(document, 'url', {
             get: function () {
@@ -3833,16 +3785,30 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
             }
         });
     }
-    window.top.dispatchEvent(new xover.listener.Event(`response`, { request, tag: ((`${request.pathname || request}`).replace(/^\//, '')) }, response));
+    let self = this;
+    if (this instanceof xover.Source) {
+        Object.defineProperty(document, 'source', {
+            get: function () {
+                return self;
+            }
+        });
+    }
+    response.tag = ((`${url.pathname || url}`).replace(/^\//, ''));
+    let manifest_settings = xover.manifest.getSettings(response.tag, "stylesheets");
+    document instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
+        return_value.addStylesheet(stylesheet);
+    });
+    //window.top.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
     if (response.ok) {
-        window.top.dispatchEvent(new xover.listener.Event(`success`, { request, tag: ((`${request.pathname || request}`).replace(/^\//, '')) }, response));
+        handlers.forEach(handler => handler(return_value, response, request));
+        window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request }, response));
     } else {
-        window.top.dispatchEvent(new xover.listener.Event(`failure`, { request, tag: ((`${request.pathname || request}`).replace(/^\//, '')) }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request }, response));
     }
 
     if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
         return Promise.reject(response);
-    } else if (response.status == 401 && request.host == location.host) {
+    } else if (response.status == 401 && url.host == location.host) {
         xover.session.status = "unauthorized";
     }
     if (response.status == 204) {
@@ -3851,11 +3817,11 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
 
     if (response.ok) {
         if (
-            (req.headers.get("Accept") || "").indexOf("*/*") != -1 ||
-            req.headers.get("Accept").split(/\s*,\s*/g).includes(response.headers.get("content-type")) ||
-            xover.mimeTypes[response.bodyType] == req.headers.get("Accept") ||
-            (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
-            (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
+            (request.headers.get("Accept") || "").indexOf("*/*") != -1 ||
+            request.headers.get("Accept").split(/\s*,\s*/g).includes(response.headers.get("content-type")) ||
+            xover.mimeTypes[response.bodyType] == request.headers.get("Accept") ||
+            (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
+            (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
             return Promise.resolve(response);
         } else {
             return Promise.reject(response);
@@ -3870,10 +3836,10 @@ xover.fetch = async function (request, settings = { rejectCodes: 500 }) {
     //} else if ([409, 449, 503].includes(response.status)) {
     //    return Promise.reject(response);
     //} else if (
-    //    (req.headers.get("Accept") || "").indexOf("*/*") != -1 ||
-    //    xover.mimeTypes[response.bodyType] == req.headers.get("Accept") ||
-    //    (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
-    //    (req.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
+    //    (request.headers.get("Accept") || "").indexOf("*/*") != -1 ||
+    //    xover.mimeTypes[response.bodyType] == request.headers.get("Accept") ||
+    //    (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
+    //    (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
     //    return Promise.resolve(response);
     //} else if (response.bodyType == 'html' && document instanceof DocumentFragment) {
     //    xover.dom.createDialog(document);
@@ -3886,13 +3852,15 @@ xover.fetch.from = async function () {
     return response.body;
 }
 
-xover.fetch.xml = async function (url, settings = { rejectCodes: 500 }, on_success) {
+xover.fetch.xml = async function (url, ...args) {
     if (!url) return null;
-    settings["headers"] = new Headers(settings["headers"]);
-    settings["headers"].set("Accept", settings["headers"].get("Accept") || "text/xml, text/xsl")
+    if (!(url instanceof URL)) {
+        url = new xover.URL(url);
+        url.settings["headers"].set("Accept", url.settings["headers"].get("Accept") || "text/xml, text/xsl")
+    }
 
     try {
-        let response = await xover.fetch.call(this, url, settings, on_success);
+        let response = await xover.fetch.apply(this, [url, ...args]);
         let return_value = response.document || response;
         //if (!return_value.documentElement && response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
         //    return_value = xover.xml.fromJSON(return_value.documentElement);
@@ -4400,6 +4368,7 @@ xover.Store = function (xml, ...args) {
     let self = this;
     let store = this;
     let _this_arguments = args;
+    if (!(xml instanceof Document)) return Promise.reject(`A Store should be created with a document`);
     let __document = xml; //Before: xover.xml.createDocument(xml); //Now should remain reference for current 
     if (__document.source instanceof xover.Source && !__document.source.hasOwnProperty("save")) {
         Object.defineProperty(__document.source, 'save', {
@@ -5258,11 +5227,8 @@ xover.Store = function (xml, ...args) {
                 let isActive = self.isActive
                 let active_tag = xover.site.active;
                 let active_store = xover.stores.active;
-                if (active_store === self && decodeURI(location.hash) !== decodeURI(self.hash)) {
-                    xover.site.active = tag;
-                }
-                //if (!isActive) {
-                //    return Promise.reject(`Store ${tag} is not active`);
+                //if (active_store === self && decodeURI(location.hash) !== decodeURI(self.hash)) {
+                //    xover.site.active = tag;
                 //}
 
                 let doc = __document.cloneNode(true);
@@ -5331,7 +5297,7 @@ xover.Store = function (xml, ...args) {
     _tag = _tag.split(/\?/)[0];
     //this.reseed();
     xover.manifest.getSettings(this, 'stylesheets').flat().forEach(stylesheet => store.addStylesheet(stylesheet, false));
-    window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }));
+    window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }, this));
     xover.stores[_tag] = this;
     return this;
 }
@@ -5919,7 +5885,7 @@ xover.dom.print = function () {
     }
 }
 
-xover.listener.on('success::xo:message[.!=""]', function ({ target, attribute: key }) {
+xover.listener.on('fetch::xo:message[.!=""]', function ({ target, attribute: key }) {
     this.render()
 });
 
@@ -9009,13 +8975,13 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
-            if (!XMLDocument.prototype.hasOwnProperty('tag')) {
-                Object.defineProperty(XMLDocument.prototype, 'tag', {
-                    get: function () {
-                        return this.store && this.store.tag || "";//xover.stores.active.tag;
-                    }
-                });
-            }
+            //if (!XMLDocument.prototype.hasOwnProperty('tag')) {
+            //    Object.defineProperty(XMLDocument.prototype, 'tag', {
+            //        get: function () {
+            //            return this.store && this.store.tag || "";//xover.stores.active.tag;
+            //        }
+            //    });
+            //}
 
             let stylesheet_renderer_handler = async function () {
                 this._render_manager = this._render_manager || xover.delay(1).then(async () => {
@@ -9120,7 +9086,7 @@ xover.modernize = function (targetWindow) {
                         stylesheets = stylesheets !== options && stylesheets || this.stylesheets;
                         stylesheets = stylesheets instanceof Array && stylesheets || stylesheets && [stylesheets] || [];
                         let self = this;
-                        let tag = self.tag;
+                        let tag = store && store.tag || '';
                         if (this.selectSingleNode('xsl:*')) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
                             options = options || {};
                             options["target"] = options["target"] || document.querySelector(`[xo-store="${options["document"] && options["document"].tag || options["document"] || tag}"]`);
@@ -9683,7 +9649,7 @@ document.addEventListener('mousedown', function (event) {
     }
 });
 
-xover.listener.on('Response:rejection', function ({ response, request }) {
+xover.listener.on('Response:reject', function ({ response, request }) {
     if (!response.ok && ((request.url || {}).pathname || '').indexOf(`.manifest`) != -1) {
         event.preventDefault();
     }
@@ -9700,7 +9666,7 @@ addEventListener("unhandledrejection", async (event) => {
         let reason = event.message || event.reason;
         if (!reason) return;
         if (!(typeof (reason) == 'string' || reason instanceof Error)) {
-            let unhandledrejection_event = new xover.listener.Event(`rejection`, {}, reason);
+            let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
             window.top.dispatchEvent(unhandledrejection_event);
             if (unhandledrejection_event.defaultPrevented) return;
         }
