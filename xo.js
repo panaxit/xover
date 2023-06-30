@@ -1627,7 +1627,7 @@ Object.defineProperty(xover.site, 'active', {
         } else {
             return Promise.reject(`${input} no available`)
         }
-        if (!this.sections.find(section => section.store.tag == input)) {
+        if (!this.sections.find(section => section.store && section.store.tag == input)) {
             store && store.render();
         }
     }
