@@ -9096,7 +9096,8 @@ xover.modernize = function (targetWindow) {
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
-                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom }, data)
+                            data.tag = '#' +xsl.href.split(/[\?#]/)[0];
+                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom }, data);
                             window.top.dispatchEvent(before_dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             if (!dom.firstElementChild) {
@@ -9226,6 +9227,10 @@ xover.modernize = function (targetWindow) {
                                 continue;
                             }
                             target.disconnected = false;
+                            dom.tag = '#' + xsl.href.split(/[\?#]/)[0];
+                            let render_event = new xover.listener.Event('render', { store, stylesheet, target, dom, context: data }, dom);
+                            window.top.dispatchEvent(render_event);
+                            if (render_event.cancelBubble || render_event.defaultPrevented) continue;
                             if (dom.firstElementChild && (dom.firstElementChild.tagName || '').toLowerCase() == "html") {
                                 //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
                                 //target = document.body;
@@ -9288,7 +9293,7 @@ xover.modernize = function (targetWindow) {
                                     return cloned;
                                 });
                                 let active_element = document.activeElement;
-                                let active_element_selector = active_element.selector
+                                let active_element_selector = active_element.selector;
                                 if (action == "replace") {
                                     target.replaceChildren(...dom.firstElementChild.childNodes)
                                     //target = target.replaceWith(dom.firstElementChild);//target = [target.replace(dom)];
@@ -9363,7 +9368,7 @@ xover.modernize = function (targetWindow) {
                                 return new bootstrap.Tooltip(tooltipTriggerEl)
                             })
                             dependants = [...target.querySelectorAll('*[xo-store],*[xo-stylesheet]')];
-                            window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
+                            //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
                             dependants.forEach(el => el.render());
                             delete xover.site.renderingTo;
                         }
