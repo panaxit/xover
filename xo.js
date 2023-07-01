@@ -5198,9 +5198,6 @@ xover.Store = function (xml, ...args) {
                 let isActive = self.isActive
                 let active_tag = xover.site.active;
                 let active_store = xover.stores.active;
-                //if (active_store === self && decodeURI(location.hash) !== decodeURI(self.hash)) {
-                //    xover.site.active = tag;
-                //}
 
                 let stylesheets = xover.site.sections.filter(el => el.store && el.store === self);
                 stylesheets.forEach((el) => el.render());
@@ -5209,7 +5206,7 @@ xover.Store = function (xml, ...args) {
                 //_store_stylesheets.reverse().forEach(stylesheet => doc.prepend(stylesheet));
                 doc.store = store;
                 //await (async (pending_stylesheets) => pending_stylesheets.length && await doc.render(pending_stylesheets))(((stylesheets) => doc.stylesheets.filter(stylesheet => !stylesheets.includes(stylesheet.href)))(stylesheets.map(el => el.getAttribute("xo-stylesheet"))));
-                return doc.render(...[..._store_stylesheets, ...doc.stylesheets].distinct());
+                return doc.render([..._store_stylesheets, ...doc.stylesheets].distinct());
             }).then(async () => {
                 let tag = self.tag;
                 let targetDocument = ((document.activeElement || {}).contentDocument || document);
@@ -9063,17 +9060,8 @@ xover.modernize = function (targetWindow) {
                             this.action = options.action
                             return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed()).render(this);
                         }
-                        //var data = this.cloneNode(true);
-                        //data.reseed();
                         let stylesheet_target = 'body';
                         let targets = [];
-                        //if (stylesheets instanceof Array && !Object.fromEntries(stylesheets).length) {
-                        //    stylesheets = Object.assign(stylesheets, Object.fromEntries(xo.manifest.getSettings(this, 'stylesheets')))
-                        //    let message = (this.documentElement || this).selectSingleNode("message/text()")
-                        //    if (message) {
-                        //        return Promise.reject(String(message))
-                        //    }
-                        //}
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             let action = stylesheet.action;// || !stylesheet.target && "append";
@@ -9252,7 +9240,7 @@ xover.modernize = function (targetWindow) {
                                     //    _applyScripts((document.activeElement || {}).contentDocument, dom);
                                     //}
                                 } else {
-                                    xover.dom.clear(target);
+                                    target.replaceChildren();
                                     if (target.tagName.toLowerCase() == "iframe") {
                                         iframe = target;
                                     } else {
@@ -9268,7 +9256,7 @@ xover.modernize = function (targetWindow) {
                                         //iframe.addEventListener('change', xover.listeners.dom.onchange);
                                     }
                                     var url = xover.dom.getGeneratedPageURL({
-                                        html: xover.string.htmlDecode(dom.outerHTML),
+                                        html: xover.string.htmlDecode(dom.toString()),
                                         css: (dom.querySelector('style') || {}).innerHTML,
                                         js: `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; let iframe=parent.document.querySelector('iframe'); iframe.height=document.querySelector('body').scrollHeight+10; iframe.width=document.querySelector('body').scrollWidth+10; xover.modernize(iframe.contentWindow); document.querySelector('body').setAttributeNS(null, "xo-store", '${tag}');` //+ js//((dom.querySelector('script') || {}).innerHTML || "")
                                         //window.top.document.querySelector('body').setAttributeNS(null, "xo-store", window.top.location.hash)
