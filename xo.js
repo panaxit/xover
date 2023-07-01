@@ -3764,7 +3764,7 @@ xover.fetch = async function (url, ...args) {
             }
         });
     }
-    response.tag = ((`${url.pathname || url}`).replace(/^\//, ''));
+    response.tag = '#'+((`${url.pathname || url}`).replace(/^\//, ''));
     let manifest_settings = xover.manifest.getSettings(response.tag, "stylesheets");
     document instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
         return_value.addStylesheet(stylesheet);
