@@ -829,35 +829,6 @@ xover.listener.on('keyup', async function (event) {
     }
 })
 
-xover.listener.on('error', async function ({ event }) {
-    if (!(event && !(event.defaultPrevented))) return;
-    let srcElement = event.target;
-    let store = await xover.storehouse.files;
-    let src = srcElement.getAttribute("src") || "";
-    let record = await store.get(src.split('?')[0]);
-    if (record) {
-        let old_url = srcElement.src;
-        if (record.file.type.indexOf('image') !== -1) {
-            let new_url = window.URL.createObjectURL(record.file);
-            srcElement.src = new_url;
-            record.uid = new_url;
-            store.put(record);
-            srcElement.source && srcElement.source.selectNodes(`.//@*[.='${old_url}']`).forEach(node => node.value = new_url);
-            store.delete(old_url);
-            return;
-        }
-    }
-    if ([...document.querySelectorAll('link[href]')].find(node => node.getAttribute("href").indexOf('bootstrap-icons') !== -1)) { //
-        let new_element = targetDocument.createElement("i");
-        new_element.className = `bi bi-filetype bi-filetype${record ? record.extension : (xo.URL(src).pathname.match(/\.\w{1,3}$/) || [''])[0].replace(/\./g, '-')}`;
-        if (srcElement.closest('picture')) {
-            srcElement.closest('picture').replace(new_element);
-        } else {
-            srcElement.replaceWith(new_element);
-        }
-    }
-})
-
 xover.listener.on('popstate', async function (event) {
     //if (event.defaultPrevented) return;
     //if (this.popping) {
@@ -1064,10 +1035,10 @@ xover.server = new Proxy({}, {
             });
             response.response_value = return_value;
             if (response.ok) {
-                window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.payload, request, tag: `#server:${key}` }, response));
+                window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.settings.body, request, tag: `#server:${key}` }, response));
                 return Promise.resolve(return_value);
             } else {
-                window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.payload, request, tag: `#server:${key}` }, response));
+                window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.settings.body, request, tag: `#server:${key}` }, response));
                 return Promise.reject(response.body);
             }
         })
@@ -9635,7 +9606,7 @@ xover.listener.on('Response:reject', function ({ response, request }) {
     }
 })
 
-addEventListener("unhandledrejection", async (event) => {
+xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
     }
