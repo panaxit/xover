@@ -799,7 +799,7 @@ xover.listener.on('hashchange', function (new_hash, old_hash) {
     xover.site.active = location.hash;
 });
 
-xover.listener.on('pushState', function ({ state }) {
+xover.listener.on('pushstate', function ({ state }) {
     if (typeof HashChangeEvent !== "undefined") {
         window.dispatchEvent(new HashChangeEvent("hashchange"));
         return;
@@ -1020,6 +1020,7 @@ xover.server = new Proxy({}, {
             let url = new xover.URL(xover.manifest.server[key], undefined, { payload, ...settings.merge(Object.fromEntries(xo.manifest.getSettings(`server:${key}`) || [])) });
             request = new xover.Request(url);
             request.tag = `#server:${key}`;
+            window.top.dispatchEvent(new xover.listener.Event(`beforeFetch`, { url, request, href: url.href }, request));
             try {
                 [return_value, request, response] = await xover.fetch.apply(request, [url, ...args]).then(response => [response.body, response.request, response]);
             } catch (e) {
@@ -1789,7 +1790,6 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
         return ms
     }
     if (!(this instanceof xover.Source)) return new xover.Source(tag/*source, tag, manifest_key*/);
-
     let _isActive = undefined;
     let self = this;
     let _manifest = xover.manifest.sources || {};
@@ -1836,6 +1836,13 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
     if (!this.hasOwnProperty("settings")) {
         Object.defineProperty(this, 'settings', {
             value: __settings,
+            writable: false, enumerable: false, configurable: false
+        });
+    }
+
+    if (!this.hasOwnProperty("tag")) {
+        Object.defineProperty(this, 'tag', {
+            value: tag[0] !== '#' ? `#${tag}` : tag,
             writable: false, enumerable: false, configurable: false
         });
     }
@@ -1887,6 +1894,9 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
 
             this.fetching = this.fetching || new Promise(async (resolve, reject) => {
                 let new_document;
+                if (!this.tag) {
+                    this.tag = self.tag;
+                }
                 let before_event = new xover.listener.Event('beforeFetch', { tag: tag }, this);
                 window.top.dispatchEvent(before_event);
                 if (before_event.cancelBubble || before_event.defaultPrevented) return;
@@ -1979,7 +1989,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
                 settings.stylesheets && settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
-                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag: tag }, this));
+                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag: tag }, self));
                 return resolve(new_document);
             }).catch(async (e) => {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
@@ -3868,12 +3878,12 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
 
-            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-scope])]`)) {
-                el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-attribute or @xo-scope])]`)) {
+                el.set("xo-attribute", "{name(current()[not(self::*)])}")
             }
 
-            for (let el of return_value.$$(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or @xo-scope="inherit")]|//svg:*[not(ancestor::svg:* or @xo-scope="inherit")])[not(ancestor-or-self::*[@xo-attribute])]`)) {
-                el.set("xo-attribute", "{name(current()[not(self::*)])}")
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-scope])]`)) {
+                el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
             for (let el of return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`)) {
@@ -8997,11 +9007,11 @@ xover.modernize = function (targetWindow) {
             var original_pushState = Object.getOwnPropertyDescriptor(History.prototype, 'pushState');
             Object.defineProperty(History.prototype, 'pushState', {
                 value: function (...args) {
-                    let before = new xover.listener.Event('beforePushState', { state: args[0] }, this)
+                    let before = new xover.listener.Event('beforePushstate', { state: args[0] }, this)
                     window.top.dispatchEvent(before);
                     if (before.cancelBubble || before.defaultPrevented) return;
                     let response = original_pushState.value.apply(this, [JSON.parse(JSON.stringify(args[0])), args[1], args[2]]);
-                    window.top.dispatchEvent(new xover.listener.Event('pushState', { state: args[0] }, this));
+                    window.top.dispatchEvent(new xover.listener.Event('pushstate', { state: args[0] }, this));
                     return response;
                 }
             });
