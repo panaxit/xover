@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -716,7 +716,7 @@ Object.defineProperty(xover.listener, 'matches', {
         let tag = context.tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => predicate === tag || !predicate || tag[0] !== '#' && predicate && typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => !predicate || predicate === tag || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(handler.toString(), handler);
             }
         }
@@ -1012,14 +1012,16 @@ xover.server = new Proxy({}, {
         let return_value, request, response;
         let handler = (async function (payload, ...args) {
             let settings = {};
-            if (this instanceof xover.Source) {
+            if (this instanceof xover.Source || this instanceof Document) {
                 settings = this.settings || {};
             }
             //let settings = this.settings || {};
             //this.settings = settings.merge(Object.fromEntries(xo.manifest.getSettings(`server:${key}`) || []));
             let url = new xover.URL(xover.manifest.server[key], undefined, { payload, ...settings.merge(Object.fromEntries(xo.manifest.getSettings(`server:${key}`) || [])) });
+            request = new xover.Request(url);
+            request.tag = `#server:${key}`;
             try {
-                [return_value, request, response] = await xover.fetch.apply(this, [url, ...args]).then(response => [response.body, response.request, response]);
+                [return_value, request, response] = await xover.fetch.apply(request, [url, ...args]).then(response => [response.body, response.request, response]);
             } catch (e) {
                 [return_value, request, response] = [e.body, e.request, e]
                 if (e instanceof DOMException) {
@@ -1830,6 +1832,13 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             writable: false, enumerable: false, configurable: false
         });
     }
+    let __settings = {};
+    if (!this.hasOwnProperty("settings")) {
+        Object.defineProperty(this, 'settings', {
+            value: __settings,
+            writable: false, enumerable: false, configurable: false
+        });
+    }
 
     let _progress = 0;
 
@@ -1855,14 +1864,14 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
         }
     });
 
-    Object.defineProperty(this, 'progress', {
-        get: function () {
-            return _progress
-        }, set: function (input) {
-            _progress = input;
-            window.top.dispatchEvent(new xover.listener.Event('progress', { percent: _progress, document: __document, source: self }, self));
-        }
-    });
+    //Object.defineProperty(this, 'progress', {
+    //    get: function () {
+    //        return _progress
+    //    }, set: function (input) {
+    //        _progress = input;
+    //        window.top.dispatchEvent(new xover.listener.Event('progress', { percent: _progress, document: __document, source: self }, self));
+    //    }
+    //});
 
     this.state = new Proxy({}, {
         get: function (target, name) {
@@ -1874,11 +1883,13 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
     })
     Object.defineProperty(this, `fetch`, {
         value: async function (...args) {
-            window.top.dispatchEvent(new xover.listener.Event('beforeFetch', { tag: tag }, this));
             let source = self.definition;
 
             this.fetching = this.fetching || new Promise(async (resolve, reject) => {
                 let new_document;
+                let before_event = new xover.listener.Event('beforeFetch', { tag: tag }, this);
+                window.top.dispatchEvent(before_event);
+                if (before_event.cancelBubble || before_event.defaultPrevented) return;
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint]
                     parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
@@ -1890,22 +1901,21 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                         parameters = [parameters];
                     }
                     return [endpoint, parameters]
-                })
-                let settings;
-                settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
-                self["endpoints"] = Object.fromEntries(endpoints);
-                self["settings"] = settings;
+                });
+                this.settings = this.settings || {};
+                let settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
+                this["settings"].merge(settings);
                 let stored_document;
                 if (!xover.session.rebuild && !(source instanceof Document)) {
                     let sources = await xover.storehouse.sources;
                     stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || new_document;
 
-                    let expiry = expiration_ms(self["settings"]["expiry"])
+                    let expiry = expiration_ms(this["settings"]["expiry"])
                     if (stored_document && ((Date.now() - stored_document.lastModifiedDate) > (expiry || 0))) {
                         stored_document = null;
                     }
                 }
-                if (stored_document instanceof Document && stored_document.documentElement) {
+                if (stored_document) {
                     new_document = stored_document
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
@@ -1913,10 +1923,10 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
                                 if (endpoint.replace(/^server:/, '') in xover.server) {
-                                    new_document = await xover.server[endpoint.replace(/^server:/, '')].apply(self, parameters);
+                                    new_document = await xover.server[endpoint.replace(/^server:/, '')].apply(this, parameters);
                                 } else if (existsFunction(endpoint)) {
                                     let fn = eval(endpoint);
-                                    new_document = await fn.apply(self, args.concat(parameters));
+                                    new_document = await fn.apply(this, args.concat(parameters));
                                 }
                             } catch (e) {
                                 if (e instanceof Response && e.document instanceof XMLDocument) {
@@ -1936,22 +1946,22 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     try {
                         documents = await Promise.all(promises).then(document => document);
                     } catch (e) {
-                        window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { response: e }, self));
+                        window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { response: e }, this));
                         return reject(e);
                     }
                     new_document = documents[0];
                 } else if (source && source[0] !== '#') {
                     try {
-                        self["settings"].headers = new Headers(self["settings"].headers || {});
-                        let headers = self["settings"].headers;
+                        this["settings"].headers = new Headers(this["settings"].headers || {});
+                        let headers = this["settings"].headers;
                         headers.set("accept", headers.get("accept") || xover.mimeTypes[source.substring(source.lastIndexOf(".") + 1)]);
                         let accept_header = headers.get("accept");
                         if (accept_header && (accept_header.indexOf('xml') != -1 || accept_header.indexOf('xsd') != -1 || accept_header.indexOf('xsl') != -1)) {
-                            new_document = await xover.fetch.xml.apply(self, [source, self["settings"]]);
+                            new_document = await xover.fetch.xml.apply(this, [source, this["settings"]]);
                         } else if (accept_header && accept_header.indexOf('json') != -1) {
-                            new_document = await xover.fetch.json.apply(self, [source, self["settings"]]);
+                            new_document = await xover.fetch.json.apply(this, [source, this["settings"]]);
                         } else {
-                            new_document = await xover.fetch.apply(self, [source, self["settings"]]);
+                            new_document = await xover.fetch.apply(this, [source, this["settings"]]);
                         }
                     } catch (e) {
                         return reject(e);
@@ -1969,7 +1979,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
                 settings.stylesheets && settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
-                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag: tag }, self));
+                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag: tag }, this));
                 return resolve(new_document);
             }).catch(async (e) => {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
@@ -3708,36 +3718,32 @@ xover.fetch = async function (url, ...args) {
         }
     }
 
-    let source = settings["source"] instanceof xover.Source && settings["source"] || this instanceof xover.Source && this || undefined;
-    if (source || settings.progress) {
-        source.abortFetch = function () { controller.abort() };
-        let res = original_response.clone();
-        const contentLength = res.headers.get('content-length');
-        let receivedLength = 0;
-        const stream = res.body.getReader();
-        const progress = () => {
-            stream.read().then(({ done, value }) => {
-                //source.abortFetch = null;
-                if (done) {
-                    source.progress = 100;
-                    if (settings.progress) {
-                        settings.progress.value = 100;
-                    }
-                    return;
-                }
+    if (this !== xover.server) {
+        this.controller = controller;
+    }
+    //let source = settings["source"] instanceof xover.Source && settings["source"] || this instanceof xover.Source && this || undefined;
+    let res = original_response.clone();
+    const contentLength = res.headers.get('content-length');
+    let receivedLength = 0;
+    const stream = res.body.getReader();
+    const progress = () => {
+        stream.read().then(({ done, value }) => {
+            let _progress;
+            //source.abortFetch = null;
+            if (done) {
+                _progress = 100;
+            } else {
                 receivedLength += value.byteLength;
                 let percent = (receivedLength / contentLength) * 100
-                source.progress = percent;
-                if (settings.progress) {
-                    settings.progress.value = percent;
-                }
+                _progress = percent;
                 progress();
-            }).catch(e => {
-                console.log(e)
-            });
-        };
-        progress();
-    }
+            }
+            window.top.dispatchEvent(new xover.listener.Event('progress', { controller, percent: _progress }, this));
+        }).catch(e => {
+            console.log(e)
+        });
+    };
+    progress();
     if (!original_response) return Promise.reject(`No response for ${url}!`);
     let response = new xover.Response(original_response, request);
     let document = await response.processBody();
@@ -3764,7 +3770,7 @@ xover.fetch = async function (url, ...args) {
             }
         });
     }
-    response.tag = '#'+((`${url.pathname || url}`).replace(/^\//, ''));
+    response.tag = '#' + ((`${url.pathname || url}`).replace(/^\//, ''));
     let manifest_settings = xover.manifest.getSettings(response.tag, "stylesheets");
     document instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
         return_value.addStylesheet(stylesheet);
@@ -5118,21 +5124,13 @@ xover.Store = function (xml, ...args) {
     });
     Object.defineProperty(this, 'fetch', {
         value: async function () {
-            let before = new xover.listener.Event('beforeFetch', { tag: _tag, document: __document }, self);
-            window.top.dispatchEvent(before);
-            if (before.cancelBubble || before.defaultPrevented) return;
-            //__document = event.detail.document || __document;
             if (__document.fetch) {
-                //__document.store = store;
                 try {
                     await __document.fetch()
                 } catch (e) {
                     return Promise.reject(e);
                 }
             }
-            //let event = new xover.listener.Event('fetch', { tag: _tag, document: __document });
-            //xover.listener.dispatchEvent(event, self);
-            //__document = event.detail.document || __document;
             await this.initialize();
             this.reseed();
         },
@@ -8853,6 +8851,8 @@ xover.modernize = function (targetWindow) {
                                 ////if (!xml.documentElement) {
                                 ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                 ////}
+                                let tag = xml.tag || `#${xsl.href}`;
+                                xml.tag = tag;
                                 let listeners = xover.listener.matches(xml, 'beforeTransform')
                                 window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: listeners, document: xml, store: xml.store, stylesheet: xsl }, this));
                                 xml = this.cloneNode(true);
@@ -8874,6 +8874,7 @@ xover.modernize = function (targetWindow) {
                                 if (result == null) {
                                     result = xsltProcessor.transformToDocument(xml);
                                 }
+                                result.tag = tag;
                                 result && [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                 if (!(result && result.documentElement) && !xml.documentElement) {
                                     xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed())
@@ -8931,7 +8932,7 @@ xover.modernize = function (targetWindow) {
                         }
                         try {
                             //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                            window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, transformed: result }, this));
+                            window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, transformed: result }, result));
                             //}
                         } catch (e) { }
                         return result
@@ -9091,12 +9092,12 @@ xover.modernize = function (targetWindow) {
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
                             data.disconnect();
                             data.target = target;
+                            data.tag = '#' + xsl.href.split(/[\?#]/)[0];
                             let dom = await data.transform(xsl);
                             //if (current_cursor_style) delete current_cursor_style;
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
-                            data.tag = '#' +xsl.href.split(/[\?#]/)[0];
                             let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom }, data);
                             window.top.dispatchEvent(before_dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
