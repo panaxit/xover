@@ -3363,12 +3363,15 @@ xover.URL = function (url, base, settings = {}) {
             method = 'POST'
         }
     }
+    let query = new URLSearchParams(settings["query"] || settings["payload"] || {});
+    [...query.entries()].forEach(([key, value]) => url.searchParams.append(key, value));
+    delete settings["query"];
+    delete settings["payload"];
+
     url.settings = url.settings || {};
     url.settings.method = method || url.settings.method;
     url.settings.merge(settings);
     url.settings.headers = new Headers(url.settings.headers || {});
-    let query = new URLSearchParams(settings["query"] || settings["payload"] || {});
-    [...query.entries()].forEach(([key, value]) => url.searchParams.set(key, value));
 
     [...new Headers(settings["headers"] || {}).entries()].forEach(([key, value]) => {
         if (value) {
