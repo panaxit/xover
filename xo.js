@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -4159,7 +4159,7 @@ xover.sources.defaults["loading.xslt"] = xover.xml.createDocument(`
           <div class="no-freeze-spinner">
             <div id="no-freeze-spinner">
               <div>
-                <i class="icon">
+                <i class="icon" style="justify-content: center; display: flex; align-items: center;">
                     <img src="{$js:icon}" class="ring_image" onerror="this.remove()"/>
                     <progress style="display:none; width: 100%; accent-color: var(--progress-color, green);" max="100" value="0" aria-label="Loading…">0%</progress>
                 </i>
@@ -9104,6 +9104,7 @@ xover.modernize = function (targetWindow) {
                             data.target = target;
                             data.tag = '#' + xsl.href.split(/[\?#]/)[0];
                             let dom = await data.transform(xsl);
+                            let documentElement = dom.firstElementChild;
                             //if (current_cursor_style) delete current_cursor_style;
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
@@ -9111,7 +9112,7 @@ xover.modernize = function (targetWindow) {
                             let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom }, data);
                             window.top.dispatchEvent(before_dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
-                            if (!dom.firstElementChild) {
+                            if (!documentElement) {
                                 //xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
                             }
@@ -9124,7 +9125,6 @@ xover.modernize = function (targetWindow) {
                                 dom = new_document;
                             }
 
-                            let documentElement = dom.firstElementChild;
                             documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
                             documentElement.setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
@@ -9142,9 +9142,14 @@ xover.modernize = function (targetWindow) {
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
 
                             if (action === 'replace') {
-                                let copied_attributes = documentElement.attributes.toArray();
-                                copied_attributes.filter(attr => !['class', 'xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
-                                target.classList.forEach(class_name => target.classList.add(class_name));
+                                if (target.nodeName.toUpperCase() !== documentElement.nodeName.toUpperCase()) {
+                                    let new_node = documentElement.cloneNode();
+                                    target = target.replaceWith(new_node);
+                                } else {
+                                    let copied_attributes = documentElement.attributes.toArray();
+                                    copied_attributes.filter(attr => !['class', 'xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
+                                    target.classList.forEach(class_name => target.classList.add(class_name));
+                                }
                             }
 
                             if (target === document.body && action === 'replace') {
@@ -9242,7 +9247,7 @@ xover.modernize = function (targetWindow) {
                             let render_event = new xover.listener.Event('render', { store, stylesheet, target, dom, context: data }, dom);
                             window.top.dispatchEvent(render_event);
                             if (render_event.cancelBubble || render_event.defaultPrevented) continue;
-                            if (dom.firstElementChild && (dom.firstElementChild.tagName || '').toLowerCase() == "html") {
+                            if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
                                 //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
                                 //target = document.body;
                                 xover.dom.setEncryption(dom, 'UTF-7');
@@ -9306,8 +9311,8 @@ xover.modernize = function (targetWindow) {
                                 let active_element = document.activeElement;
                                 let active_element_selector = active_element.selector;
                                 if (action == "replace") {
-                                    target.replaceChildren(...dom.firstElementChild.childNodes)
-                                    //target = target.replaceWith(dom.firstElementChild);//target = [target.replace(dom)];
+                                    target.replaceChildren(...documentElement.childNodes)
+                                    //target = target.replaceWith(documentElement);//target = [target.replace(dom)];
                                     //let to_be_replaced = target.querySelector(active_element_selector)
                                     //to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
