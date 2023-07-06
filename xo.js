@@ -1898,6 +1898,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 if (!this.tag) {
                     this.tag = self.tag;
                 }
+                this.settings = this.settings || {};
                 let before_event = new xover.listener.Event('beforeFetch', { tag: tag }, this);
                 window.top.dispatchEvent(before_event);
                 if (before_event.cancelBubble || before_event.defaultPrevented) return;
@@ -1913,7 +1914,6 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     }
                     return [endpoint, parameters]
                 });
-                this.settings = this.settings || {};
                 let settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
                 this["settings"].merge(settings);
                 let stored_document;
@@ -1990,7 +1990,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
                 settings.stylesheets && settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
-                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag: tag }, self));
+                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag, settings: this.settings }, self));
                 return resolve(new_document);
             }).catch(async (e) => {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
@@ -3752,7 +3752,7 @@ xover.fetch = async function (url, ...args) {
                 _progress = percent;
                 progress();
             }
-            window.top.dispatchEvent(new xover.listener.Event('progress', { controller, percent: _progress }, this));
+            window.top.dispatchEvent(new xover.listener.Event('progress', { controller, percent: _progress }, request));
         }).catch(e => {
             console.log(e)
         });
@@ -5864,6 +5864,11 @@ xover.dom.print = function () {
 xover.listener.on('fetch::xo:message[.!=""]', function ({ target, attribute: key }) {
     this.render()
 });
+
+xo.listener.on('xo.Source:fetch', async function ({ settings = {} }) {
+    let progress = await settings.progress;
+    progress && progress.remove();
+})
 
 xover.listener.on('change::@state:*', async function ({ target, attribute: key }) {
     if (event.defaultPrevented || !(target && target.parentNode)) return;
