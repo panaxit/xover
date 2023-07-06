@@ -1591,17 +1591,18 @@ Object.defineProperty(xover.site, 'active', {
         //xover.dom.navigateTo(hashtag)
         input = input || "#";
         history.state.active = input;//Revisar si no lo tiene que guardar, porque en el caso del login, sobreescribiría el estado y lo perderíamos. Este truco se va a tener que hacer directo con history.state.active
-        let store = xover.stores[input];
+        let active = this.active;
+        let store = xover.stores[active];
         if (!store) {
-            let source = xover.sources[input];
+            let source = xover.sources[active];
             store = new xover.Store(source, { tag: source.tag });
         }
         if (store) {
             this.hash = store.hash;
         } else {
-            return Promise.reject(`${input} no available`)
+            return Promise.reject(`${active} no available`)
         }
-        if (!this.sections.find(section => section.store && section.store.tag == input)) {
+        if (!this.sections.find(section => section.store && section.store.tag == active)) {
             store && store.render();
         }
     }
