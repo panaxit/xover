@@ -9124,7 +9124,7 @@ xover.modernize = function (targetWindow) {
                                 //xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
                             }
-                            window.top.dispatchEvent(new xover.listener.Event('transform', { store: store, stylesheet: stylesheet, target: target, node: dom }, store));
+                            window.top.dispatchEvent(new xover.listener.Event('transform', { store: store, stylesheet: stylesheet, target: target, result: dom, transformed: dom }, store));
                             if (dom instanceof DocumentFragment) {
                                 let new_document = window.document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
                                 let new_target = target.cloneNode();
