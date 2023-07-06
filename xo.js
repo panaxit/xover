@@ -776,8 +776,8 @@ Object.defineProperty(xover.listener, 'on', {
             let [scoped_event, ...predicate] = event_name.split(/::/);
             predicate = predicate.join("::");
             [base_event, scope] = scoped_event.split(/:/).reverse();
-            window.top.removeEventListener(`${base_event}${predicate ? `::${predicate}` : ''}`, xover.listener.dispatcher);
-            window.top.addEventListener(`${base_event}${predicate ? `::${predicate}` : ''}`, xover.listener.dispatcher, options);
+            window.top.removeEventListener(base_event, xover.listener.dispatcher);
+            window.top.addEventListener(base_event, xover.listener.dispatcher);
 
             handler.scope = scope && eval(scope) || undefined;
             let event_array = xover.listener.get(base_event) || new Map();
@@ -787,8 +787,8 @@ Object.defineProperty(xover.listener, 'on', {
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
-                window.top.removeEventListener(base_event, xover.listener.dispatcher);
-                window.top.addEventListener(base_event, xover.listener.dispatcher, options);
+                window.top.removeEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
+                window.top.addEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
             }
         }
     },
