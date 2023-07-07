@@ -9212,7 +9212,7 @@ xover.modernize = function (targetWindow) {
                                                 let result = (function () {
                                                     xover.context = script;
                                                     return eval.apply(this, arguments)
-                                                }(`/*${stylesheet.href}*/ let self = xover.context.parentNode; ${script.textContent};xover.context = undefined;`));
+                                                }(`/*${stylesheet.href}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
                                                 if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                                                     let target = document.getElementById(script.id);
                                                     target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
