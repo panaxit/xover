@@ -9209,7 +9209,10 @@ xover.modernize = function (targetWindow) {
                                                 //    }.call(scope)
                                                 //}
                                                 //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
-                                                let result = (function () { return eval.apply(this, arguments) }(`/*${stylesheet.href}*/${script.textContent}`));
+                                                let result = (function () {
+                                                    xover.context = script;
+                                                    return eval.apply(this, arguments)
+                                                }(`/*${stylesheet.href}*/ let self = xover.context.parentNode; ${script.textContent};xover.context = undefined;`));
                                                 if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                                                     let target = document.getElementById(script.id);
                                                     target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
@@ -9610,11 +9613,11 @@ xover.dom.toExcel = (function (table, name) {
     setTimeout(function () { window.URL.revokeObjectURL(url); }, 0);
 });
 
-document.addEventListener('mousedown', function (event) {
-    if (event.shiftKey) {
-        event.preventDefault();
-    }
-});
+//document.addEventListener('mousedown', function (event) {
+//    if (event.shiftKey) {
+//        event.preventDefault();
+//    }
+//});
 
 xover.listener.on('Response:reject', function ({ response, request }) {
     if (!response.ok && ((request.url || {}).pathname || '').indexOf(`.manifest`) != -1) {
