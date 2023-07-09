@@ -900,6 +900,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     xover.site.seed = xover.site.seed || location.hash
     xover.restoreDocument(document);
     if (history.state) delete history.state.active;
+    document.querySelectorAll(`[role=alertdialog]`).toArray().remove();
     //if (!history.state && !location.hash && positionLastShown || xover.site.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.site.seed])) {
     //    //history.back();
     //    event.stopPropagation()
@@ -5228,7 +5229,7 @@ xover.Store = function (xml, ...args) {
             }).catch((e) => {
                 let tag = self.tag;
                 e = e || {}
-                if (e instanceof Response || e instanceof Error) {
+                if (e instanceof Response || e instanceof Error || typeof (e) === 'string') {
                     if ([401].includes(e.status)) {
                         console.error(e.statusText)
                     } else {
@@ -6709,6 +6710,14 @@ xover.modernize = function (targetWindow) {
                     } else if (typeof (args[0]) === 'function') {
                         return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
                     }
+                }
+            })
+
+            Array.prototype.native = {};
+            Array.prototype.native.toArray = Object.getOwnPropertyDescriptor(Array.prototype, 'toArray');
+            Object.defineProperty(Array.prototype, 'toArray', {
+                value: function () {
+                    return [...this];
                 }
             })
 
