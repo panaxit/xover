@@ -2156,6 +2156,7 @@ xover.spaces["readonly"] = "http://panax.io/state/readonly"
 xover.spaces["suggested"] = "http://panax.io/state/suggested"
 xover.spaces["initial"] = "http://panax.io/state/initial"
 xover.spaces["search"] = "http://panax.io/state/search"
+xover.spaces["filter"] = "http://panax.io/state/filter"
 xover.spaces["prev"] = "http://panax.io/state/previous"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
 xover.spaces["text"] = "http://panax.io/state/text"
@@ -3175,10 +3176,10 @@ xover.Response = function (response, request) {
     });
     Object.defineProperty(self, 'processBody', {
         value: async function () {
-            if (request && request.initiator) {
-                window.document.querySelectorAll(`[xo-store="${request.initiator.tag}"] .working`).forEach(el => el.classList.remove('working'));
-                request.initiator.state.loading = undefined;
-            }
+            //if (request && request.initiator) {
+            //    window.document.querySelectorAll(`[xo-store="${request.initiator.tag}"] .working`).forEach(el => el.classList.remove('working'));
+            //    request.initiator.state.loading = undefined;
+            //}
 
             let body = undefined;
             let charset = {}.merge(
@@ -4448,7 +4449,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(_sources, 'load', {
         value: async function (list) {
-            store.state.loading = true;
+            //store.state.loading = true;
             let stylesheets = await Promise.all(store.stylesheets.getDocuments().map(document => document.documentElement && document || document.fetch().then(document => document))).then(document => document);
             return stylesheets;
         },
@@ -8075,7 +8076,7 @@ xover.modernize = function (targetWindow) {
                 }
                 return this;
             }
-            Element.prototype.toggle = Element.prototype.toggleAttribute
+            //Element.prototype.toggle = Element.prototype.toggleAttribute;
 
             xover.listener.on('attributeChanged', function ({ target, attribute, value, old: oldValue }) {
             })
@@ -8901,12 +8902,12 @@ xover.modernize = function (targetWindow) {
                                 if (result == null) {
                                     result = xsltProcessor.transformToDocument(xml);
                                 }
-                                result.tag = tag;
                                 result && [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                 if (!(result && result.documentElement) && !xml.documentElement) {
                                     xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).reseed())
                                     return Promise.reject(xml.transform("empty.xslt"));
                                 }
+                                if (result) result.tag = tag;
                                 if ((xover.session.debug || {})["transform"] || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                     console.timeEnd(timer_id);
                                 }
