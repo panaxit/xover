@@ -897,9 +897,10 @@ xover.listener.on('popstate', async function (event) {
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     if (event.defaultPrevented) return;
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
-    xover.site.seed = xover.site.seed || location.hash
-    xover.restoreDocument(document);
+    //xover.site.seed = xover.site.seed || location.hash
     if (history.state) delete history.state.active;
+    xover.stores.active.render()
+    xover.restoreDocument(document);
     document.querySelectorAll(`[role=alertdialog]`).toArray().remove();
     //if (!history.state && !location.hash && positionLastShown || xover.site.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.site.seed])) {
     //    //history.back();
@@ -3998,8 +3999,8 @@ xover.xml.createFragment = function (xml_string) {
 }
 
 xover.xml.createNode = function (xml_string, notify_error) {
-    let doc = xover.xml.createDocument(xml_string, notify_error)
-    return doc.documentElement;
+    let doc = xover.xml.createDocument(`${xml_string}`, notify_error)
+    return doc.documentElement.cloneNode(true);
 }
 
 xover.xml.createElement = function (tagName) {
@@ -4717,38 +4718,12 @@ xover.Store = function (xml, ...args) {
                 mutationList = mutationList.filter(mutation => !mutation.target.disconnected && (mutation.attributeName == 'value' || !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)))//.filter(mutation => !(mutation.target instanceof Document));
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
-                mutated_targets = new Map();
-                for (let mutation of mutationList) {
-                    let inserted_ids = [];
-                    let value = mutated_targets.get(mutation.target) || {};
-                    value.addedNodes = value.addedNodes || [];
-                    value.addedNodes.push(...mutation.addedNodes);
-                    value.removedNodes = value.removedNodes || [];
-                    value.removedNodes.push(...mutation.removedNodes);
-                    value.attributes = value.attributes || {};
-                    if (mutation.type == "attributes") {
-                        value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace] || {};
-                        value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = {};
-                    }
-                    mutated_targets.set(mutation.target, value);
-                    [...mutation.addedNodes].forEach((addedNode) => {
-                        inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
-                    })
-                    //let duplicated_node = inserted_ids.find(id => mutation.target.selectFirst(`(//*[@xo:id="${id}"])[2]`));
-                    //if (duplicated_node) {
-                    //    Promise.reject(`Duplicated id ${duplicated_node}`)
-                    //    //console.log(inserted_ids)
-                    //}
-                }
                 if (event && event.type == 'input') {
                     event.srcElement.preventChangeEvent = true;
                 }
                 if (event && event.type == 'change' && event.srcElement.preventChangeEvent) {
                     event.srcElement.preventChangeEvent = undefined;
                 }
-                //if (event) {
-                //    console.log(`${event.type}`)
-                //}
                 let sections_to_render = new Map();
                 for (let section of xover.site.sections.filter(section => section.store === self)) {
                     if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section == section) {
@@ -4852,8 +4827,26 @@ xover.Store = function (xml, ...args) {
                     }
                 }
 
-                for (let [section] of [...sections_to_render.entries()]) {
-                    section.render()
+                mutated_targets = new Map();
+                for (let mutation of mutationList) {
+                    let inserted_ids = [];
+                    let value = mutated_targets.get(mutation.target) || {};
+                    if (mutation.type == "attributes") {
+                        value.attributes = value.attributes || new Map();
+                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                        if (!attr) {
+                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                        }
+                        value.attributes.set(attr, mutation.oldValue);
+                    }
+                    value.removedNodes = value.removedNodes || [];
+                    value.removedNodes.push(...mutation.removedNodes);
+                    value.addedNodes = value.addedNodes || [];
+                    value.addedNodes.push(...mutation.addedNodes);
+                    mutated_targets.set(mutation.target, value);
+                    [...mutation.addedNodes].forEach((addedNode) => {
+                        inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
+                    })
                 }
                 for (const [target, mutation] of [...mutated_targets]) {
                     /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
@@ -4863,46 +4856,29 @@ xover.Store = function (xml, ...args) {
                         }
                     }
                     for (let el of [...mutation.addedNodes]) {
-                        window.top.dispatchEvent(new xover.listener.Event('append', { target: target }, el));
+                        window.top.dispatchEvent(new xover.listener.Event('append', { target, renderingSections: sections_to_render }, el));
                         el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.reseed());
                     };
                     if (mutation.addedNodes.length) {
-                        window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
+                        window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes, renderingSections: sections_to_render }, target));
                         if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
                             target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                         }
                     }
-                    //for (let el of [...mutation.removedNodes]) {
-                    //    Object.defineProperty(el, 'parentNode', { get: function () { return target } });
-                    //    window.top.dispatchEvent(new xover.listener.Event('remove', { target: target }, el));
-                    //};
                     if (mutation.removedNodes.length) {
-                        //[...mutation.removedNodes].forEach(el => xover.listener.dispatchEvent(new xover.listener.Event('remove', { store: store, target: target }), el));
-                        window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))
+                        window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes, renderingSections: sections_to_render }, target))
                     }
-                    window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes }, target));
+                    window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, renderingSections: sections_to_render }, target));
+                }
 
-                    //if (mutation.attributeName) {
-                    //    let attr = target instanceof Element && target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                    //    if (!attr) {
-                    //        //let target_copy = target.cloneNode();
-                    //        //target_copy.createAttributeNS(mutation.attributeNamespace, mutation.attributeName);
-                    //        //attr = target_copy.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                    //        attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                    //    }
-                    //}
-                    //[...top.document.querySelectorAll('[xo-attribute]')].filter(el => el.store == self && el.scope && el.localName == mutation.attributeName && el.namespaceURI == mutation.attributeNamespace).reduce((stylesheets, stylesheet) => { if (!stylesheets.includes(stylesheet)) { stylesheets.push(stylesheet) }; return stylesheets }, []).forEach(stylesheet => stylesheet.render());
-                    /*stores.filter(el => [...el.querySelectorAll('[xo-attribute]')].find(attrib => attrib.scope && attrib.scope.localName == mutation.attributeName && (attrib.scope.namespaceURI || '') == (mutation.attributeNamespace || ''))).forEach(stylesheet => stylesheet.render());*/
+                for (let [section] of [...sections_to_render.entries()]) {
+                    section.render()
                 }
                 window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store));
 
                 if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
                     self.render()
                 }
-                //if (target instanceof Document && target.childNodes.length === mutation.addedNodes.length && mutation.removedNodes.length === 0) {
-
-                //}
-
                 self.save && self.save();
             };
 
@@ -9118,18 +9094,18 @@ xover.modernize = function (targetWindow) {
                                 original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
                             }
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
-                            data.disconnect();
                             data.target = target;
                             data.tag = '#' + xsl.href.split(/[\?#]/)[0];
+                            let attr = xsl.documentElement.getAttribute("exclude-result-prefixes");
+                            xsl.documentElement.setAttribute("exclude-result-prefixes", "#all "+attr)
                             let dom = await data.transform(xsl);
+                            dom.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el))
+
                             let documentElement = dom.firstElementChild;
                             //if (current_cursor_style) delete current_cursor_style;
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
-                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom }, data);
-                            window.top.dispatchEvent(before_dom);
-                            if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             if (!documentElement) {
                                 //xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
@@ -9242,7 +9218,6 @@ xover.modernize = function (targetWindow) {
                             scripts_external.forEach(script => header_tags.append(script));
 
                             _applyScripts(document, scripts_external);
-                            dom.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el))
                             if (!target) {
                                 if (xover.debug.enabled) {
                                     if (stylesheet_target) {
@@ -9264,6 +9239,11 @@ xover.modernize = function (targetWindow) {
                             }
                             target.disconnected = false;
                             dom.tag = '#' + xsl.href.split(/[\?#]/)[0];
+
+                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom }, data);
+                            window.top.dispatchEvent(before_dom);
+                            if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
+
                             let render_event = new xover.listener.Event('render', { store, stylesheet, target, dom, context: data }, dom);
                             window.top.dispatchEvent(render_event);
                             if (render_event.cancelBubble || render_event.defaultPrevented) continue;
