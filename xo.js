@@ -5236,7 +5236,7 @@ xover.Store = function (xml, ...args) {
                 }
                 return;
             }).finally(async () => {
-                xover.site.restore();
+                //xover.site.restore();
                 let loading = window.document.querySelector('[xo-stylesheet="loading.xslt"]')
                 loading && loading.remove();
                 _render_manager = undefined;
@@ -8193,7 +8193,7 @@ xover.modernize = function (targetWindow) {
                         let return_value;
                         let beforeset_event = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
                         window.top.dispatchEvent(beforeset_event);
-                        //if (beforeset_event.cancelBubble || beforeset_event.defaultPrevented) return;
+                        if (beforeset_event.defaultPrevented) return;
                         value = (beforeset_event.detail || {}).hasOwnProperty("returnValue") ? beforeset_event.detail.returnValue : value;
                         if (value != null) {
                             value = `${value}`
@@ -9269,8 +9269,9 @@ xover.modernize = function (targetWindow) {
                                 });
                                 return cloned;
                             });
-
-                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom.cloneNode(true) }, data);
+                            let changes = xover.xml.getDifferences(target, documentElement);
+                            if (!changes) continue;
+                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom.cloneNode(true), changes }, data);
                             window.top.dispatchEvent(before_dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
@@ -9311,7 +9312,7 @@ xover.modernize = function (targetWindow) {
                                     iframe.src = url;
                                 }
                                 target = iframe;
-                                xover.site.restore(target);
+                                //xover.site.restore(target);
                                 //} else if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                                 //    dom = await dom.transform('error.xslt');
                                 //    target = document.querySelector('main') || document.querySelector('body')
@@ -9322,13 +9323,21 @@ xover.modernize = function (targetWindow) {
                                 //        target.append(...dom.parentElement.childNodes);
                                 //    }
                             } else {
+
                                 let active_element = document.activeElement;
                                 let active_element_selector = active_element.selector;
                                 if (action == "replace") {
-                                    target.replaceChildren(...documentElement.childNodes)
-                                    //target = target.replaceWith(documentElement);//target = [target.replace(dom)];
-                                    //let to_be_replaced = target.querySelector(active_element_selector)
-                                    //to_be_replaced && to_be_replaced.replaceWith(active_element)
+                                    if (changes) {
+                                        for (let [[curr_node, new_node]] of changes) {
+                                            if (curr_node.constructor !== new_node.constructor || document.activeElement instanceof HTMLInputElement && curr_node.contains(document.activeElement) || !curr_node.parentNode) continue;
+                                            curr_node.replaceWith(new_node)
+                                        }
+                                    }
+
+                                    //target.replaceChildren(...documentElement.childNodes)
+                                    ////target = target.replaceWith(documentElement);//target = [target.replace(dom)];
+                                    ////let to_be_replaced = target.querySelector(active_element_selector)
+                                    ////to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
                                     //target.append(dom);
                                     //} else {
@@ -9361,10 +9370,10 @@ xover.modernize = function (targetWindow) {
                                 if (dom.selectNodes) {
                                     _applyScripts(document, dom.selectNodes('//*[self::html:script][text()]'));
                                 }
-                                xover.site.restore(target);
+                                //xover.site.restore(target);
                             }
 
-                            let render_event = new xover.listener.Event('render', { store, stylesheet, target, dom, context: data }, dom);
+                            let render_event = new xover.listener.Event('render', { store, stylesheet, target, dom, context: data, changes }, target);
                             window.top.dispatchEvent(render_event);
                             if (render_event.cancelBubble || render_event.defaultPrevented) continue;
 
