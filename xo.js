@@ -3374,7 +3374,7 @@ xover.URL = function (url, base, settings = {}) {
     if (!(url instanceof URL)) {
         url = url || '';
         [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
-        if (settings["payload"] instanceof Document) {
+        if (settings["payload"] instanceof Node) {
             settings["body"] = settings["payload"];
             delete settings["payload"];
         }
