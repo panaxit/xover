@@ -7512,14 +7512,15 @@ xover.modernize = function (targetWindow) {
                     if (this.ownerDocument instanceof XMLDocument) return null;
                     let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                     let self = this;
-                    let store = this.store;
+                    let section = this.section;
+                    let store = section.document;
                     if (!store) {
                         return null;
                     } else {
                         //let ref = this.parentElement && this.closest && this || this.parentNode || this
                         let ref = this instanceof Element ? this : this.parentNode;
-                        let id = ref.id;
-                        let dom_scope = !(ref.hasAttribute("[xo-scope]")) && store.find(id) && ref || ref.closest("[xo-scope]") || undefined;
+                        let node_by_id = !ref.hasAttribute("[xo-scope]") && store.selectFirst(`//*[@xo:id="${ref.id}"]`);
+                        let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("[xo-scope]")].map(el => [el, store.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`)]).pop();
                         let attribute = ref.closest("[xo-attribute]");
                         if (!dom_scope) {
                             return null;
@@ -7528,7 +7529,6 @@ xover.modernize = function (targetWindow) {
                         } else {
                             attribute = null;
                         }
-                        let node = store.find(dom_scope.getAttribute("xo-scope") || id);
                         if (!attribute && this instanceof Text) attribute = 'text()';
                         if (node && attribute) {
                             if (attribute === 'text()') {
