@@ -1697,14 +1697,20 @@ Object.defineProperty(xover.site, 'restore', {
 xover.xml = {};
 
 xover.xml.getDifferences = function (node1, node2) {
-    if (xo.xml.createNode(node1).cloneNode().isEqualNode(xo.xml.createNode(node2).cloneNode())) {
+    if (node1 === top.document.activeElement) {
+        return [new Map([[node1, node2]])];
+    } else if (xo.xml.createNode(node1).cloneNode().isEqualNode(xo.xml.createNode(node2).cloneNode())) {
         if (xo.xml.createNode(node1).isEqualNode(xo.xml.createNode(node2))) {
             return null;
-        } else if (node1.childElementCount == node2.childElementCount) {
-            let node1_children = node1.children;
-            let node2_children = node2.children;
-            let differences = [...node1.children].map((item, ix) => xover.xml.getDifferences(item, node2.children[ix])).filter(item => item);
-            return differences.flat(Infinity);
+        } else if (node1.childElementCount && node1.childElementCount == node2.childElementCount) {
+            let node1_children = Array.from(node1.children);
+            let node2_children = Array.from(node2.children);
+            if (node1_children.every((el, ix) => el.tagName.toUpperCase() == node2_children[ix].tagName.toUpperCase())) {
+                let differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item);
+                return differences.flat(Infinity);
+            } else {
+                return [new Map([[node1, node2]])];
+            }
         } else {
             return [new Map([[node1, node2]])];
         }
@@ -4741,108 +4747,111 @@ xover.Store = function (xml, ...args) {
                 if (event && event.type == 'change' && event.srcElement.preventChangeEvent) {
                     event.srcElement.preventChangeEvent = undefined;
                 }
-                let sections_to_render = new Map();
-                for (let section of xover.site.sections.filter(section => section.store === self)) {
-                    if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section == section) {
-                        continue
-                    }
-                    sections_to_render.set(section); continue; /* let's skip all checkings and render every change*/
+                let sections_to_render = xover.site.sections.filter(section => section.store === self && !section.get("xo-static"));
+                //let sections_to_render = new Map();
+                //for (let section of xover.site.sections.filter(section => section.store === self && !section.get("xo-static"))) {
+                //    //if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section == section) {
+                //    //    continue
+                //    //}
+                //    sections_to_render.set(section);
 
-                    if (!section.stylesheet.documentElement || mutationList.find(mutation => mutation.type === 'childList')) {
-                        section.render()
-                    }
-                    //if (!sections_to_render.get(section)) {
-                    //    if (mutationList.find(mutation => mutation.target instanceof Document)) {
-                    //        sections_to_render.set(section);
-                    //    }
-                    //}
-                    let listeners = [...section.querySelectorAll('xo-listener')].filter(el => el.store === self && el.closest('[xo-stylesheet]') === section);
-                    for (listener of listeners) {
-                        for (let mutation of mutationList) {
-                            if (!sections_to_render.get(section)) {
-                                if (listener.getAttribute("node")) {
-                                    if (mutation.target instanceof Element && mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes, ...mutation.addedNodes].find(el => el.matches(listener.getAttribute("node")))) {
-                                        sections_to_render.set(section);
-                                    }
-                                }
-                                if (mutation.type === 'attributes') {
-                                    let attrib = listener.getAttributeNode("attribute");
-                                    if (attrib) {
-                                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                                        if (!attr) {
-                                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                                        }
-                                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
-                                        if (attrib && !attrib_node) {
-                                            try {
-                                                attrib_node = mutation.target.createAttribute(attrib.value, null)
-                                            } catch (e) {
-                                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
-                                                if (prefix && name == '*') {
-                                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
-                                                    if (attr.namespaceURI == ns) {
-                                                        sections_to_render.set(section)
-                                                    }
-                                                }
-                                                continue;
-                                            }
-                                        }
-                                        if (attrib_node.isEqualNode(attr)) {
-                                            sections_to_render.set(section)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                //    continue; /* let's skip all checkings and render every change*/
 
-                    let attrs = [...section.select('.//@xo-attribute')].filter(el => el.parentNode.store === self && el.parentNode.closest('[xo-stylesheet]') === section);
-                    for (attrib of attrs) {
-                        for (mutation of mutationList) {
-                            if (!sections_to_render.get(section)) {
-                                if (event && event.type == 'input' && section.contains(event.srcElement)) {
-                                    continue
-                                }
-                                let scoped_element = attrib.parentNode.closest('[xo-scope]');
-                                if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id")) {
-                                    //&& (mutation.type !== 'attributes' || mutation.type === 'attributes' &&
-                                    let render = false;
-                                    if (attrib.value.indexOf(':') != -1) {
-                                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                                        if (!attr) {
-                                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                                        }
-                                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
-                                        if (attrib && !attrib_node) {
-                                            try {
-                                                attrib_node = mutation.target.createAttribute(attrib.value, null)
-                                            } catch (e) {
-                                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
-                                                if (prefix && name == '*') {
-                                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
-                                                    if (attr.namespaceURI == ns) {
-                                                        render = true;
-                                                    }
-                                                }
-                                                continue;
-                                            }
-                                        }
-                                        if (attrib_node.isEqualNode(attr)) {
-                                            render = true;
-                                        } else {
-                                            render = false;
-                                        }
-                                    } else if (mutation.attributeName == attrib.value) {
-                                        render = true
-                                    }
-                                    if (render) {
-                                        sections_to_render.set(section)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                //    if (!section.stylesheet.documentElement || mutationList.find(mutation => mutation.type === 'childList')) {
+                //        section.render()
+                //    }
+                //    //if (!sections_to_render.get(section)) {
+                //    //    if (mutationList.find(mutation => mutation.target instanceof Document)) {
+                //    //        sections_to_render.set(section);
+                //    //    }
+                //    //}
+                //    let listeners = [...section.querySelectorAll('xo-listener')].filter(el => el.store === self && el.closest('[xo-stylesheet]') === section);
+                //    for (listener of listeners) {
+                //        for (let mutation of mutationList) {
+                //            if (!sections_to_render.get(section)) {
+                //                if (listener.getAttribute("node")) {
+                //                    if (mutation.target instanceof Element && mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes, ...mutation.addedNodes].find(el => el.matches(listener.getAttribute("node")))) {
+                //                        sections_to_render.set(section);
+                //                    }
+                //                }
+                //                if (mutation.type === 'attributes') {
+                //                    let attrib = listener.getAttributeNode("attribute");
+                //                    if (attrib) {
+                //                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                //                        if (!attr) {
+                //                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                //                        }
+                //                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
+                //                        if (attrib && !attrib_node) {
+                //                            try {
+                //                                attrib_node = mutation.target.createAttribute(attrib.value, null)
+                //                            } catch (e) {
+                //                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
+                //                                if (prefix && name == '*') {
+                //                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
+                //                                    if (attr.namespaceURI == ns) {
+                //                                        sections_to_render.set(section)
+                //                                    }
+                //                                }
+                //                                continue;
+                //                            }
+                //                        }
+                //                        if (attrib_node.isEqualNode(attr)) {
+                //                            sections_to_render.set(section)
+                //                        }
+                //                    }
+                //                }
+                //            }
+                //        }
+                //    }
+
+                //    let attrs = [...section.select('.//@xo-attribute')].filter(el => el.parentNode.store === self && el.parentNode.closest('[xo-stylesheet]') === section);
+                //    for (attrib of attrs) {
+                //        for (mutation of mutationList) {
+                //            if (!sections_to_render.get(section)) {
+                //                if (event && event.type == 'input' && section.contains(event.srcElement)) {
+                //                    continue
+                //                }
+                //                let scoped_element = attrib.parentNode.closest('[xo-scope]');
+                //                if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id")) {
+                //                    //&& (mutation.type !== 'attributes' || mutation.type === 'attributes' &&
+                //                    let render = false;
+                //                    if (attrib.value.indexOf(':') != -1) {
+                //                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                //                        if (!attr) {
+                //                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                //                        }
+                //                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
+                //                        if (attrib && !attrib_node) {
+                //                            try {
+                //                                attrib_node = mutation.target.createAttribute(attrib.value, null)
+                //                            } catch (e) {
+                //                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
+                //                                if (prefix && name == '*') {
+                //                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
+                //                                    if (attr.namespaceURI == ns) {
+                //                                        render = true;
+                //                                    }
+                //                                }
+                //                                continue;
+                //                            }
+                //                        }
+                //                        if (attrib_node.isEqualNode(attr)) {
+                //                            render = true;
+                //                        } else {
+                //                            render = false;
+                //                        }
+                //                    } else if (mutation.attributeName == attrib.value) {
+                //                        render = true
+                //                    }
+                //                    if (render) {
+                //                        sections_to_render.set(section)
+                //                    }
+                //                }
+                //            }
+                //        }
+                //    }
+                //}
 
                 mutated_targets = new Map();
                 for (let mutation of mutationList) {
@@ -4888,7 +4897,11 @@ xover.Store = function (xml, ...args) {
                     window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, renderingSections: sections_to_render }, target));
                 }
 
-                for (let [section] of [...sections_to_render.entries()]) {
+                //for (let [section] of [...sections_to_render.entries()]) {
+                //    section.render()
+                //}
+
+                for (let section of sections_to_render) {
                     section.render()
                 }
                 window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store));
@@ -6768,13 +6781,6 @@ xover.modernize = function (targetWindow) {
                         if (e.message.indexOf('not a valid selector') != -1) {
                             /*node = node.parentNode || node.formerParentNode;*/
                             let key = args[0];
-                            let remove;
-                            let store = this.ownerDocument.store;
-                            if (!this.parentElement && this.formerParentNode && !(this.formerParentNode instanceof Document)) {
-                                store && store.observer.disconnect();
-                                original_insertBefore.apply(this.formerParentNode, [this, this.formerNextSibling]);
-                                remove = true;
-                            }
                             let return_value = !![node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().find(el => {
                                 try {
                                     return el && el.selectNodes(el instanceof Document && key.replace(/^self::/, '') || key).includes(this)
@@ -6782,8 +6788,6 @@ xover.modernize = function (targetWindow) {
                                     console.warn(`No a valid xpath was provided: ${key}`)
                                 }
                             });
-                            if (remove) this.remove({ silent: true });
-                            store && store.observer.connect();
                             return return_value;
                         }
                     }
@@ -7047,6 +7051,59 @@ xover.modernize = function (targetWindow) {
                         }
                     },
                     writable: false, enumerable: false, configurable: false
+                });
+            }
+
+            if (!Node.prototype.hasOwnProperty('buildSelector')) {
+                Object.defineProperty(Node.prototype, 'buildSelector', {
+                    enumerable: true,
+                    value: function (...args) {
+                        if (!(this.ownerDocument instanceof HTMLDocument)) {
+                            return null;
+                        }
+                        let config = {};
+                        if (args.length && args[args.length - 1].constructor === {}.constructor) {
+                            config = args.pop();
+                        }
+                        config.ignore = config.ignore || [];
+                        
+                        selector_method = this.method || 'fast'; /*fast || full*/
+                        let buildQuerySelector = function (target = this.ownerDocument, path = []) {
+                            if (!(this && this.parentNode)) {
+                                return path.filter(el => el).join(" > ");
+                            } else if (this.id) {
+                                path.unshift(`${this.tagName}[id='${this.id}']`);
+                            } else if ((this.classList || []).length && !(selector_method == 'full')) {
+                                let classes = [...this.classList].filter(class_name => !(config.ignore.includes(`.${class_name}`) || class_name.match("[.]")));
+                                path.unshift(this.tagName + (classes.length && '.' + classes.join(".") || ""));
+                            } else if (this.nodeName == '#text') {
+                                path.unshift(buildQuerySelector.call(this.parentNode, target, path.flat()));
+                            } else {
+                                path.unshift(this.tagName || '*');
+                            }
+                            if (this instanceof Element && this.hasAttribute("xo-stylesheet")) {
+                                path[0] = path[0] + `[xo-stylesheet='${this.getAttribute("xo-stylesheet")}']`;
+                            }
+                            if (this instanceof Element && this.hasAttribute("xo-store")) {
+                                path[0] = path[0] + `[xo-store='${this.getAttribute("xo-store")}']`;
+                            }
+
+                            if (target.querySelector(path.filter(el => el).join(" > ")) === this) {
+                                return path.filter(el => el).join(" > ");
+                            } else if (this.parentNode && this.parentNode.querySelector(path.filter(el => el).join(" > "))) {
+                                let position = this.parentNode && [...this.parentNode.children].findIndex(el => el == this);
+                                if (position) {
+                                    path[path.length - 1] = `${path[path.length - 1]}:nth-child(${position + 1})`;
+                                }
+                                path.unshift(buildQuerySelector.call(this.parentNode, target, []));
+                            } else {
+                                return path.filter(el => el).join(" > ");
+                            }
+                            return path.filter(el => el).flat().join(" > ");
+                        }
+                        return buildQuerySelector.apply(this, args);
+                    },
+                    writable: true, enumerable: false, configurable: true
                 });
             }
 
@@ -7576,7 +7633,7 @@ xover.modernize = function (targetWindow) {
                 //    context_store.save();
                 //}
                 let event_type = 'remove', node = this;
-                let matching_listeners; //= xover.listener.matches(node, event_type);
+                let matching_listeners = xover.listener.matches(node, event_type);
 
                 original_remove.apply(this, arguments);
 
@@ -8436,7 +8493,8 @@ xover.modernize = function (targetWindow) {
                 value: function (...args) {
                     let new_node = args[0];
                     if (!new_node) return;
-                    original_replaceWith.value.apply(this, [new_node])
+                    original_replaceWith.value.apply(this, [new_node]);
+                    window.top.dispatchEvent(new xover.listener.Event('replaceWith', { new_node, old: this }, new_node));
                     return new_node;
                 }
             })
@@ -9257,6 +9315,7 @@ xover.modernize = function (targetWindow) {
                             }
                             target.disconnected = false;
                             dom.tag = '#' + xsl.href.split(/[\?#]/)[0];
+                            target.tag = '#' + xsl.href.split(/[\?#]/)[0];
                             let post_render_scripts = dom.selectNodes('//*[self::html:script][@src]');
                             post_render_scripts.forEach(script => header_tags.append(script));
 
@@ -9325,12 +9384,17 @@ xover.modernize = function (targetWindow) {
                             } else {
 
                                 let active_element = document.activeElement;
-                                let active_element_selector = active_element.selector;
+                                //let active_element_selector = active_element.buildSelector({ ignore: ['.working'] });
                                 if (action == "replace") {
                                     if (changes) {
                                         for (let [[curr_node, new_node]] of changes) {
-                                            if (curr_node.constructor !== new_node.constructor || document.activeElement instanceof HTMLInputElement && curr_node.contains(document.activeElement) || !curr_node.parentNode) continue;
-                                            curr_node.replaceWith(new_node)
+                                            if (curr_node.constructor !== new_node.constructor /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element)*/ || !curr_node.parentNode) continue;
+                                            if (active_element === curr_node && active_element instanceof HTMLInputElement) {
+                                                curr_node.classList && curr_node.classList.remove('working')
+                                            } else {
+                                                curr_node.replaceWith(new_node)
+                                            }
+                                            if (target == curr_node) target = new_node;
                                         }
                                     }
 
