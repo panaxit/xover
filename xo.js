@@ -1604,7 +1604,11 @@ Object.defineProperty(xover.site, 'active', {
         } else {
             return Promise.reject(`${active} no available`)
         }
-        if (!this.sections.find(section => section.store && section.store.tag == active)) {
+        let sections = this.sections.filter(section => section.store && section.store.tag == active);
+        for (let section of sections) {
+            section.render()
+        }
+        if (!sections.length) {
             store && store.render();
         }
     }
