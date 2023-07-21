@@ -7672,7 +7672,7 @@ xover.modernize = function (targetWindow) {
                 //    //});
                 window.top.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
                 //}
-                !(this instanceof HTMLElement) && xover.site.sections.filter(el => el.store && el.store === this.store).forEach((el) => el.render())
+                /*!(this instanceof HTMLElement) && xover.site.sections.filter(el => el.store && el.store === this.store).forEach((el) => el.render())*/
                 return this;
             }
 
@@ -9213,7 +9213,6 @@ xover.modernize = function (targetWindow) {
                             } else if (target.matches(`[xo-store="${tag}"][xo-stylesheet]`)) {
                                 continue;
                             }
-                            documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
 
                             if (action === 'replace') {
                                 if (target.nodeName.toUpperCase() !== documentElement.nodeName.toUpperCase()) {
