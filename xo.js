@@ -2828,6 +2828,7 @@ Object.defineProperty(xover.stores, '#', {
 Object.defineProperty(xover.stores, 'active', {
     get: function () {
         let store = xover.stores[xover.site.active] || xover.stores[xover.site.seed] || xover.stores["#"];// || xover.Store(`<?xml-stylesheet type="text/xsl" href="message.xslt" role="modal" target="body" action="append"?><xo:message xmlns:xo="http://panax.io/xover" xo:id="xhr_message_${Math.random()}"/>`);
+        store = store || new xover.Store(xover.xml.createDocument());
         return store;
     }
     , set: async function (input) {
@@ -5199,7 +5200,7 @@ xover.Store = function (xml, ...args) {
             }
             _render_manager = _render_manager || xover.delay(1).then(async () => {
                 let tag = self.tag;
-                if (!__document.documentElement) {
+                if (!__document.documentElement && __document.source) {
                     if (!xover.site.sections[tag]) {
                         await xover.sources['loading.xslt'].render();
                     }
@@ -9123,7 +9124,7 @@ xover.modernize = function (targetWindow) {
                 Object.defineProperty(XMLDocument.prototype, 'render', {
                     value: async function (stylesheets) {
                         let store = this.store;
-                        if (!this.documentElement) {
+                        if (!this.documentElement && this.source) {
                             let fetched = await this.fetch();
                             if (!this.documentElement) {
                                 return null;
@@ -9175,8 +9176,6 @@ xover.modernize = function (targetWindow) {
                             //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
                             data.target = target;
                             data.tag = '#' + xsl.href.split(/[\?#]/)[0];
-                            let attr = xsl.documentElement.getAttribute("exclude-result-prefixes");
-                            xsl.documentElement.setAttribute("exclude-result-prefixes", "#all "+attr)
                             let dom = await data.transform(xsl);
                             dom.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
                             dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
@@ -9197,11 +9196,13 @@ xover.modernize = function (targetWindow) {
                                 new_target.append(...dom.childNodes);
                                 dom = new_document;
                             }
+                            let attributes = documentElement.attributes.toArray();
+                            attributes.filter(attr => attr.name.split(":")[0] === 'xmlns').remove();
 
                             documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
                             documentElement.setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
-                            if (documentElement.id && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
+                            if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
                                 action = 'replace';
                             } else if (target.nodeName.toUpperCase() == documentElement.nodeName.toUpperCase() && target.getAttribute("xo-store") == documentElement.getAttribute("xo-store") && target.getAttribute("xo-stylesheet") == documentElement.getAttribute("xo-stylesheet")) {
                                 action = 'replace';
@@ -9219,9 +9220,9 @@ xover.modernize = function (targetWindow) {
                                     let new_node = documentElement.cloneNode();
                                     target = target.replaceWith(new_node);
                                 } else {
-                                    let copied_attributes = documentElement.attributes.toArray();
-                                    copied_attributes.filter(attr => !['class', 'xmlns'].includes(attr.nodeName)).forEach(attr => target.setAttribute(attr.name, attr.value));
-                                    target.classList.forEach(class_name => target.classList.add(class_name));
+                                    let copied_attributes = target.attributes.toArray();
+                                    copied_attributes.filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !documentElement.hasAttribute(attr.name)).forEach(attr => documentElement.setAttribute(attr.name, attr.value));
+                                    //target.classList.forEach(class_name => documentElement.classList.add(class_name));
                                 }
                             }
 
