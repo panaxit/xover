@@ -7071,7 +7071,7 @@ xover.modernize = function (targetWindow) {
                             config = args.pop();
                         }
                         config.ignore = config.ignore || [];
-                        
+
                         selector_method = this.method || 'fast'; /*fast || full*/
                         let buildQuerySelector = function (target = this.ownerDocument, path = []) {
                             if (!(this && this.parentNode)) {
@@ -7518,7 +7518,7 @@ xover.modernize = function (targetWindow) {
                     let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                     let self = this;
                     let section = this.section;
-                    let store = section.document;
+                    let store = section && section.document;
                     if (!store) {
                         return null;
                     } else {
@@ -9147,6 +9147,53 @@ xover.modernize = function (targetWindow) {
                         }
                         let stylesheet_target = 'body';
                         let targets = [];
+
+                        let _applyScripts = function (targetDocument, scripts = []) {
+                            for (let script of scripts) {
+                                if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
+                                    if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
+                                        var new_element = targetDocument.createElement(script.tagName);
+                                        [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
+                                        let on_load = script.textContent;
+
+                                        if (new_element.tagName.toLowerCase() == "script") {
+                                            new_element.onload = function () {
+                                                on_load && (function () { return eval.apply(this, arguments) }(on_load))
+                                            };
+                                        }
+                                        targetDocument.head.appendChild(new_element);
+                                    }
+                                } else if (!script.getAttribute("src") && script.textContent) {
+                                    script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
+                                    if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
+                                        if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
+                                            targetDocument.documentElement.appendChild(script);
+                                        }
+                                    } else {
+                                        try {
+                                            //function evalInScope(js, scope) {
+                                            //    return function () {
+                                            //        with (this) { return eval(js) }
+                                            //    }.call(scope)
+                                            //}
+                                            //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
+                                            let result = (function () {
+                                                xover.context = script;
+                                                return eval.apply(this, arguments)
+                                            }(`/*${stylesheet.href}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
+                                            if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
+                                                let target = document.getElementById(script.id);
+                                                target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
+                                            }
+                                        } catch (message) {
+                                            console.error(message)
+                                        }
+                                    }
+                                } else {
+                                    throw (new Error(`A script couldn't be loaded.`));
+                                }
+                            }
+                        }
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             let action = stylesheet.action;// || !stylesheet.target && "append";
@@ -9181,23 +9228,26 @@ xover.modernize = function (targetWindow) {
                             dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                             let documentElement = dom.firstElementChild;
-                            //if (current_cursor_style) delete current_cursor_style;
                             //target.select("xhtml:div[@class='loading']").remove()
                             try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                             dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
                             if (!documentElement) {
-                                //xover.dom.alert(`No result for transformation ${stylesheet.href}`)
                                 continue;
                             }
+
+                            let scripts_external = [], scripts;
+                            let script_wrapper = window.document.firstElementChild.cloneNode();
+
                             if (dom instanceof DocumentFragment) {
-                                let new_document = window.document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
-                                let new_target = target.cloneNode();
-                                new_document.append(new_target);
-                                new_target.append(...dom.childNodes);
-                                dom = new_document;
+                                let content = target.cloneNode();
+                                content.append(...dom.children);
+                                /*dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());*/
+                                script_wrapper.append(...content.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
+                                documentElement = content;
+                            } else {
+                                script_wrapper.append(...dom.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
+                                documentElement.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
                             }
-                            let attributes = documentElement.attributes.toArray();
-                            attributes.filter(attr => attr.name.split(":")[0] === 'xmlns').remove();
 
                             documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
                             documentElement.setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
@@ -9219,8 +9269,7 @@ xover.modernize = function (targetWindow) {
                                     let new_node = documentElement.cloneNode();
                                     target = target.replaceWith(new_node);
                                 } else {
-                                    let copied_attributes = target.attributes.toArray();
-                                    copied_attributes.filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !documentElement.hasAttribute(attr.name)).forEach(attr => documentElement.setAttribute(attr.name, attr.value));
+                                    target.attributes.toArray().filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !documentElement.hasAttribute(attr.name)).forEach(attr => documentElement.setAttribute(attr.name, attr.value));
                                     //target.classList.forEach(class_name => documentElement.classList.add(class_name));
                                 }
                             }
@@ -9244,60 +9293,11 @@ xover.modernize = function (targetWindow) {
                             //if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
                             //    data = dom;
                             //}
-                            let scripts_external, scripts;
 
-                            let _applyScripts = function (targetDocument, scripts = []) {
-                                for (let script of scripts) {
-                                    if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
-                                        if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
-                                            var new_element = targetDocument.createElement(script.tagName);
-                                            [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
-                                            let on_load = script.textContent;
-
-                                            if (new_element.tagName.toLowerCase() == "script") {
-                                                new_element.onload = function () {
-                                                    on_load && (function () { return eval.apply(this, arguments) }(on_load))
-                                                };
-                                            }
-                                            targetDocument.head.appendChild(new_element);
-                                        }
-                                    } else if (!script.getAttribute("src") && script.textContent) {
-                                        script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
-                                        if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
-                                            if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
-                                                targetDocument.documentElement.appendChild(script);
-                                            }
-                                        } else {
-                                            try {
-                                                //function evalInScope(js, scope) {
-                                                //    return function () {
-                                                //        with (this) { return eval(js) }
-                                                //    }.call(scope)
-                                                //}
-                                                //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
-                                                let result = (function () {
-                                                    xover.context = script;
-                                                    return eval.apply(this, arguments)
-                                                }(`/*${stylesheet.href}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
-                                                if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
-                                                    let target = document.getElementById(script.id);
-                                                    target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
-                                                }
-                                            } catch (message) {
-                                                console.error(message)
-                                            }
-                                        }
-                                    } else {
-                                        throw (new Error(`A script couldn't be loaded.`));
-                                    }
-                                }
-                            }
+                            
                             //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
-                            let header_tags = xover.xml.createNode(`<header xmlns="http://www.w3.org/1999/xhtml"/>`)
-                            scripts_external = dom.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]');
-                            scripts_external.forEach(script => header_tags.append(script));
 
-                            _applyScripts(document, scripts_external);
+                            _applyScripts(document, [...script_wrapper.children]);
                             if (!target) {
                                 if (xover.debug.enabled) {
                                     if (stylesheet_target) {
@@ -9318,12 +9318,11 @@ xover.modernize = function (targetWindow) {
                                 continue;
                             }
                             target.disconnected = false;
-                            dom.tag = '#' + xsl.href.split(/[\?#]/)[0];
                             target.tag = '#' + xsl.href.split(/[\?#]/)[0];
-                            let post_render_scripts = dom.selectNodes('//*[self::html:script][@src]');
-                            post_render_scripts.forEach(script => header_tags.append(script));
+                            let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
+                            post_render_scripts.forEach(script => script_wrapper.append(script));
 
-                            scripts = dom.selectNodes('//*[self::html:script][not(@src)][text()]').map(el => {
+                            scripts = documentElement.selectNodes('//*[self::html:script][not(@src)][text()]').map(el => {
                                 //!el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
                                 let cloned = el.cloneNode(true);
                                 el.textContent = ''
@@ -9334,19 +9333,19 @@ xover.modernize = function (targetWindow) {
                             });
                             let changes = xover.xml.getDifferences(target, documentElement);
                             if (!changes) continue;
-                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: dom.cloneNode(true), changes }, data);
+                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: documentElement.cloneNode(true), changes }, data);
                             window.top.dispatchEvent(before_dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
                                 //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
                                 //target = document.body;
                                 xover.dom.setEncryption(dom, 'UTF-7');
-                                dom.select('//text()[.="�"]').remove();
+                                documentElement.select('//text()[.="�"]').remove();
                                 let iframe;
                                 if (document.activeElement.tagName.toLowerCase() == 'iframe') {
                                     iframe = document.activeElement;
                                     target = (document.activeElement || {}).contentDocument.querySelector('main,table,div,span');
-                                    target.parentElement.replaceChild(dom.querySelector(target.tagName.toLowerCase()), target);
+                                    target.parentElement.replaceChild(documentElement.querySelector(target.tagName.toLowerCase()), target);
                                     //if ((dom || dom).selectNodes) { //(dom instanceof XMLDocument) {
                                     //    _applyScripts((document.activeElement || {}).contentDocument, dom);
                                     //}
@@ -9367,8 +9366,8 @@ xover.modernize = function (targetWindow) {
                                         //iframe.addEventListener('change', xover.listeners.dom.onchange);
                                     }
                                     var url = xover.dom.getGeneratedPageURL({
-                                        html: xover.string.htmlDecode(dom.toString()),
-                                        css: (dom.querySelector('style') || {}).innerHTML,
+                                        html: xover.string.htmlDecode(documentElement.toString()),
+                                        css: (documentElement.querySelector('style') || {}).innerHTML,
                                         js: `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; let iframe=parent.document.querySelector('iframe'); iframe.height=document.querySelector('body').scrollHeight+10; iframe.width=document.querySelector('body').scrollWidth+10; xover.modernize(iframe.contentWindow); document.querySelector('body').setAttributeNS(null, "xo-store", '${tag}');` //+ js//((dom.querySelector('script') || {}).innerHTML || "")
                                         //window.top.document.querySelector('body').setAttributeNS(null, "xo-store", window.top.location.hash)
                                     });
@@ -9411,7 +9410,7 @@ xover.modernize = function (targetWindow) {
                                     //} else {
                                     //    xover.dom.clear(target);
                                     //target.append(...dom.cloneNode(true).childNodes);
-                                    let inserted_nodes = target.append(...dom.childNodes);
+                                    let inserted_nodes = target.append(...documentElement.childNodes);
                                     target = inserted_nodes.find(node => node.nodeType == 1)
                                 }
                                 target.document = this;
@@ -9426,17 +9425,17 @@ xover.modernize = function (targetWindow) {
                                 //    //target.append(dom);
                                 //    //} else {
                                 //    //    xover.dom.clear(target);
-                                //    //target.append(...dom.cloneNode(true).childNodes);
-                                //    dom.childNodes.filter(el => el instanceof Element).forEach(el => el.document = data)
-                                //    target.append(...dom.parentNode.childNodes);
+                                //    //target.append(...documentElement.cloneNode(true).childNodes);
+                                //    documentElement.childNodes.filter(el => el instanceof Element).forEach(el => el.document = data)
+                                //    target.append(...documentElement.parentNode.childNodes);
                                 //}
 
-                                var lines = dom.querySelectorAll(".leader-line")
-                                for (let l = 0; l < lines.length; ++l) {
-                                    lines[l].remove();
-                                }
-                                if (dom.selectNodes) {
-                                    _applyScripts(document, dom.selectNodes('//*[self::html:script][text()]'));
+                                //let lines = documentElement.querySelectorAll(".leader-line") /*TODO: Mover este código a algún script diferido*/
+                                //for (let l = 0; l < lines.length; ++l) {
+                                //    lines[l].remove();
+                                //}
+                                if (documentElement.selectNodes) {
+                                    _applyScripts(document, documentElement.selectNodes('//*[self::html:script][text()]'));
                                 }
                                 //xover.site.restore(target);
                             }
@@ -9449,18 +9448,18 @@ xover.modernize = function (targetWindow) {
 
                             targets.push(target);
 
-                            if (window.MathJax) {
-                                MathJax.typeset && MathJax.typeset();
-                            } else if (target.selectSingleNode('//mml:math') || ((target || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
-                                if (!window.MathJax) {
-                                    window.MathJax = {
-                                        loader: { load: ['[mml]/mml3'] }
-                                    }
-                                }
-                                let script = document.createElement('script');
-                                script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js';
-                                document.head.appendChild(script);
-                            }
+                            //if (window.MathJax) {/*TODO: Mover este código a algún script diferido*/
+                            //    MathJax.typeset && MathJax.typeset();
+                            //} else if (target.selectSingleNode('//mml:math') || ((target || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
+                            //    if (!window.MathJax) {
+                            //        window.MathJax = {
+                            //            loader: { load: ['[mml]/mml3'] }
+                            //        }
+                            //    }
+                            //    let script = document.createElement('script');
+                            //    script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js';
+                            //    document.head.appendChild(script);
+                            //}
 
                             let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
                             if (unbound_elements.length) {
@@ -9474,10 +9473,10 @@ xover.modernize = function (targetWindow) {
                             ));
                             xover.initializeElementListeners(target);
 
-                            /*TODO: Mover este código a algún script diferido*/
-                            target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
-                                return new bootstrap.Tooltip(tooltipTriggerEl)
-                            })
+                            ///*TODO: Mover este código a algún script diferido*/
+                            //target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
+                            //    return new bootstrap.Tooltip(tooltipTriggerEl)
+                            //})
                             dependants = [...target.querySelectorAll('*[xo-store],*[xo-stylesheet]')];
                             //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
                             dependants.forEach(el => el.render());
