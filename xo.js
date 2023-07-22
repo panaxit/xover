@@ -9147,53 +9147,6 @@ xover.modernize = function (targetWindow) {
                         }
                         let stylesheet_target = 'body';
                         let targets = [];
-
-                        let _applyScripts = function (targetDocument, scripts = []) {
-                            for (let script of scripts) {
-                                if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
-                                    if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
-                                        var new_element = targetDocument.createElement(script.tagName);
-                                        [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
-                                        let on_load = script.textContent;
-
-                                        if (new_element.tagName.toLowerCase() == "script") {
-                                            new_element.onload = function () {
-                                                on_load && (function () { return eval.apply(this, arguments) }(on_load))
-                                            };
-                                        }
-                                        targetDocument.head.appendChild(new_element);
-                                    }
-                                } else if (!script.getAttribute("src") && script.textContent) {
-                                    script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
-                                    if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
-                                        if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
-                                            targetDocument.documentElement.appendChild(script);
-                                        }
-                                    } else {
-                                        try {
-                                            //function evalInScope(js, scope) {
-                                            //    return function () {
-                                            //        with (this) { return eval(js) }
-                                            //    }.call(scope)
-                                            //}
-                                            //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
-                                            let result = (function () {
-                                                xover.context = script;
-                                                return eval.apply(this, arguments)
-                                            }(`/*${stylesheet.href}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
-                                            if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
-                                                let target = document.getElementById(script.id);
-                                                target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
-                                            }
-                                        } catch (message) {
-                                            console.error(message)
-                                        }
-                                    }
-                                } else {
-                                    throw (new Error(`A script couldn't be loaded.`));
-                                }
-                            }
-                        }
                         for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                             let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;
                             let action = stylesheet.action;// || !stylesheet.target && "append";
@@ -9294,7 +9247,52 @@ xover.modernize = function (targetWindow) {
                             //    data = dom;
                             //}
 
-                            
+                            let _applyScripts = function (targetDocument, scripts = []) {
+                                for (let script of scripts) {
+                                    if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
+                                        if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
+                                            var new_element = targetDocument.createElement(script.tagName);
+                                            [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
+                                            let on_load = script.textContent;
+
+                                            if (new_element.tagName.toLowerCase() == "script") {
+                                                new_element.onload = function () {
+                                                    on_load && (function () { return eval.apply(this, arguments) }(on_load))
+                                                };
+                                            }
+                                            targetDocument.head.appendChild(new_element);
+                                        }
+                                    } else if (!script.getAttribute("src") && script.textContent) {
+                                        script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
+                                        if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
+                                            if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
+                                                targetDocument.documentElement.appendChild(script);
+                                            }
+                                        } else {
+                                            try {
+                                                //function evalInScope(js, scope) {
+                                                //    return function () {
+                                                //        with (this) { return eval(js) }
+                                                //    }.call(scope)
+                                                //}
+                                                //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
+                                                let result = (function () {
+                                                    xover.context = script;
+                                                    return eval.apply(this, arguments)
+                                                }(`/*${stylesheet.href}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
+                                                if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
+                                                    let target = document.getElementById(script.id);
+                                                    target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
+                                                }
+                                            } catch (message) {
+                                                console.error(message)
+                                            }
+                                        }
+                                    } else {
+                                        throw (new Error(`A script couldn't be loaded.`));
+                                    }
+                                }
+                            }
                             //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
 
                             _applyScripts(document, [...script_wrapper.children]);
