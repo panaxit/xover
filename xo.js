@@ -1370,6 +1370,13 @@ Object.defineProperty(xover.site, 'querystring', {
     , enumerable: false
 });
 
+Object.defineProperty(xover.site, 'locale', {
+    get() {
+        return this.state.locale || navigator.language
+    }
+    , enumerable: false
+});
+
 Object.defineProperty(xover.site, 'state', {
     get() {
         history.state['state'] = history.state['state'] || {};
@@ -9183,8 +9190,6 @@ xover.modernize = function (targetWindow) {
                             data.target = target;
                             data.tag = '#' + xsl.href.split(/[\?#]/)[0];
                             let dom = await data.transform(xsl);
-                            dom.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
-                            dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                             let documentElement = dom.firstElementChild;
                             //target.select("xhtml:div[@class='loading']").remove()
@@ -9207,6 +9212,8 @@ xover.modernize = function (targetWindow) {
                                 script_wrapper.append(...dom.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
                                 documentElement.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
                             }
+                            documentElement.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
+                            documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                             documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
                             documentElement.setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
