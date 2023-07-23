@@ -2601,9 +2601,9 @@ xover.listener.on("render", function ({ dom }) {
     }
 });
 
-window.addEventListener("focusin", function (event) {
-    xover.site.save(event.target.selector);
-});
+//window.addEventListener("focusin", function (event) {
+//    xover.site.save(event.target.selector);
+//});
 
 window.addEventListener("input", function (event) {
     xover.site.save(event.target.selector);
