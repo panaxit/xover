@@ -920,7 +920,7 @@ xover.listener.on('navigatedForward', function (event) {
     }
 })
 
-xover.listener.keypress = {};
+//xover.listener.keypress = {};
 xover.mimeTypes = {};
 xover.mimeTypes["css"] = "text/css"
 xover.mimeTypes["doc"] = "applicaton/msword"
@@ -2609,12 +2609,12 @@ xover.listener.on("render", function ({ dom }) {
 //    xover.site.save(event.target.selector);
 //});
 
-document.addEventListener("selectionchange", function (event) {
-    let target = document.getSelection().focusNode;
-    if (target && target.nodeName == '#text') {
-        xover.site.save(target.selector);
-    }
-});
+//document.addEventListener("selectionchange", function (event) {
+//    let target = document.getSelection().focusNode;
+//    if (target && target.nodeName == '#text') {
+//        xover.site.save(target.selector);
+//    }
+//});
 
 var content_type = {}
 content_type["json"] = "application/json";
@@ -5741,91 +5741,91 @@ if (window.addEventListener) {
 //    }
 //})
 
-xover.listener.keypress = function (e = {}) {
-    xover.listener.keypress.ctrlKey = e.ctrlKey;
-    xover.listener.keypress.shiftKey = e.shiftKey;
-    xover.listener.keypress.altKey = e.altKey;
-    xover.listener.keypress.tabKey = (e.keyCode == 9);
-    xover.dom.triggeredByTab = (xover.dom.triggeredByTab || xover.listener.keypress.tabKey);
-    xover.listener.keypress.escKey = (e.keyCode == 27);
-    if (xover.debug["xover.listener.keypress"]) {
-        console.log(String.fromCharCode(e.keyCode) + " --> " + e.keyCode)
-    }
-}
+//xover.listener.keypress = function (e = {}) {
+//    xover.listener.keypress.ctrlKey = e.ctrlKey;
+//    xover.listener.keypress.shiftKey = e.shiftKey;
+//    xover.listener.keypress.altKey = e.altKey;
+//    xover.listener.keypress.tabKey = (e.keyCode == 9);
+//    xover.dom.triggeredByTab = (xover.dom.triggeredByTab || xover.listener.keypress.tabKey);
+//    xover.listener.keypress.escKey = (e.keyCode == 27);
+//    if (xover.debug["xover.listener.keypress"]) {
+//        console.log(String.fromCharCode(e.keyCode) + " --> " + e.keyCode)
+//    }
+//}
 
-xover.listener.keypress.last_key = undefined;
-xover.listener.keypress.streak_count = 0;
+//xover.listener.keypress.last_key = undefined;
+//xover.listener.keypress.streak_count = 0;
 
-document.onkeydown = function (event) {
-    if (![9].includes(event.keyCode)) {
-        xover.delay(1).then(() => {
-            xover.site.save(event.srcElement.selector);
-        })
-    }
-    if (event.keyCode == xover.listener.keypress.last_key) {
-        ++xover.listener.keypress.streak_count;
-    } else {
-        xover.listener.keypress.last_key = event.keyCode;
-        xover.listener.keypress.streak_count = 1;
-    }
-    if (xover.debug["xover.listener.keypress.keydown"]) {
-        if (!xover.debug["xover.listener.keypress"]) {
-            console.log("key pressed: " + event.keyCode)
-        }
-        console.log("xover.listener.keypress.streak_count: " + xover.listener.keypress.streak_count)
-    }
-    xover.listener.keypress(event);
-    if (xover.listener.keypress.altKey || xover.listener.keypress.shiftKey || xover.listener.keypress.ctrlKey) {
-        if (this.keyInterval != undefined) {
-            window.clearTimeout(this.keyInterval);
-            this.keyInterval = undefined;
-        }
-        this.keyInterval = window.setTimeout(function () {
-            xover.listener.keypress();
-            this.keyInterval = undefined;
-        }, 1000);
-        return;
-    } //if combined with alt/shift/ctrl keys 
-    // in grids, this function will allow move up and down between elements
-    var srcElement = event.srcElement;
-    if (event.keyCode == 40 && !(event.srcElement instanceof HTMLTextAreaElement || srcElement.hasAttribute("contenteditable"))) {
-        if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
-        currentNode = srcElement.source;
-        if (!currentNode) return false;
-        nextNode = currentNode.selectSingleNode('../following-sibling::*[not(@xo:deleting="true")][1]/*[local-name()="' + currentNode.nodeName + '"]')
-        if (nextNode) {
-            let nextElement = document.getElementById(nextNode.getAttribute('xo:id'));
-            nextElement && nextElement.focus();
-        }
-        event.preventDefault();
-    } else if (event.keyCode == 38 && !(event.srcElement instanceof HTMLTextAreaElement || srcElement.hasAttribute("contenteditable"))) {
-        if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
-        currentNode = srcElement.source;
-        if (!currentNode) return false;
-        nextNode = currentNode.selectSingleNode('../preceding-sibling::*[not(@xo:deleting="true")][1]/*[local-name()="' + currentNode.nodeName + '"]')
-        if (nextNode) {
-            let nextElement = document.getElementById(nextNode.getAttribute('xo:id'));
-            nextElement && nextElement.focus();
-        }
-        event.preventDefault();
-    }
-    if (srcElement.nodeName.toLowerCase() == 'select') {//disable behaviour that changes options with arrows, preventing unwanted changes
-        var key = event.which || event.keyCode;
-        if (key == 37) {
-            event.preventDefault();
-        } else if (key === 39) {
-            event.preventDefault();
-        }
-    }
-    //if ((document.activeElement || {}).value) {
-    //    xover.dom.activeElementCaretPosition = parseFloat(String(xover.dom.getCaretPosition(document.activeElement)).split(",").pop()) + 1;
-    //}
-};
+//document.onkeydown = function (event) {
+//    if (![9].includes(event.keyCode)) {
+//        xover.delay(1).then(() => {
+//            xover.site.save(event.srcElement.selector);
+//        })
+//    }
+//    if (event.keyCode == xover.listener.keypress.last_key) {
+//        ++xover.listener.keypress.streak_count;
+//    } else {
+//        xover.listener.keypress.last_key = event.keyCode;
+//        xover.listener.keypress.streak_count = 1;
+//    }
+//    if (xover.debug["xover.listener.keypress.keydown"]) {
+//        if (!xover.debug["xover.listener.keypress"]) {
+//            console.log("key pressed: " + event.keyCode)
+//        }
+//        console.log("xover.listener.keypress.streak_count: " + xover.listener.keypress.streak_count)
+//    }
+//    xover.listener.keypress(event);
+//    if (xover.listener.keypress.altKey || xover.listener.keypress.shiftKey || xover.listener.keypress.ctrlKey) {
+//        if (this.keyInterval != undefined) {
+//            window.clearTimeout(this.keyInterval);
+//            this.keyInterval = undefined;
+//        }
+//        this.keyInterval = window.setTimeout(function () {
+//            xover.listener.keypress();
+//            this.keyInterval = undefined;
+//        }, 1000);
+//        return;
+//    } //if combined with alt/shift/ctrl keys 
+//    // in grids, this function will allow move up and down between elements
+//    var srcElement = event.srcElement;
+//    if (event.keyCode == 40 && !(event.srcElement instanceof HTMLTextAreaElement || srcElement.hasAttribute("contenteditable"))) {
+//        if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
+//        currentNode = srcElement.source;
+//        if (!currentNode) return false;
+//        nextNode = currentNode.selectSingleNode('../following-sibling::*[not(@xo:deleting="true")][1]/*[local-name()="' + currentNode.nodeName + '"]')
+//        if (nextNode) {
+//            let nextElement = document.getElementById(nextNode.getAttribute('xo:id'));
+//            nextElement && nextElement.focus();
+//        }
+//        event.preventDefault();
+//    } else if (event.keyCode == 38 && !(event.srcElement instanceof HTMLTextAreaElement || srcElement.hasAttribute("contenteditable"))) {
+//        if (srcElement.nodeName.toLowerCase() == 'select' && (srcElement.size || xover.browser.isIE() || xover.browser.isEdge())) return;
+//        currentNode = srcElement.source;
+//        if (!currentNode) return false;
+//        nextNode = currentNode.selectSingleNode('../preceding-sibling::*[not(@xo:deleting="true")][1]/*[local-name()="' + currentNode.nodeName + '"]')
+//        if (nextNode) {
+//            let nextElement = document.getElementById(nextNode.getAttribute('xo:id'));
+//            nextElement && nextElement.focus();
+//        }
+//        event.preventDefault();
+//    }
+//    if (srcElement.nodeName.toLowerCase() == 'select') {//disable behaviour that changes options with arrows, preventing unwanted changes
+//        var key = event.which || event.keyCode;
+//        if (key == 37) {
+//            event.preventDefault();
+//        } else if (key === 39) {
+//            event.preventDefault();
+//        }
+//    }
+//    //if ((document.activeElement || {}).value) {
+//    //    xover.dom.activeElementCaretPosition = parseFloat(String(xover.dom.getCaretPosition(document.activeElement)).split(",").pop()) + 1;
+//    //}
+//};
 
 document.onkeyup = function (e) {
-    xover.listener.keypress.last_key = e.keyCode;
-    xover.listener.keypress(e);
-    window.setTimeout(function () { xover.listener.keypress(e); }, 300);
+    //xover.listener.keypress.last_key = e.keyCode;
+    //xover.listener.keypress(e);
+    //window.setTimeout(function () { xover.listener.keypress(e); }, 300);
     if (e.key == 'Escape') {
         [...document.querySelectorAll('dialog:not([open])')].removeAll()
     }
@@ -5984,21 +5984,21 @@ xover.listener.on('click', function (event) {
 //    })
 //})
 
-xover.listener.on("click", function (event) {
-    if (event.defaultPrevented) return;
-    xover.delay(40).then(() => {
-        let target_store = event.target.store;
-        if (target_store) {
-            if (target_store.sources.reload.interval.continue) {
-                target_store.sources.reload.interval.continue();
-            }
-            if (xover.listener.keypress.ctrlKey && !xover.listener.keypress.shiftKey && !xover.listener.keypress.altKey/* && target_tag !== (window.top || window).location.hash)*/) {
-                let target_tag = target_store.tag;
-                xover.site.update({ active: target_tag, hash: target_tag });
-            }
-        }
-    })
-})
+//xover.listener.on("click", function (event) {
+//    if (event.defaultPrevented) return;
+//    xover.delay(40).then(() => {
+//        let target_store = event.target.store;
+//        if (target_store) {
+//            if (target_store.sources.reload.interval.continue) {
+//                target_store.sources.reload.interval.continue();
+//            }
+//            if (xover.listener.keypress.ctrlKey && !xover.listener.keypress.shiftKey && !xover.listener.keypress.altKey/* && target_tag !== (window.top || window).location.hash)*/) {
+//                let target_tag = target_store.tag;
+//                xover.site.update({ active: target_tag, hash: target_tag });
+//            }
+//        }
+//    })
+//})
 
 xover.listener.on(["contextmenu", "focusin"], function (event) {
     if (event.defaultPrevented) return;
