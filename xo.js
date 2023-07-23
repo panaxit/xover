@@ -766,6 +766,20 @@ Object.defineProperty(xover.listener, 'dispatcher', {
     writable: true, enumerable: false, configurable: false
 });
 
+xover.listener.shadowbanned = new Map();
+Object.defineProperty(xover.listener, 'shadowban', {
+    value: function (name__or_list) {
+        if (xover.init.status != 'initialized') {
+            xover.init();
+        }
+        name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
+        for (let xpath of name__or_list) {
+            xover.listener.shadowbanned.set(xpath, true)
+        }
+    },
+    writable: true, enumerable: false, configurable: false
+});
+
 Object.defineProperty(xover.listener, 'on', {
     value: function (name__or_list, handler, options = {}) {
         if (xover.init.status != 'initialized') {
@@ -4733,7 +4747,7 @@ xover.Store = function (xml, ...args) {
             } else {
                 __document = input;
             }
-            const config = { characterData: true, attributes: true, childList: true, subtree: true };
+            const config = { characterData: true, attributes: true, childList: true, subtree: true, attributeOldValue: true, characterDataOldValue: true };
             let store = self;
             const distinctMutations = function (mutations) {
                 return mutations.filter((mutation, index, self) => {
@@ -4750,7 +4764,7 @@ xover.Store = function (xml, ...args) {
             }
 
             const callback = (mutationList) => {
-                mutationList = mutationList.filter(mutation => !mutation.target.disconnected && (mutation.attributeName == 'value' || !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)))//.filter(mutation => !(mutation.target instanceof Document));
+                mutationList = mutationList.filter(mutation => !mutation.target.shadowbanned && !mutation.target.disconnected && (mutation.attributeName == 'value' || !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)))//.filter(mutation => !(mutation.target instanceof Document));
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
                 if (event && event.type == 'input') {
@@ -7899,6 +7913,14 @@ xover.modernize = function (targetWindow) {
                                 this.connect();
                             });
                         }
+                    }
+                })
+            }
+
+            if (!Node.prototype.hasOwnProperty('shadowbanned')) {
+                Object.defineProperty(Node.prototype, 'shadowbanned', {
+                    get: function () {
+                        return !![...xo.listener.shadowbanned].find(([xpath, enabled]) => enabled && this.matches(xpath))
                     }
                 })
             }
