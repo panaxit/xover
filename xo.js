@@ -2605,9 +2605,9 @@ xover.listener.on("render", function ({ dom }) {
 //    xover.site.save(event.target.selector);
 //});
 
-window.addEventListener("input", function (event) {
-    xover.site.save(event.target.selector);
-});
+//window.addEventListener("input", function (event) {
+//    xover.site.save(event.target.selector);
+//});
 
 document.addEventListener("selectionchange", function (event) {
     let target = document.getSelection().focusNode;
@@ -7514,13 +7514,15 @@ xover.modernize = function (targetWindow) {
             let original_HTMLTableCellElement = Object.getOwnPropertyDescriptor(HTMLTableCellElement.prototype, 'scope')
             let scope_handler = { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
                 get: function () {
+                    if (this.scopeNode !== undefined) return this.scopeNode;
                     if (this.ownerDocument instanceof XMLDocument) return null;
                     let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                     let self = this;
                     let section = this.section;
                     let store = section && section.document;
                     if (!store) {
-                        return null;
+                        this.scopeNode = null;
+                        return this.scopeNode;
                     } else {
                         //let ref = this.parentElement && this.closest && this || this.parentNode || this
                         let ref = this instanceof Element ? this : this.parentNode;
@@ -7528,7 +7530,8 @@ xover.modernize = function (targetWindow) {
                         let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("[xo-scope]")].map(el => [el, store.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`)]).pop();
                         let attribute = ref.closest("[xo-attribute]");
                         if (!dom_scope) {
-                            return null;
+                            this.scopeNode = null;
+                            return this.scopeNode;
                         } else if (dom_scope.contains(attribute)) {
                             attribute = attribute.getAttribute("xo-attribute");
                         } else {
@@ -7538,17 +7541,20 @@ xover.modernize = function (targetWindow) {
                         if (node && attribute) {
                             if (attribute === 'text()') {
                                 [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
-                                return [...node.childNodes].filter(el => el instanceof Text).pop();
+                                this.scopeNode = [...node.childNodes].filter(el => el instanceof Text).pop();
+                                return this.scopeNode;
                             }
                             else {
                                 let attribute_node;
                                 attribute_node = node.getAttributeNode(attribute);
                                 attribute_node = attribute_node || node.createAttribute(attribute, null);
-                                return attribute_node;
+                                this.scopeNode = attribute_node;
+                                return this.scopeNode;
                             }
                         }
                         //Implementar para Text $0.$$('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.$('self::xo:r')).pop().getAttributeNode($0.scope.value)
-                        return node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
+                        this.scopeNode = node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
+                        return this.scopeNode;
                     }
                 }
             }
