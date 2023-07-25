@@ -615,17 +615,17 @@ xover.initializeElementListeners = function (document = window.document) {
     }))
 }
 
-xover.evaluateParams = function (document = window.document) {
-    let params = document.select(`//xo-param/@name`);
+xover.evaluateParams = function (context = window.document) {
+    let params = context.select(`//xo-param/@name`);
     if (!params.length) return;
-    //document.original = document.cloneNode(true);
-    document.parameters = document.parameters || new Map();
+    //context.original = context.cloneNode(true);
+    context.parameters = context.parameters || new Map();
 
     parameters = Object.fromEntries(params.map(el => [`$${el.value}`, (function () { return eval.apply(this, arguments) }(el.parentNode.textContent || el.parentNode.getParameter("value")))]));
-    document.select(`//xo-value/@select`).forEach(el => el.parentNode.textContent = parameters[el.value]);
-    document.select(`//@*[contains(.,'{$')]`).forEach(attr => document.parameters.set(attr, attr.value))
-    for (let [attr, formula] of document.parameters.entries()) {
-        //if (!document.contains(attr.ownerElement)) continue;
+    context.select(`.//xo-value/@select`).forEach(el => el.parentNode.textContent = parameters[el.value]);
+    context.select(`.//@*[contains(.,'{$')]`).forEach(attr => context.parameters.set(attr, attr.value))
+    for (let [attr, formula] of context.parameters.entries()) {
+        //if (!context.contains(attr.ownerElement)) continue;
         let new_value = formula.replace(/\{\$[^\}]*\}/g, (match) => match.substr(1, match.length - 2) in parameters ? parameters[match.substr(1, match.length - 2)] : match);
         if (attr.name == 'style') {
             if (attr.ownerElement) attr.ownerElement.style.cssText = new_value;
@@ -4764,7 +4764,7 @@ xover.Store = function (xml, ...args) {
             }
 
             const callback = (mutationList) => {
-                mutationList = mutationList.filter(mutation => !mutation.target.shadowbanned && !mutation.target.disconnected && (mutation.attributeName == 'value' || !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)))//.filter(mutation => !(mutation.target instanceof Document));
+                mutationList = mutationList.filter(mutation => !mutation.target.shadowbanned && !mutation.target.disconnected && !(mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
                 if (event && event.type == 'input') {
@@ -4882,12 +4882,18 @@ xover.Store = function (xml, ...args) {
                 mutated_targets = new Map();
                 for (let mutation of mutationList) {
                     let inserted_ids = [];
-                    let value = mutated_targets.get(mutation.target) || {};
-                    if (mutation.type == "attributes") {
+                    let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
+                    let value = mutated_targets.get(target) || {};
+                    if (mutation.target instanceof Text) {
+                        value.texts = value.texts || new Map();
+                        if (!value.texts.has(mutation.target)) {
+                            value.texts.set(mutation.target, `${mutation.target}`)
+                        }
+                    } else if (mutation.type == "attributes") {
                         value.attributes = value.attributes || new Map();
-                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                        let attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
                         if (!attr) {
-                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+                            attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
                         }
                         value.attributes.set(attr, mutation.oldValue);
                     }
@@ -4895,7 +4901,7 @@ xover.Store = function (xml, ...args) {
                     value.removedNodes.push(...mutation.removedNodes);
                     value.addedNodes = value.addedNodes || [];
                     value.addedNodes.push(...mutation.addedNodes);
-                    mutated_targets.set(mutation.target, value);
+                    mutated_targets.set(target, value);
                     [...mutation.addedNodes].forEach((addedNode) => {
                         inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
                     })
@@ -5955,24 +5961,23 @@ xover.listener.on("focusout", function (event) {
     //}
 })
 
-var contentEdited = function (event) {
-    let elem = event.srcElement;
-    let source = elem && elem.scope || null
-    if (source instanceof Attr) {
-        if (elem.isContentEditable) {
-            source.set(elem.textContent, false)
-        } else {
-            source.set(elem.value, false)
-        }
-    }
-    elem.removeEventListener('blur', contentEdited);
-}
-
 xover.listener.on('input', function (event) {
+    let contentEdited = function (event) {
+        let elem = event.srcElement;
+        let source = elem && elem.scope || null
+        if (source instanceof Attr || source instanceof Text) {
+            if (elem.isContentEditable) {
+                source.set(elem.textContent, false)
+            } else {
+                source.set(elem.value, false)
+            }
+        }
+        elem.removeEventListener('blur', contentEdited);
+    }
     if (event.defaultPrevented) return;
     let elem = event.srcElement;
     let source = elem && elem.scope || null;
-    if (source instanceof Attr) {
+    if (source instanceof Attr || source instanceof Text) {
         if (elem.isContentEditable) {
             elem.removeEventListener('blur', contentEdited);
             elem.addEventListener('blur', contentEdited);
@@ -7535,7 +7540,7 @@ xover.modernize = function (targetWindow) {
             let original_HTMLTableCellElement = Object.getOwnPropertyDescriptor(HTMLTableCellElement.prototype, 'scope')
             let scope_handler = { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
                 get: function () {
-                    if (this.scopeNode !== undefined) return this.scopeNode;
+                    if (this.scopeNode !== undefined && this.scopeNode.parentNode) return this.scopeNode;
                     if (this.ownerDocument instanceof XMLDocument) return null;
                     let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                     let self = this;
@@ -7561,8 +7566,8 @@ xover.modernize = function (targetWindow) {
                         if (!attribute && this instanceof Text) attribute = 'text()';
                         if (node && attribute) {
                             if (attribute === 'text()') {
-                                [...node.childNodes].filter(el => el instanceof Text).pop() || node.append(node.ownerDocument.createTextNode(node.textContent));
-                                this.scopeNode = [...node.childNodes].filter(el => el instanceof Text).pop();
+                                let textNode = [...node.childNodes].filter(el => el instanceof Text).pop() || node.createTextNode(null);
+                                this.scopeNode = textNode;
                                 return this.scopeNode;
                             }
                             else {
@@ -8091,6 +8096,16 @@ xover.modernize = function (targetWindow) {
             }
             Element.prototype.get = Element.prototype.getAttributeNode;
             Element.prototype.getNode = function () { alert("getNode method is deprecated") } //TODO: Deprecate this method
+
+            Element.prototype.createTextNode = function (value = '') {
+                //let node = (value === null && this.cloneNode() || this)
+                let parentNode = this;
+                let new_text_node;
+                new_text_node = node.ownerDocument.createTextNode(value || '');
+                Object.defineProperty(new_text_node, 'nil', { get: function () { return !new_text_node.textContent} });
+                this.appendChild(new_text_node)
+                return new_text_node;
+            }
 
             Element.prototype.createAttribute = function (attribute, value = '') {
                 //attribute = attribute.replace(/^@/, "");
@@ -9226,8 +9241,8 @@ xover.modernize = function (targetWindow) {
 
                             if (dom instanceof DocumentFragment) {
                                 let content = target.cloneNode();
+                                dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());
                                 content.append(...dom.children);
-                                /*dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());*/
                                 script_wrapper.append(...content.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
                                 documentElement = content;
                             } else {
@@ -9238,7 +9253,7 @@ xover.modernize = function (targetWindow) {
                             documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                             documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
-                            documentElement.setAttributeNS(null, "xo-store", target.getAttribute("xo-store") || tag);
+                            documentElement.setAttributeNS(null, "xo-store", documentElement.getAttribute("xo-store") || target.getAttribute("xo-store") || tag);
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
                             if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
                                 action = 'replace';
@@ -9500,7 +9515,7 @@ xover.modernize = function (targetWindow) {
                             }
 
                             _applyScripts(document, scripts);
-                            xover.evaluateParams(target);
+                            target.children.toArray().forEach(child => xover.evaluateParams(child));
                             target.querySelectorAll('[xo-stylesheet]:not([xo-store])').forEach(el => data.render(
                                 data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
                             ));
