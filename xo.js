@@ -1125,7 +1125,7 @@ xover.session = new Proxy({}, {
         xover.session.setKey(key, new_value);
         var key = key, new_value = new_value;
         window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }, this));
-        xover.site.sections.map(el => [el, el.store && el.store.sources[el.getAttribute("xo-stylesheet")]]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
+        xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
 
         ["status"].includes(key) && await xover.stores.active.render();
 
@@ -7623,7 +7623,7 @@ xover.modernize = function (targetWindow) {
                         } else {
                             let node = this.parentElement && this || this.parentNode || this;
                             let stylesheet_name = [node.closest("[xo-stylesheet]")].map(el => el && el.getAttribute("xo-stylesheet") || null)[0];
-                            return (((node || {}).store || {}).sources || {})[stylesheet_name] || undefined;
+                            return (((node || {}).store || {}).sources || {})[stylesheet_name] || xover.sources[stylesheet_name] || null;
                         }
                     }
                 });
