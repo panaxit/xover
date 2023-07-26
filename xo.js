@@ -9442,6 +9442,8 @@ xover.modernize = function (targetWindow) {
                                             if (curr_node.constructor !== new_node.constructor /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element)*/ || !curr_node.parentNode) continue;
                                             if (active_element === curr_node && active_element instanceof HTMLInputElement) {
                                                 curr_node.classList && curr_node.classList.remove('working')
+                                            } else if (!new_node.parentElement) {
+                                                curr_node.replaceChildren(...new_node.children)
                                             } else {
                                                 curr_node.replaceWith(new_node)
                                             }
