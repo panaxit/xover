@@ -7540,7 +7540,7 @@ xover.modernize = function (targetWindow) {
             let original_HTMLTableCellElement = Object.getOwnPropertyDescriptor(HTMLTableCellElement.prototype, 'scope')
             let scope_handler = { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
                 get: function () {
-                    if (this.scopeNode !== undefined && this.scopeNode.parentNode) return this.scopeNode;
+                    if (this.scopeNode instanceof Node && this.scopeNode.parentNode) return this.scopeNode;
                     if (this.ownerDocument instanceof XMLDocument) return null;
                     let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                     let self = this;
@@ -9439,15 +9439,16 @@ xover.modernize = function (targetWindow) {
                                 if (action == "replace") {
                                     if (changes) {
                                         for (let [[curr_node, new_node]] of changes) {
+                                            if (!target.ownerDocument.contains(curr_node)) continue;
                                             if (curr_node.constructor !== new_node.constructor /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element)*/ || !curr_node.parentNode) continue;
                                             if (active_element === curr_node && active_element instanceof HTMLInputElement) {
                                                 curr_node.classList && curr_node.classList.remove('working')
-                                            } else if (!new_node.parentElement) {
-                                                curr_node.replaceChildren(...new_node.children)
+                                            } else if (curr_node.getAttribute("xo-swap")=='inner') {
+                                                curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
                                                 curr_node.replaceWith(new_node)
+                                                if (target == curr_node) target = new_node;
                                             }
-                                            if (target == curr_node) target = new_node;
                                         }
                                     }
 
