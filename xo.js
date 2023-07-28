@@ -314,13 +314,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -1728,11 +1728,15 @@ xover.xml.getDifferences = function (node1, node2) {
         if (xo.xml.createNode(node1).isEqualNode(xo.xml.createNode(node2))) {
             return null;
         } else if (node1.childElementCount && node1.childElementCount == node2.childElementCount) {
-            let node1_children = Array.from(node1.children);
-            let node2_children = Array.from(node2.children);
-            if (node1_children.every((el, ix) => el.tagName.toUpperCase() == node2_children[ix].tagName.toUpperCase())) {
+            const node1_children = [...node1.childNodes]/*.filter(child => [1, 3].includes(child.nodeType))*/;
+            const node2_children = [...node2.childNodes]/*.filter(child => [1, 3].includes(child.nodeType))*/;
+            if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor)) {
                 let differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item);
-                return differences.flat(Infinity);
+                if (differences.length) {
+                    return differences.flat(Infinity);
+                } else {
+                    return [new Map([[node1, node2]])];
+                }
             } else {
                 return [new Map([[node1, node2]])];
             }
@@ -3934,11 +3938,11 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-attribute or @xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or ancestor-or-self::*[@xo-attribute or @xo-scope])]`)) {
                 el.set("xo-attribute", "{name(current()[not(self::*)])}")
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(ancestor-or-self::*[@xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or ancestor-or-self::*[@xo-scope])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
@@ -8102,7 +8106,7 @@ xover.modernize = function (targetWindow) {
                 let parentNode = this;
                 let new_text_node;
                 new_text_node = node.ownerDocument.createTextNode(value || '');
-                Object.defineProperty(new_text_node, 'nil', { get: function () { return !new_text_node.textContent} });
+                Object.defineProperty(new_text_node, 'nil', { get: function () { return !new_text_node.textContent } });
                 this.appendChild(new_text_node)
                 return new_text_node;
             }
@@ -9086,21 +9090,19 @@ xover.modernize = function (targetWindow) {
             let stylesheet_renderer_handler = async function () {
                 this._render_manager = this._render_manager || xover.delay(1).then(async () => {
                     let selector = this.ownerDocument.contains(this) && this.selector || undefined;
-                    let section = selector && this.closest("[xo-stylesheet]");
-                    if (section) {
-                        let stylesheet = this.getAttribute("xo-stylesheet");
-                        let target_store = this.store;
+                    if (!selector) return;
+                    let stylesheet = this.getAttribute("xo-stylesheet");
+                    let target_store = this.store;
+                    if (this.hasAttribute("xo-stylesheet")) {
                         if (target_store) {
-                            if (!stylesheet) {
-                                return this.store.render();
-                            } else {
-                                let target_document = target_store && target_store.document;
-                                return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector, action: "replace" })) || null;
-                            }
+                            let target_document = target_store && target_store.document;
+                            return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector, action: "replace" })) || null;
                         } else {
                             let document = xo.sources[stylesheet];
                             return document.render();
                         }
+                    } else if (this.hasAttribute("xo-store")) {
+                        return target_store.render();
                     }
                 }).finally(async () => {
                     this._render_manager = undefined;
@@ -9443,7 +9445,7 @@ xover.modernize = function (targetWindow) {
                                             if (curr_node.constructor !== new_node.constructor /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element)*/ || !curr_node.parentNode) continue;
                                             if (active_element === curr_node && active_element instanceof HTMLInputElement) {
                                                 curr_node.classList && curr_node.classList.remove('working')
-                                            } else if (curr_node.getAttribute("xo-swap")=='inner') {
+                                            } else if (curr_node instanceof HTMLElement && curr_node.getAttribute("xo-swap") == 'inner') {
                                                 curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
                                                 curr_node.replaceWith(new_node)
@@ -9457,12 +9459,13 @@ xover.modernize = function (targetWindow) {
                                     ////let to_be_replaced = target.querySelector(active_element_selector)
                                     ////to_be_replaced && to_be_replaced.replaceWith(active_element)
                                 } else {//if (action == "append") {
-                                    //target.append(dom);
-                                    //} else {
-                                    //    xover.dom.clear(target);
-                                    //target.append(...dom.cloneNode(true).childNodes);
-                                    let inserted_nodes = target.append(...documentElement.childNodes);
-                                    target = inserted_nodes.find(node => node.nodeType == 1)
+                                    target.append(documentElement);
+                                    ////} else {
+                                    ////    xover.dom.clear(target);
+                                    ////target.append(...dom.cloneNode(true).childNodes);
+                                    //let inserted_nodes = target.append(...documentElement.childNodes);
+                                    //target = inserted_nodes.find(node => node.nodeType == 1)
+                                    target = documentElement;
                                 }
                                 target.document = this;
                                 target.context = data;
