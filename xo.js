@@ -934,7 +934,7 @@ xover.listener.on('navigatedForward', function (event) {
     }
 })
 
-//xover.listener.keypress = {};
+xover.listener.keypress = {};
 xover.mimeTypes = {};
 xover.mimeTypes["css"] = "text/css"
 xover.mimeTypes["doc"] = "applicaton/msword"
@@ -5772,17 +5772,16 @@ if (window.addEventListener) {
 //    }
 //})
 
-//xover.listener.keypress = function (e = {}) {
-//    xover.listener.keypress.ctrlKey = e.ctrlKey;
-//    xover.listener.keypress.shiftKey = e.shiftKey;
-//    xover.listener.keypress.altKey = e.altKey;
-//    xover.listener.keypress.tabKey = (e.keyCode == 9);
-//    xover.dom.triggeredByTab = (xover.dom.triggeredByTab || xover.listener.keypress.tabKey);
-//    xover.listener.keypress.escKey = (e.keyCode == 27);
-//    if (xover.debug["xover.listener.keypress"]) {
-//        console.log(String.fromCharCode(e.keyCode) + " --> " + e.keyCode)
-//    }
-//}
+xover.listener.keypress = function (e = {}) {
+    xover.listener.keypress.ctrlKey = e.ctrlKey;
+    xover.listener.keypress.shiftKey = e.shiftKey;
+    xover.listener.keypress.altKey = e.altKey;
+    xover.listener.keypress.tabKey = (e.keyCode == 9);
+    xover.listener.keypress.escKey = (e.keyCode == 27);
+    if (xover.debug["xover.listener.keypress"]) {
+        console.log(String.fromCharCode(e.keyCode) + " --> " + e.keyCode)
+    }
+}
 
 //xover.listener.keypress.last_key = undefined;
 //xover.listener.keypress.streak_count = 0;
