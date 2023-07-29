@@ -9523,7 +9523,7 @@ xover.modernize = function (targetWindow) {
                             if (unbound_elements.length) {
                                 console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
                             }
-                            let invalid_scope = target.querySelectorAll('[xo-store][xo-scope],[xo-attribute][xo-scope]');
+                            let invalid_scope = target.querySelectorAll('[xo-store][xo-scope],[xo-stylesheet][xo-scope]');
                             if (invalid_scope.length) {
                                 console.warn(`There ${invalid_scope.length > 1 ? 'are' : 'is'} ${invalid_scope.length} misconfigured element${invalid_scope.length > 1 ? 's' : ''}`, invalid_scope)
                             }
