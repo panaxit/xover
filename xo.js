@@ -1022,11 +1022,11 @@ xover.server = new Proxy({}, {
         if (key in self) {
             return self[key]
         }
-        if (!(xover.manifest.server && xover.manifest.server[key])) {
-            return Promise.reject(`Endpoint "${key}" not configured in manifest`);
-        }
         let return_value, request, response;
         let handler = (async function (payload, ...args) {
+            if (!(xover.manifest.server && xover.manifest.server[key])) {
+                return Promise.reject(`Endpoint "${key}" not configured in manifest`);
+            }
             let settings = {};
             if (this instanceof xover.Source || this instanceof Document) {
                 settings = this.settings || {};
@@ -1049,7 +1049,7 @@ xover.server = new Proxy({}, {
             }
             response.tag = `#server:${key}`;
             let manifest_settings = xover.manifest.getSettings(response.tag, "stylesheets");
-            document instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
+            return_value instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
                 return_value.addStylesheet(stylesheet);
             });
             response.response_value = return_value;
@@ -9253,7 +9253,7 @@ xover.modernize = function (targetWindow) {
                             documentElement.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
                             documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
-                            documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
+                            //documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
                             documentElement.setAttributeNS(null, "xo-store", documentElement.getAttribute("xo-store") || target.getAttribute("xo-store") || tag);
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
                             if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
@@ -9444,7 +9444,10 @@ xover.modernize = function (targetWindow) {
                                             if (curr_node.constructor !== new_node.constructor /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element)*/ || !curr_node.parentNode) continue;
                                             if (active_element === curr_node && active_element instanceof HTMLInputElement) {
                                                 curr_node.classList && curr_node.classList.remove('working')
-                                            } else if (curr_node instanceof HTMLElement && curr_node.getAttribute("xo-swap") == 'inner') {
+                                            } else if (curr_node instanceof HTMLElement && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
+                                                //copy attributes?
+                                                continue;
+                                            } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.getAttribute("xo-swap") == 'inner')) {
                                                 curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
                                                 curr_node.replaceWith(new_node)
@@ -9518,6 +9521,10 @@ xover.modernize = function (targetWindow) {
                             if (unbound_elements.length) {
                                 console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
                             }
+                            let invalid_scope = target.querySelectorAll('[xo-store][xo-scope],[xo-attribute][xo-scope]');
+                            if (invalid_scope.length) {
+                                console.warn(`There ${invalid_scope.length > 1 ? 'are' : 'is'} ${invalid_scope.length} misconfigured element${invalid_scope.length > 1 ? 's' : ''}`, invalid_scope)
+                            }
 
                             _applyScripts(document, scripts);
                             target.children.toArray().forEach(child => xover.evaluateParams(child));
@@ -9530,7 +9537,7 @@ xover.modernize = function (targetWindow) {
                             //target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
                             //    return new bootstrap.Tooltip(tooltipTriggerEl)
                             //})
-                            dependants = [...target.querySelectorAll('*[xo-store],*[xo-stylesheet]')];
+                            dependants = [...target.querySelectorAll('[xo-store],[xo-stylesheet]')];
                             //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
                             dependants.forEach(el => el.render());
                             delete xover.site.renderingTo;
