@@ -4899,7 +4899,9 @@ xover.Store = function (xml, ...args) {
                         if (!attr) {
                             attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
                         }
-                        value.attributes.set(attr, mutation.oldValue);
+                        if (attr.value !== mutation.oldValue) {
+                            value.attributes.set(attr, mutation.oldValue)
+                        }
                     }
                     value.removedNodes = value.removedNodes || [];
                     value.removedNodes.push(...mutation.removedNodes);
