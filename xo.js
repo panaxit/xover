@@ -234,6 +234,7 @@ Object.defineProperty(Array.prototype, 'order',
     }
 );
 
+xover.components = {};
 xover.custom = {};
 xover.data = {};
 xover.stores = new Proxy({}, {
