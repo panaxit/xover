@@ -9261,7 +9261,7 @@ xover.modernize = function (targetWindow) {
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
                             if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
                                 action = 'replace';
-                            } else if (target.nodeName.toUpperCase() == documentElement.nodeName.toUpperCase() && target.getAttribute("xo-store") == documentElement.getAttribute("xo-store") && target.getAttribute("xo-stylesheet") == documentElement.getAttribute("xo-stylesheet")) {
+                            } else if (target.constructor == documentElement.constructor && target.getAttribute("xo-store") == documentElement.getAttribute("xo-store") && target.getAttribute("xo-stylesheet") == documentElement.getAttribute("xo-stylesheet")) {
                                 action = 'replace';
                             } else if (!action && target.matches(`[xo-store="${tag}"]:not([xo-stylesheet])`)) {
                                 action = 'append';
@@ -9272,7 +9272,7 @@ xover.modernize = function (targetWindow) {
                             }
 
                             if (action === 'replace') {
-                                if (target.nodeName.toUpperCase() !== documentElement.nodeName.toUpperCase()) {
+                                if (target.constructor !== documentElement.constructor) {
                                     let new_node = documentElement.cloneNode();
                                     target = target.replaceWith(new_node);
                                 } else {
