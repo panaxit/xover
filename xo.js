@@ -3942,11 +3942,11 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or ancestor-or-self::*[@xo-attribute or @xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or @xo-stylesheet or ancestor-or-self::*[@xo-attribute or @xo-scope])]`)) {
                 el.set("xo-attribute", "{name(current()[not(self::*)])}")
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or ancestor-or-self::*[@xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
@@ -7561,7 +7561,7 @@ xover.modernize = function (targetWindow) {
                     } else {
                         //let ref = this.parentElement && this.closest && this || this.parentNode || this
                         let ref = this instanceof Element ? this : this.parentNode;
-                        let node_by_id = !ref.hasAttribute("[xo-scope]") && store.selectFirst(`//*[@xo:id="${ref.id}"]`);
+                        let node_by_id = !ref.hasAttribute("xo-scope") && store.selectFirst(`//*[@xo:id="${ref.id}"]`);
                         let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("[xo-scope]")].map(el => [el, store.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`)]).pop();
                         let attribute = ref.closest("[xo-attribute]");
                         if (!dom_scope) {
@@ -9454,6 +9454,7 @@ xover.modernize = function (targetWindow) {
                                                 //copy attributes?
                                                 continue;
                                             } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.getAttribute("xo-swap") == 'inner')) {
+                                                [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value));
                                                 curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
                                                 curr_node.replaceWith(new_node)
