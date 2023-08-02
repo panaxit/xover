@@ -315,13 +315,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -1888,7 +1888,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
             writable: false, enumerable: false, configurable: false
         });
     }
-    let __settings = {};
+    let __settings = Object.fromEntries(xover.manifest.getSettings(tag)) || {};
     if (!this.hasOwnProperty("settings")) {
         Object.defineProperty(this, 'settings', {
             value: __settings,
@@ -1953,13 +1953,12 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 if (!this.tag) {
                     this.tag = self.tag;
                 }
-                this.settings = this.settings || {};
+                let settings = Object.entries(this.settings || {});
                 let before_event = new xover.listener.Event('beforeFetch', { tag: tag }, this);
                 window.top.dispatchEvent(before_event);
                 if (before_event.cancelBubble || before_event.defaultPrevented) return;
-                let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
-                    let parameters = source[endpoint]
-                    parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+                let endpoints = self.endpoints || Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
+                    let parameters = source[endpoint];
                     let url = xover.URL(location.hash.replace(/^#/, ''));
                     if (location.hash && url.pathname === xover.URL(tag.replace(/^#/, '')).pathname) {
                         parameters = parameters.concat([...url.searchParams.entries()])
@@ -1967,10 +1966,12 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
                         parameters = [parameters];
                     }
+                    settings = settings.concat(xo.manifest.getSettings(endpoint));
                     return [endpoint, parameters]
                 });
-                let settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
-                this["settings"].merge(settings);
+                self.endpoints = endpoints;
+                //let settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
+                this.settings = Object.fromEntries(settings);
                 let stored_document;
                 if (!xover.session.rebuild && !(source instanceof Document)) {
                     let sources = await xover.storehouse.sources;
@@ -1986,6 +1987,8 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     for (let [endpoint, parameters] of endpoints) {
+                        parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
                                 if (endpoint.replace(/^server:/, '') in xover.server) {
@@ -2044,7 +2047,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 if (!(new_document instanceof Document || new_document instanceof DocumentFragment)) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
-                settings.stylesheets && settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
+                this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag, settings: this.settings }, self));
                 return resolve(new_document);
             }).catch(async (e) => {
@@ -3722,7 +3725,7 @@ xover.fetch = async function (url, ...args) {
         }
     }
     let settings = args.pop() || {};
-    settings.merge(Object.fromEntries(xo.manifest.getSettings(tag)));
+    settings.merge(Object.fromEntries(xover.manifest.getSettings(tag)));
     url = new xover.URL(url, undefined, settings);
 
     for (let i = args.length - 1; i >= 0; --i) {
@@ -4933,7 +4936,7 @@ xover.Store = function (xml, ...args) {
                     if (mutation.removedNodes.length) {
                         window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes, renderingSections: sections_to_render }, target))
                     }
-                    window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, renderingSections: sections_to_render }, target));
+                    window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes, renderingSections: sections_to_render }, target));
                 }
 
                 //for (let [section] of [...sections_to_render.entries()]) {
