@@ -9451,11 +9451,10 @@ xover.modernize = function (targetWindow) {
                                             if (active_element === curr_node && active_element instanceof HTMLInputElement) {
                                                 curr_node.classList && curr_node.classList.remove('working')
                                             } else if (curr_node instanceof HTMLElement && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
-                                                //copy attributes?
+                                                //copy attributes? //[...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value))
                                                 continue;
                                             } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.getAttribute("xo-swap") == 'inner')) {
-                                                [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value));
-                                                curr_node.replaceChildren(...new_node.childNodes)
+                                               curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
                                                 curr_node.replaceWith(new_node)
                                                 if (target == curr_node) target = new_node;
