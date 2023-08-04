@@ -551,7 +551,7 @@ xover.init = async function () {
         for (let source of xover.manifest.stylesheets.map(href => xover.sources[href])) {
             stylesheet_promises.push(source.fetch().catch(e => Promise.reject(e)));
         }
-        await Promise.all(stylesheet_promises);
+        await Promise.all(stylesheet_promises).catch(e=> e.render && e.render() || console.error(e));
         await xover.stores.restore();
         xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
         xover.dom.refreshTitle();
