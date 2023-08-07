@@ -1976,17 +1976,12 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     this.tag = self.tag;
                 }
                 let settings = Object.entries(this.settings || {});
-                let before_event = new xover.listener.Event('beforeFetch', { tag: tag }, this);
-                window.top.dispatchEvent(before_event);
-                if (before_event.cancelBubble || before_event.defaultPrevented) return;
                 let endpoints = self.endpoints || Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
-                    let parameters = source[endpoint];
+                    let parameters = source[endpoint] || [];
+                    parameters = parameters.constructor === {}.constructor && Object.entries(parameters) || parameters
                     let url = xover.URL(location.hash.replace(/^#/, ''));
                     if (location.hash && url.pathname === xover.URL(tag.replace(/^#/, '')).pathname) {
                         parameters = parameters.concat([...url.searchParams.entries()])
-                    }
-                    if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
-                        parameters = [parameters];
                     }
                     settings = settings.concat(xo.manifest.getSettings(endpoint));
                     return [endpoint, parameters]
@@ -1994,6 +1989,9 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 self.endpoints = endpoints;
                 //let settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
                 this.settings = Object.fromEntries(settings);
+                let before_event = new xover.listener.Event('beforeFetch', { tag: tag, settings: settings }, this);
+                window.top.dispatchEvent(before_event);
+                if (before_event.cancelBubble || before_event.defaultPrevented) return;
                 let stored_document;
                 if (!xover.session.rebuild && !(source instanceof Document)) {
                     let sources = await xover.storehouse.sources;
@@ -2009,7 +2007,11 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     for (let [endpoint, parameters] of endpoints) {
-                        parameters = parameters && {}.constructor === parameters.constructor && Object.entries(parameters).map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+                        parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+
+                        if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
+                            parameters = [parameters];
+                        }
 
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
@@ -6783,6 +6785,13 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Array.prototype, 'toArray', {
                 value: function () {
                     return [...this];
+                }
+            })
+
+            Array.prototype.native.toTable = Object.getOwnPropertyDescriptor(Array.prototype, 'toTable');
+            Object.defineProperty(Array.prototype, 'toTable', {
+                value: function (attributes = "@*") {
+                    return console.table(this.map(el => Object.fromEntries(el.select(attributes).map(attr => [attr.name, +attr.value == attr.value ? +attr.value : attr.value]))))
                 }
             })
 
