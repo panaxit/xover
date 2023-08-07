@@ -1394,10 +1394,32 @@ Object.defineProperty(xover.site, 'locale', {
 Object.defineProperty(xover.site, 'state', {
     get() {
         history.state['state'] = history.state['state'] || {};
-        return history.state['state'];
+        return new Proxy(history.state['state'], {
+            get: function (self, key) {
+                if (key[0] == '#') {
+                    self[key] = self[key] || {};
+                }
+                return self[key]
+            }
+            , set: function (self, key, input) {
+                let old_value = self[key];
+                self[key] = input;
+                if (old_value == input) return;
+                if (key[0] != '#') {
+                    window.top.dispatchEvent(new xover.listener.Event(`change::state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
+                    xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
+                }
+            }
+        });
     }
     , set(input) { history.state['state'] = input }
     , enumerable: true
+});
+
+Object.defineProperty(xover, 'state', {
+    get() {
+        return xover.site.state;
+    }, enumerable: true
 });
 
 Object.defineProperty(xover.site, 'sections', {
@@ -2588,29 +2610,29 @@ function getStyleVal(elm, css) {
     return (window.getComputedStyle(elm, null).getPropertyValue(css))
 }
 
-xover.data.updateScrollPosition = function (document, coordinates) {
-    var target = coordinates.target;
-    if (target) {
-        Object.entries(coordinates).forEach(([key, value]) => {
-            if (key != 'target' && target.source) {
-                target.source.setAttributeNS(null, `state:${key}-position`, value);
-                //var attributeRef = target.selectSingleNode(`//@state:${key}-position`);
-                //if (attributeRef) {
-                //    attributeRef.ownerElement.setAttributeNS(xover.spaces["state"], `state:${key}-position`, value, false);
-                //}
-            }
-        })
-    }
-}
+//xover.data.updateScrollPosition = function (document, coordinates) {
+//    var target = coordinates.target;
+//    if (target) {
+//        Object.entries(coordinates).forEach(([key, value]) => {
+//            if (key != 'target' && target.source) {
+//                target.source.setAttributeNS(null, `state:${key}-position`, value);
+//                //var attributeRef = target.selectSingleNode(`//@state:${key}-position`);
+//                //if (attributeRef) {
+//                //    attributeRef.ownerElement.setAttributeNS(xover.spaces["state"], `state:${key}-position`, value, false);
+//                //}
+//            }
+//        })
+//    }
+//}
 
-xover.dom.onscroll = function () {
-    let element = this;
-    xover.delay(500).then(async () => {
-        let selector = this.selector;
-        xover.site.get("scrollableElements", {})[selector] = xover.dom.getScrollPosition(element);
-        history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
-    })
-}
+//xover.dom.onscroll = function () {
+//    let element = this;
+//    xover.delay(500).then(async () => {
+//        let selector = this.selector;
+//        xover.site.get("scrollableElements", {})[selector] = xover.dom.getScrollPosition(element);
+//        history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
+//    })
+//}
 
 document.addEventListener("DOMContentLoaded", function (event) {
     //document.body.addEventListener('scroll', xover.dom.onscroll);
@@ -2620,11 +2642,11 @@ document.addEventListener("DOMContentLoaded", function (event) {
     xover.evaluateParams()
 });
 
-xover.listener.on("render", function ({ dom }) {
-    for (element of xover.site.getScrollableElements(dom)) {
-        element.addEventListener('scroll', xover.dom.onscroll);
-    }
-});
+//xover.listener.on("render", function ({ dom }) {
+//    for (element of xover.site.getScrollableElements(dom)) {
+//        element.addEventListener('scroll', xover.dom.onscroll);
+//    }
+//});
 
 //window.addEventListener("focusin", function (event) {
 //    xover.site.save(event.target.selector);
@@ -2867,10 +2889,10 @@ Object.defineProperty(xover.stores, 'active', {
 
         if (input) {
             var hashtag = input.tag;// || xover.data.hashTagName(input);
-            if (hashtag === xover.stores.active.tag) {
-                var current_position = xover.data.getScrollPosition();
-                xover.data.updateScrollPosition(input, current_position);
-            }
+            //if (hashtag === xover.stores.active.tag) {
+            //    var current_position = xover.data.getScrollPosition();
+            //    xover.data.updateScrollPosition(input, current_position);
+            //}
 
             xover.stores[hashtag] = input;
             //if (hashtag != (history.state.seed || (window.top || window).location.hash || xover.stores["#"].tag)) {//(history.state.hash || (window.top || window).location.hash)
@@ -5250,10 +5272,6 @@ xover.Store = function (xml, ...args) {
                 //    store.addStylesheet({ href: store.tag.substring(1).split(/\?/, 1).shift() + '.xslt', target: "main" })
                 //}
                 await store.sources.load();
-                let isActive = self.isActive
-                let active_tag = xover.site.active;
-                let active_store = xover.stores.active;
-
                 let stylesheets = xover.site.sections.filter(el => el.store && el.store === self);
                 stylesheets.forEach((el) => el.render());
 
@@ -6273,10 +6291,10 @@ xover.dom.elementVisible = function (el, container) {
     return true;
 }
 
-xover.data.getScrollPosition = async function (target) {
-    var coordinates = ((target || await xover.stores.active.documentElement || document.createElement('p')).selectNodes('@state:x-position|@state:y-position') || []).reduce((json, attr) => { json[attr.localName.replace('-position', '')] = attr.value; return json; }, {});
-    return coordinates;
-}
+//xover.data.getScrollPosition = async function (target) {
+//    var coordinates = ((target || await xover.stores.active.documentElement || document.createElement('p')).selectNodes('@state:x-position|@state:y-position') || []).reduce((json, attr) => { json[attr.localName.replace('-position', '')] = attr.value; return json; }, {});
+//    return coordinates;
+//}
 
 xover.dom.getScrollPosition = function (el) {
     var targetDocument = ((document.activeElement || {}).contentDocument || document);
@@ -8957,7 +8975,7 @@ xover.modernize = function (targetWindow) {
                                 xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`).map(param => {
                                     try {
                                         let key = param.getAttribute("name").split(/:/).pop()
-                                        let state_value = xover.stores.active.state[key] || xover.site[key];
+                                        let state_value = [xover.site.state[key], xover.stores.active.state[key], xover.site[key]].coalesce();
                                         if (state_value !== undefined) {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), state_value);
                                         }
@@ -8969,7 +8987,7 @@ xover.modernize = function (targetWindow) {
                                 xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
                                     try {
                                         let key = param.getAttribute("name").split(/:/).pop()
-                                        let param_value = xover.site[key] || xover.site[key];
+                                        let param_value = xover.site[key];
                                         if (param_value !== undefined) {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                         }
