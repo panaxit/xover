@@ -977,7 +977,7 @@ xover.Manifest = function (manifest = {}) {
         "server": {},
         "session": [],
         "sources": {},
-        "stores": {},
+        "stores": [],
         "state": [],
         "stylesheets": [],
         "spaces": {},
@@ -2021,10 +2021,12 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     for (let [endpoint, parameters] of endpoints) {
-                        parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
-
                         if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
+                            parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+
                             parameters = [parameters];
+                        } else {
+                            parameters = parameters && parameters.map(value => value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value) || parameters;
                         }
 
                         promises.push(new Promise(async (resolve, reject) => {
@@ -6053,19 +6055,19 @@ xover.listener.on('remove::@state:busy', function ({ target, value }) {
     }
 });
 
-xover.listener.on("focusout", function (event) {
-    if (event.defaultPrevented) return;
-    xover.dom.lastBluredElement = event.target;
+//xover.listener.on("focusout", function (event) {
+//    if (event.defaultPrevented) return;
+//    xover.dom.lastBluredElement = event.target;
 
-    //if (((arguments || {}).callee || {}).caller === xover.dom.clear) {
-    //    xover.dom.activeElement = event.target;
-    //} else {
-    xover.dom.bluredElement = event.target;
-    if (xover.debug["focusout"]) {
-        console.log(event.target);
-    }
-    //}
-})
+//    //if (((arguments || {}).callee || {}).caller === xover.dom.clear) {
+//    //    xover.dom.activeElement = event.target;
+//    //} else {
+//    xover.dom.bluredElement = event.target;
+//    if (xover.debug["focusout"]) {
+//        console.log(event.target);
+//    }
+//    //}
+//})
 
 xover.listener.on('input', function (event) {
     let contentEdited = function (event) {
