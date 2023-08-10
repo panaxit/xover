@@ -1761,23 +1761,29 @@ xover.xml.getDifferences = function (node1, node2) {
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     if (node1 === top.document.activeElement) {
         return [new Map([[node1, node2]])];
-    } else if (xo.xml.createNode(node1).cloneNode().isEqualNode(xo.xml.createNode(node2).cloneNode())) {
+    } else if (xo.xml.createNode(node1).cloneNode().isEqualNode(xo.xml.createNode(node2).cloneNode()) || node1.matches('.xo-skip-compare')) {
         if (xo.xml.createNode(node1).isEqualNode(xo.xml.createNode(node2))) {
             return null;
-        } else if (node1.childNodes.length && node1.childNodes.length == node2.childNodes.length) {
+        } else if (!node1.matches('.xo-stop-compare') && node1.childNodes.length && node1.childNodes.length == node2.childNodes.length) {
             const node1_children = [...node1.childNodes]/*.filter(child => [1, 3].includes(child.nodeType))*/;
             const node2_children = [...node2.childNodes]/*.filter(child => [1, 3].includes(child.nodeType))*/;
             if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor)) {
                 let differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item);
                 if (differences.length) {
                     return differences.flat(Infinity);
+                } else if (node1.matches('.xo-skip-compare') || node1.querySelector('.xo-skip-compare')) {
+                    return null;
                 } else {
                     return [new Map([[node1, node2]])];
                 }
-            } else {
+            } else /*if (node1.matches('.xo-skip-compare')) {
+                return null;
+            } else */{
                 return [new Map([[node1, node2]])];
             }
-        } else {
+        } else /*if (node1.matches('.xo-skip-compare')) {
+            return null;
+        } else */{
             return [new Map([[node1, node2]])];
         }
     } else {
@@ -6762,7 +6768,7 @@ xover.modernize = function (targetWindow) {
                         aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         //}
                     } else {
-                        if (xover.session.debug) console.warning(e);
+                        if (xover.session.debug) console.warn(e);
                         aItems = {};
                     }
                 }
@@ -9570,11 +9576,11 @@ xover.modernize = function (targetWindow) {
                                             } else if (curr_node instanceof HTMLElement && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
                                                 //copy attributes? //[...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value))
                                                 continue;
-                                            } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet")
-                                                || curr_node.getAttribute("xo-swap") == 'inner')) {
+                                            } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.matches('.xo-skip-compare'))) {
                                                 [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value))
                                                 curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
+                                                //if (curr_node.matches('.xo-skip-copy-attributes')) /*TODO*/
                                                 curr_node.replaceWith(new_node)
                                                 if (target == curr_node) target = new_node;
                                             }
