@@ -1976,7 +1976,7 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     this.tag = self.tag;
                 }
                 let settings = Object.entries(this.settings || {});
-                let endpoints = self.endpoints || Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
+                let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint] || [];
                     parameters = parameters.constructor === {}.constructor && Object.entries(parameters) || parameters
                     let url = xover.URL(location.hash.replace(/^#/, ''));
@@ -1986,7 +1986,6 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     settings = settings.concat(xo.manifest.getSettings(endpoint));
                     return [endpoint, parameters]
                 });
-                self.endpoints = endpoints;
                 //let settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
                 this.settings = Object.fromEntries(settings);
                 let before_event = new xover.listener.Event('beforeFetch', { tag: tag, settings: settings }, this);
