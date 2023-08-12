@@ -1777,8 +1777,8 @@ xover.xml.getDifferences = function (node1, node2) {
         if (xo.xml.createNode(node1).isEqualNode(xo.xml.createNode(node2))) {
             return null;
         } else if (!node1.matches('.xo-stop-compare') && node1.childNodes.length && node1.childNodes.length == node2.childNodes.length) {
-            const node1_children = [...node1.childNodes]/*.filter(child => [1, 3].includes(child.nodeType))*/;
-            const node2_children = [...node2.childNodes]/*.filter(child => [1, 3].includes(child.nodeType))*/;
+            const node1_children = [...node1.childNodes];
+            const node2_children = [...node2.childNodes];
             if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor)) {
                 let differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item);
                 if (differences.length) {
@@ -1788,14 +1788,10 @@ xover.xml.getDifferences = function (node1, node2) {
                 } else {
                     return [new Map([[node1, node2]])];
                 }
-            } else /*if (node1.matches('.xo-skip-compare')) {
-                return null;
-            } else */{
+            } else {
                 return [new Map([[node1, node2]])];
             }
-        } else /*if (node1.matches('.xo-skip-compare')) {
-            return null;
-        } else */{
+        } else {
             return [new Map([[node1, node2]])];
         }
     } else {
@@ -9249,6 +9245,41 @@ xover.modernize = function (targetWindow) {
                 return this._render_manager;
             }
 
+            if (!Node.prototype.hasOwnProperty('getClosestScroller')) {
+                Object.defineProperty(Node.prototype, 'getClosestScroller', {
+                    value: function () {
+                        if (this.scrollHeight > this.clientHeight && (this.scrollTop || this.scrollLeft)) {
+                            return this;
+                        } else {
+                            const parentElement = this.parentElement;
+                            if (!(parentElement instanceof HTMLElement)) return null;
+                            return parentElement.getClosestScroller();
+                        }
+                    }
+                });
+            }
+
+            if (!Node.prototype.hasOwnProperty('scrollPosition')) {
+                Object.defineProperty(Node.prototype, 'scrollPosition', {
+                    get: function () {
+                        scrollParent = this.getClosestScroller();
+                        if (!scrollParent) return null;
+                        var coordinates =
+                        {
+                            x: (scrollParent.pageXOffset !== undefined ? scrollParent.pageXOffset : scrollParent.scrollLeft),
+                            y: (scrollParent.pageYOffset !== undefined ? scrollParent.pageYOffset : scrollParent.scrollTop),
+                            target: scrollParent
+                        }
+                        return coordinates;
+                    },
+                    set: function (coordinates) {
+                        scrollParent = this.getClosestScroller();
+                        if (!scrollParent) return null;
+                        scrollParent.scrollTo && scrollParent.scrollTo(coordinates);
+                    }
+                });
+            }
+
             if (!HTMLElement.prototype.hasOwnProperty('render')) {
                 Object.defineProperty(HTMLElement.prototype, 'render', {
                     value: stylesheet_renderer_handler
@@ -9580,6 +9611,7 @@ xover.modernize = function (targetWindow) {
                                 let active_element = document.activeElement;
                                 //let active_element_selector = active_element.buildSelector({ ignore: ['.working'] });
                                 if (action == "replace") {
+                                    let coordinates = active_element.scrollPosition;
                                     if (changes) {
                                         for (let [[curr_node, new_node]] of changes) {
                                             if (!target.ownerDocument.contains(curr_node)) continue;
@@ -9589,7 +9621,8 @@ xover.modernize = function (targetWindow) {
                                             } else if (curr_node instanceof HTMLElement && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
                                                 continue;
                                             } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.cloneNode().isEqualNode(new_node.cloneNode()) || curr_node.matches('.xo-skip-compare'))) {
-                                                [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value))
+
+                                                [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value));
                                                 curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
                                                 //if (curr_node.matches('.xo-skip-copy-attributes')) /*TODO*/
@@ -9598,18 +9631,9 @@ xover.modernize = function (targetWindow) {
                                             }
                                         }
                                     }
-
-                                    //target.replaceChildren(...documentElement.childNodes)
-                                    ////target = target.replaceWith(documentElement);//target = [target.replace(dom)];
-                                    ////let to_be_replaced = target.querySelector(active_element_selector)
-                                    ////to_be_replaced && to_be_replaced.replaceWith(active_element)
-                                } else {//if (action == "append") {
+                                    if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
+                                } else {
                                     target.append(documentElement);
-                                    ////} else {
-                                    ////    xover.dom.clear(target);
-                                    ////target.append(...dom.cloneNode(true).childNodes);
-                                    //let inserted_nodes = target.append(...documentElement.childNodes);
-                                    //target = inserted_nodes.find(node => node.nodeType == 1)
                                     target = documentElement;
                                 }
                                 target.document = this;
@@ -9711,7 +9735,7 @@ xover.modernize = function (targetWindow) {
             //}
 
             Date.prototype.toISOString = function () {/*Current method ignores z-time offset*/
-                var tzo = -this.getTimezoneOffset(),
+                let tzo = -this.getTimezoneOffset(),
                     dif = tzo >= 0 ? '+' : '-',
                     pad = function (num) {
                         var norm = Math.floor(Math.abs(num));
