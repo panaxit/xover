@@ -614,7 +614,11 @@ xover.initializeElementListeners = function (document = window.document) {
     }))
 }
 
-xover.evaluateReferences = function (context = window.document) {
+xover.evaluateReferences = async function (context = window.document) {
+    if (xover.init.status != 'initialized') {
+        await xover.init();
+    }
+
     context.references = context.references || new Map();
 
     context.select(`.//@*[contains(.,'{$state:')]|.//text()[contains(.,'{$state:')]|.//@*[contains(.,'{$session:')]|.//text()[contains(.,'{$session:')]`).forEach(attr => context.references.set(attr, attr.value))
