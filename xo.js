@@ -728,7 +728,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             if (context.eventHistory.get(handler)) {
                 console.warn(`Event ${event.type} recursed`)
             }
-            context.eventHistory.set(handler, true);
+            context.eventHistory.set(handler, event.type);
             //console.log(`Dispatching event: ${event.type}`)
             //console.log(handler)
             let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [{ event: event, ...event.detail }, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
@@ -748,7 +748,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 event.srcEvent.stopPropagation();
             }
             if (event.propagationStopped) break;
-            context.eventHistory.set(handler, undefined);
+            context.eventHistory.delete(handler);
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -757,12 +757,20 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 xover.listener.shadowbanned = new Map();
 Object.defineProperty(xover.listener, 'shadowban', {
     value: function (name__or_list) {
-        if (xover.init.status != 'initialized') {
-            xover.init();
-        }
         name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
         for (let xpath of name__or_list) {
             xover.listener.shadowbanned.set(xpath, true)
+        }
+    },
+    writable: true, enumerable: false, configurable: false
+});
+
+xover.listener.skip_selectors = new Map();
+Object.defineProperty(xover.listener, 'skipSelector', {
+    value: function (name__or_list) {
+        name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
+        for (let xpath of name__or_list) {
+            xover.listener.skip_selectors.set(xpath, true)
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -1761,7 +1769,7 @@ xover.xml.getDifferences = function (node1, node2) {
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     if (node1 === top.document.activeElement) {
         return [new Map([[node1, node2]])];
-    } else if (xo.xml.createNode(node1).cloneNode().isEqualNode(xo.xml.createNode(node2).cloneNode()) || node1.matches('.xo-skip-compare')) {
+    } else if (xo.xml.createNode(node1).cloneNode().isEqualNode(xo.xml.createNode(node2).cloneNode()) || node1.matches('.xo-skip-compare') || [...xover.listener.skip_selectors.keys()].find(rule => node1.matches(rule))) {
         if (xo.xml.createNode(node1).isEqualNode(xo.xml.createNode(node2))) {
             return null;
         } else if (!node1.matches('.xo-stop-compare') && node1.childNodes.length && node1.childNodes.length == node2.childNodes.length) {
@@ -9382,6 +9390,8 @@ xover.modernize = function (targetWindow) {
                             documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                             //documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
+                            let current_scope = target.getAttribute("xo-scope");
+                            current_scope && documentElement.setAttributeNS(null, "xo-scope", current_scope);
                             documentElement.setAttributeNS(null, "xo-store", documentElement.getAttribute("xo-store") || target.getAttribute("xo-store") || tag);
                             documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet.href);
                             if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`)) {
@@ -9573,9 +9583,8 @@ xover.modernize = function (targetWindow) {
                                             if (active_element === curr_node && active_element instanceof HTMLInputElement) {
                                                 curr_node.classList && curr_node.classList.remove('working')
                                             } else if (curr_node instanceof HTMLElement && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
-                                                //copy attributes? //[...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value))
                                                 continue;
-                                            } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.matches('.xo-skip-compare'))) {
+                                            } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.cloneNode().isEqualNode(new_node.cloneNode()) || curr_node.matches('.xo-skip-compare'))) {
                                                 [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value))
                                                 curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
@@ -9651,10 +9660,10 @@ xover.modernize = function (targetWindow) {
                             if (unbound_elements.length) {
                                 console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
                             }
-                            let invalid_scope = target.querySelectorAll('[xo-store][xo-scope],[xo-stylesheet][xo-scope]');
-                            if (invalid_scope.length) {
-                                console.warn(`There ${invalid_scope.length > 1 ? 'are' : 'is'} ${invalid_scope.length} misconfigured element${invalid_scope.length > 1 ? 's' : ''}`, invalid_scope)
-                            }
+                            //let invalid_scope = target.querySelectorAll('[xo-store][xo-scope],[xo-stylesheet][xo-scope]');
+                            //if (invalid_scope.length) {
+                            //    console.warn(`There ${invalid_scope.length > 1 ? 'are' : 'is'} ${invalid_scope.length} misconfigured element${invalid_scope.length > 1 ? 's' : ''}`, invalid_scope)
+                            //}
 
                             _applyScripts(document, scripts);
                             target.children.toArray().forEach(child => xover.evaluateReferences(child));
