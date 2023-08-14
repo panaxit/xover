@@ -2097,6 +2097,9 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                 if (!new_document) {
                     new_document = xover.sources.defaults[source];
                 }
+                if (!(new_document instanceof Document || new_document instanceof DocumentFragment) && xover.json.isValid(new_document)) {
+                    new_document = xover.xml.fromJSON(new_document);
+                }
                 if (!(new_document instanceof Document || new_document instanceof DocumentFragment)) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
@@ -5567,10 +5570,134 @@ xover.xml.fromJSON = function (json) {
 
     let reformated_xson = raw_xson.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns="" version="1.0" id="raw_json_compatibility"><xsl:variable name="node_name">olsc</xsl:variable><xsl:variable name="translate-o">{[ ,</xsl:variable><xsl:variable name="translate-c">}] </xsl:variable><xsl:template match="/"><xsl:apply-templates></xsl:apply-templates></xsl:template><xsl:template match="*" mode="value"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="o|l|c" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="translate(name(),$node_name,$translate-o)"/><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:value-of select="translate(name(),$node_name,$translate-c)"/><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="s" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:value-of select="' '"/><xsl:if test="$is_string"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="r|f" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text></xsl:text><xsl:apply-templates select="(text()|*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="e" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:text>\</xsl:text><xsl:value-of select="text()"/><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:template><xsl:template match="text()" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="$is_string and not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="$is_string"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="text()[substring(.,1,1)='&quot;']" mode="value"><xsl:param name="is_string" select="false()"></xsl:param><xsl:copy></xsl:copy><xsl:if test="not(substring(.,string-length(.),1)='&quot;')"><xsl:apply-templates select="(following-sibling::text()|following-sibling::*)[1]" mode="value"><xsl:with-param name="is_string" select="true()"></xsl:with-param></xsl:apply-templates></xsl:if></xsl:template><xsl:template match="l/text()"><xsl:element name="v"><xsl:value-of select="."/></xsl:element></xsl:template><xsl:template match="l"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates select="o|text()"></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="o"><xsl:copy><xsl:copy-of select="@*"></xsl:copy-of><xsl:apply-templates select="a"></xsl:apply-templates></xsl:copy></xsl:template><xsl:template match="a"><xsl:variable name="following" select="(following-sibling::text()|following-sibling::*[not(self::f or self::r or self::c or self::s)])[1]"></xsl:variable><xsl:copy><xsl:element name="n"><xsl:value-of select="text()"/></xsl:element><xsl:choose><xsl:when test="$following/self::o or $following/self::l"><xsl:apply-templates select="$following"></xsl:apply-templates></xsl:when><xsl:otherwise><xsl:element name="v"><xsl:apply-templates select="$following" mode="value"></xsl:apply-templates></xsl:element></xsl:otherwise></xsl:choose></xsl:copy></xsl:template></xsl:stylesheet>`));
 
-    let xson = reformated_xson.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xson="http://panax.io/xson" xmlns="" version="1.0" id="PrettifyJSON"><xsl:variable name="invalidChars" select="'$:/@ '"></xsl:variable><xsl:template match="/"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:template><xsl:template match="*" mode="raw-to-xson"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:template><xsl:template match="o|l" mode="raw-to-xson"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:template><xsl:template match="l/v" mode="raw-to-xson"><xsl:element name="xson:item"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template><xsl:template match="a" mode="raw-to-xson"><xsl:variable name="name"><xsl:choose><xsl:when test="number(translate(n,'&quot;',''))=translate(n,'&quot;','')"><xsl:value-of select="concat('@',translate(n,'&quot;',''))"/></xsl:when><xsl:otherwise><xsl:value-of select="translate(translate(n,'&quot;',''),$invalidChars,'@@@@@')"/></xsl:otherwise></xsl:choose></xsl:variable><xsl:element name="{translate($name,'@','_')}"><xsl:if test="contains($name,'@')"><xsl:attribute name="xson:originalName"><xsl:value-of select="translate(n,'&quot;','')"/></xsl:attribute></xsl:if><xsl:if test="l"><xsl:attribute name="xsi:type">xson:array</xsl:attribute></xsl:if><xsl:apply-templates select="*" mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template><xsl:template match="text()" mode="raw-to-xson"><xsl:value-of select="."/></xsl:template><xsl:template match="text()[starts-with(.,'&quot;')]" mode="raw-to-xson"><xsl:value-of select="substring(.,2,string-length(.)-2)"/></xsl:template><xsl:template match="text()[.='null']|*[.='']" mode="raw-to-xson"></xsl:template><xsl:template match="text()[.='null']" mode="raw-to-xson"><xsl:attribute name="xsi:nil">true</xsl:attribute></xsl:template><xsl:template match="n" mode="raw-to-xson"></xsl:template><xsl:template match="a[v='true' or v='false']/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">boolean</xsl:attribute></xsl:template><xsl:template match="e" mode="raw-to-xson"><xsl:value-of select="@v"/></xsl:template><xsl:template match="a[number(v)=v]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">numeric</xsl:attribute></xsl:template><xsl:template match="a[starts-with(v,'&quot;')]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">string</xsl:attribute></xsl:template><xsl:template match="a[l]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">xson:array</xsl:attribute></xsl:template><xsl:template match="a[o]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">xson:object</xsl:attribute></xsl:template><xsl:template match="o[not(preceding-sibling::n)]" mode="raw-to-xson"><xsl:element name="xson:object"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template><xsl:template match="l[not(preceding-sibling::n)]" mode="raw-to-xson"><xsl:element name="xson:array"><xsl:apply-templates mode="raw-to-xson"></xsl:apply-templates></xsl:element></xsl:template></xsl:stylesheet>`));
+    let xson = reformated_xson.transform(xover.xml.createDocument(`<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xson="http://panax.io/xson" xmlns="" version="1.0" id="PrettifyJSON"><xsl:variable name="validChars" select="'abcdefghijklmnñopqrstuvwxyzABCDEFGHIJKLMNÑOPQRSTUVWXYZ0123456789-_'"/><xsl:template match="/"><xsl:apply-templates mode="raw-to-xson"/></xsl:template><xsl:template match="*" mode="raw-to-xson"><xsl:apply-templates mode="raw-to-xson"/></xsl:template><xsl:template match="o|l" mode="raw-to-xson"><xsl:apply-templates mode="raw-to-xson"/></xsl:template><xsl:template match="l/v" mode="raw-to-xson"><xsl:element name="xson:item"><xsl:apply-templates mode="raw-to-xson"/></xsl:element></xsl:template><xsl:template match="a" mode="raw-to-xson"><xsl:variable name="name"><xsl:choose><xsl:when test="number(translate(n,'&quot;',''))=translate(n,'&quot;','')"><xsl:value-of select="concat('@',translate(n,'&quot;',''))"/></xsl:when><xsl:otherwise><xsl:value-of select="translate(translate(n,'&quot;',''),translate(n,$validChars,''),'@@@@@@@@@@@@@@@')"/></xsl:otherwise></xsl:choose></xsl:variable><xsl:element name="{translate($name,'@','_')}"><xsl:if test="contains($name,'@')"><xsl:attribute name="xson:originalName"><xsl:value-of select="translate(n,'&quot;','')"/></xsl:attribute></xsl:if><xsl:if test="l"><xsl:attribute name="xsi:type">xson:array</xsl:attribute></xsl:if><xsl:apply-templates select="*" mode="raw-to-xson"/></xsl:element></xsl:template><xsl:template match="text()" mode="raw-to-xson"><xsl:value-of select="."/></xsl:template><xsl:template match="text()[starts-with(.,'&quot;')]" mode="raw-to-xson"><xsl:value-of select="substring(.,2,string-length(.)-2)"/></xsl:template><xsl:template match="text()[.='null']|*[.='']" mode="raw-to-xson"/><xsl:template match="text()[.='null']" mode="raw-to-xson"><xsl:attribute name="xsi:nil">true</xsl:attribute></xsl:template><xsl:template match="n" mode="raw-to-xson"/><xsl:template match="a[v='true' or v='false']/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">boolean</xsl:attribute></xsl:template><xsl:template match="e" mode="raw-to-xson"><xsl:value-of select="@v"/></xsl:template><xsl:template match="a[number(v)=v]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">numeric</xsl:attribute></xsl:template><xsl:template match="a[starts-with(v,'&quot;')]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">string</xsl:attribute></xsl:template><xsl:template match="a[l]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">xson:array</xsl:attribute></xsl:template><xsl:template match="a[o]/n" mode="raw-to-xson"><xsl:attribute name="xsi:type">xson:object</xsl:attribute></xsl:template><xsl:template match="o[not(preceding-sibling::n)]" mode="raw-to-xson"><xsl:element name="xson:object"><xsl:apply-templates mode="raw-to-xson"/></xsl:element></xsl:template><xsl:template match="l[not(preceding-sibling::n)]" mode="raw-to-xson"><xsl:element name="xson:array"><xsl:apply-templates mode="raw-to-xson"/></xsl:element></xsl:template></xsl:stylesheet>`));
 
     xson.normalizeNamespaces();
     return xson;
+}
+
+xover.xml.toJSON = function (xson) {
+    let xson_to_json = xson.transform(xover.xml.createDocument(`<xsl:stylesheet version="1.0"
+xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:xson="http://panax.io/xson"
+xmlns=""
+>
+  <xsl:template name="escape-quote">
+    <xsl:param name="string" />
+    <xsl:choose>
+      <xsl:when test="contains($string, '&quot;')">
+        <xsl:value-of select="substring-before($string, '&quot;')" />
+        <xsl:text>\"</xsl:text>
+        <xsl:call-template name="escape-quote">
+          <xsl:with-param name="string"
+                          select="substring-after($string, '&quot;')" />
+        </xsl:call-template>
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:value-of select="$string" />
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:template>
+
+  <xsl:template match="/">
+    <result>
+      <xsl:apply-templates mode="toJSON"/>
+    </result>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="*/text()">
+    <xsl:value-of select="."/>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="*[contains(text(),'&quot;')]/text()">
+    <xsl:call-template name="escape-quote">
+      <xsl:with-param name="string">
+        <xsl:value-of select="."/>
+      </xsl:with-param>
+    </xsl:call-template>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="*[number(text())=text()]/text()">
+    <xsl:value-of select="."/>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="*[@xsi:type='xson:raw' or starts-with(text(),'{')]/text()">
+    <xsl:value-of select="."/>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="*">
+    <xsl:if test="position()&gt;1">
+      <xsl:text>,</xsl:text>
+    </xsl:if>
+    <xsl:apply-templates mode="toJSON.name" select="self::*"/>
+    <xsl:apply-templates mode="toJSON"/>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="*[not(*)][not(text())]">
+    <xsl:if test="position()&gt;1">
+      <xsl:text>,</xsl:text>
+    </xsl:if>
+    <xsl:apply-templates mode="toJSON.name" select="self::*"/>
+    <xsl:text>null</xsl:text>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="*[@xsi:type='string']|*[string(@xsi:type)=''][number(text())!=text()]">
+    <xsl:if test="position()&gt;1">
+      <xsl:text>,</xsl:text>
+    </xsl:if>
+    <xsl:apply-templates mode="toJSON.name" select="self::*"/>
+    <xsl:text>"</xsl:text>
+    <xsl:apply-templates mode="toJSON"/>
+    <xsl:text>"</xsl:text>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="xson:array|*[@xsi:type='xson:array']">
+    <xsl:if test="position()&gt;1">
+      <xsl:text>,</xsl:text>
+    </xsl:if>
+    <xsl:apply-templates mode="toJSON.name" select="self::*"/>
+    <xsl:text>[</xsl:text>
+    <xsl:apply-templates mode="toJSON"/>
+    <xsl:text>]</xsl:text>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="xson:object|*[@xsi:type='xson:object']|*[not(xson:*)][string(@xsi:type)=''][*]">
+    <xsl:if test="position()&gt;1">
+      <xsl:text>,</xsl:text>
+    </xsl:if>
+    <xsl:apply-templates mode="toJSON.name" select="self::*"/>
+    <xsl:text>{</xsl:text>
+    <xsl:apply-templates mode="toJSON"/>
+    <xsl:text>}</xsl:text>
+  </xsl:template>
+
+  <xsl:template mode="toJSON" match="xson:item">
+    <xsl:if test="position()&gt;1">
+      <xsl:text>,</xsl:text>
+    </xsl:if>
+    <xsl:apply-templates mode="toJSON.name" select="self::*"/>
+    <xsl:apply-templates mode="toJSON"/>
+  </xsl:template>
+
+  <xsl:template mode="toJSON.name" match="*">
+    <xsl:text>"</xsl:text>
+    <xsl:value-of select="local-name()"/>
+    <xsl:text>":</xsl:text>
+  </xsl:template>
+
+  <xsl:template mode="toJSON.name" match="*[@xson:originalName]">
+    <xsl:text>"</xsl:text>
+    <xsl:value-of select="@xson:originalName"/>
+    <xsl:text>":</xsl:text>
+  </xsl:template>
+
+  <xsl:template mode="toJSON.name" match="text()|xson:*">
+  </xsl:template>
+</xsl:stylesheet>`));
+    let content = xson_to_json.firstElementChild && xson_to_json.firstElementChild.textContent;
+    let json = JSON.parse(content);
+    return json
 }
 
 xover.json.merge = function () {
@@ -9621,7 +9748,6 @@ xover.modernize = function (targetWindow) {
                                             } else if (curr_node instanceof HTMLElement && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
                                                 continue;
                                             } else if (curr_node instanceof HTMLElement && (curr_node.getAttribute("xo-stylesheet") || curr_node.cloneNode().isEqualNode(new_node.cloneNode()) || curr_node.matches('.xo-skip-compare'))) {
-
                                                 [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value));
                                                 curr_node.replaceChildren(...new_node.childNodes)
                                             } else {
