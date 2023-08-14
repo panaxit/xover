@@ -2090,9 +2090,14 @@ xover.Source = function (tag/*source, tag, manifest_key*/) {
                     }
                 }
                 if (new_document instanceof Response) {
-                    let body_element = window.document.createElement("body");
-                    body_element.innerHTML = new_document.body;
-                    new_document = xover.xml.createDocument(body_element);
+                    let body_content = new_document.body;
+                    if (body_content instanceof Document) {
+                        new_document = body_content;
+                    } else {
+                        let body_element = window.document.createElement("body");
+                        body_element.innerHTML = body_content;
+                        new_document = xover.xml.createDocument(body_element);
+                    }
                 }
                 if (!new_document) {
                     new_document = xover.sources.defaults[source];
