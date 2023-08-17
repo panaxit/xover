@@ -3416,13 +3416,12 @@ xover.Response = function (response, request) {
 
             switch (response.bodyType) {
                 case "html":
-                    var parser = new DOMParser();
-                    body = parser.parseFromString(responseContent, 'text/html');
-                    //var frag = window.document.createDocumentFragment(); //make your fragment
-                    //var p = window.document.createElement('p'); //create <p>test</p> DOM node
-                    //p.innerHTML = responseContent;
-                    //frag.append(...p.childNodes);
-                    //body = frag;
+                    body = xover.xml.createFragment(responseContent);
+                    if (body.firstElementChild instanceof HTMLHtmlElement) {
+                        body = document.implementation.createHTMLDocument().firstElementChild.replaceWith(body.firstElementChild)
+                    } else if (body.childNodes.length == 1) {
+                        body = body.firstChild;
+                    }
                     Object.defineProperty(response, 'json', {
                         value: null
                     });
@@ -4186,7 +4185,7 @@ xover.xml.tryParse = function (input) {
 xover.xml.createFragment = function (xml_string) {
     const xmlDoc = new DOMParser().parseFromString("<root/>", 'text/xml');
     const fragment = xmlDoc.createDocumentFragment();
-    let p = xmlDoc.createElement('p');
+    let p = top.document.createElement('p');
     p.innerHTML = xml_string;
     fragment.append(...p.childNodes);
     return fragment;
