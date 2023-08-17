@@ -3416,11 +3416,15 @@ xover.Response = function (response, request) {
 
             switch (response.bodyType) {
                 case "html":
-                    body = xover.xml.createFragment(responseContent);
-                    if (body.firstElementChild instanceof HTMLHtmlElement) {
-                        body = document.implementation.createHTMLDocument().firstElementChild.replaceWith(body.firstElementChild)
-                    } else if (body.childNodes.length == 1) {
-                        body = body.firstChild;
+                    let html_doc = new DOMParser().parseFromString(responseContent, 'text/html');
+                    if (!html_doc.head.childNodes.length) {
+                        if (html_doc.body.childNodes.length == 1) {
+                            body = html_doc.body.firstChild;
+                        } else {
+                            body = new DocumentFragment().append(...html_doc.body.childNodes);
+                        }
+                    } else {
+                        body = html_doc
                     }
                     Object.defineProperty(response, 'json', {
                         value: null
@@ -4387,7 +4391,7 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
      indent="yes" standalone="no"/>
 
   <xsl:template match="xo:message">
-    <dialog open="open" style="width: 450px; height: 200px; margin: 0 auto; top: 25vh; padding: 1rem; overflow: auto;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
+    <dialog open="open" style="width: 450px; height: 200px; margin: 0 auto; top: 25vh; padding: 1rem; overflow: auto; position: fixed;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
   </xsl:template>
 
   <xsl:template match="html:*"><xsl:copy-of select="."/></xsl:template>
@@ -7602,7 +7606,7 @@ xover.modernize = function (targetWindow) {
                                 if (new_document instanceof Document || new_document instanceof DocumentFragment) {
                                     __document.replaceBy(new_document); //transfers all contents
                                 } else {
-                                    __document.append(new_document);
+                                    __document.replaceContent(new_document);
                                 }
                                 resolve(__document);
                             }).catch(async (e) => {
@@ -8832,6 +8836,15 @@ xover.modernize = function (targetWindow) {
                 }
             }
 
+            Node.prototype.replaceContent = function (...nodes) {
+                while (this.firstChild) {
+                    this.firstChild.remove();
+                }
+                if (nodes && nodes.length) {
+                    this.appendChild(...nodes);
+                }
+            };
+
             if (typeof Node.prototype.replaceChildren !== 'function') {
                 Node.prototype.replaceChildren = function (...nodes) {
                     while (this.firstChild) {
@@ -8869,7 +8882,7 @@ xover.modernize = function (targetWindow) {
                         this.removeChild(this.lastChild);
                     }
                     if (new_document.childNodes) {
-                        for (node of new_document.childNodes) {
+                        for (let node of new_document.childNodes) {
                             if (node.nodeType === Node.DOCUMENT_TYPE_NODE) {
                                 this.appendChild(node)
                             }
