@@ -9420,9 +9420,13 @@ xover.modernize = function (targetWindow) {
                             return document.render();
                         }
                     } else if (this.hasAttribute("xo-store")) {
-                        //return target_store.render();
                         let target_document = target_store && target_store.document;
-                        return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/html', target: selector })) || null;
+                        if (!target_document.documentElement) await target_document.fetch();
+                        if (target_document instanceof HTMLDocument) {
+                            return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/html', target: selector })) || null;
+                        } else {
+                            return target_store.render()
+                        }
                     }
                 }).finally(async () => {
                     this._render_manager = undefined;
@@ -9804,6 +9808,7 @@ xover.modernize = function (targetWindow) {
                                 let coordinates = active_element.scrollPosition;
                                 for (let [[curr_node, new_node]] of changes) {
                                     if (!target.ownerDocument.contains(curr_node)) continue;
+                                    if (curr_node.contains(active_element.parentNode)) await xover.delay(250);
                                     if (!curr_node.parentNode /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element) || */) continue;
                                     if (active_element === curr_node && active_element instanceof HTMLInputElement) {
                                         curr_node.classList && curr_node.classList.remove('working')
