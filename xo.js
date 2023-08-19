@@ -9424,7 +9424,7 @@ xover.modernize = function (targetWindow) {
                     } else if (this.hasAttribute("xo-store")) {
                         let target_document = target_store && target_store.document;
                         if (!target_document.documentElement) await target_document.fetch();
-                        if (target_document instanceof HTMLDocument) {
+                        if (target_document.firstElementChild instanceof HTMLElement) {
                             return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/html', target: selector })) || null;
                         } else {
                             return target_store.render()
