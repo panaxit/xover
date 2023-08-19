@@ -1771,7 +1771,9 @@ xover.xml = {};
 xover.xml.getDifferences = function (node1, node2) {
     node1.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
-    if (node1 === top.document.activeElement) {
+    if (node1.matches('.xo-static')) {
+        return null;
+    } else if (node1 === top.document.activeElement) {
         return [new Map([[node1, node2]])];
     } else if (xo.xml.createNode(node1).cloneNode().isEqualNode(xo.xml.createNode(node2).cloneNode()) || node1.matches('.xo-skip-compare') || [...xover.listener.skip_selectors.keys()].find(rule => node1.matches(rule))) {
         if (xo.xml.createNode(node1).isEqualNode(xo.xml.createNode(node2))) {
@@ -3348,7 +3350,7 @@ xover.Response = function (response, request) {
     Object.defineProperty(self, 'processBody', {
         value: async function () {
             //if (request && request.initiator) {
-            //    window.document.querySelectorAll(`[xo-store="${request.initiator.tag}"] .working`).forEach(el => el.classList.remove('working'));
+            //    window.document.querySelectorAll(`[xo-store="${request.initiator.tag}"] .xo-working`).forEach(el => el.classList.remove('working'));
             //    request.initiator.state.loading = undefined;
             //}
 
@@ -3813,7 +3815,7 @@ xover.Request = function (request, settings = {}) {
     //var srcElement = event && event.target;
     //if (srcElement instanceof HTMLElement) {
     //    let initiator_button = srcElement.closest('button, .btn')
-    //    initiator_button && initiator_button.classList.add("working");
+    //    initiator_button && initiator_button.classList.add("xo-working");
     //    //if (event && event.target && event.target.store && event.target.store.documentElement.selectSingleNode('self::xo:prompt')) { //TODO: Cambiar el método para identificar el initiator
     //    //    req.initiator = event && event.target && event.target.store;
     //    //}
@@ -6945,7 +6947,7 @@ xover.modernize = function (targetWindow) {
                         aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         //}
                     } else {
-                        if (xover.session.debug) console.warn(e);
+                        //if (xover.session.debug) console.warn(e);
                         aItems = {};
                     }
                 }
@@ -9736,10 +9738,15 @@ xover.modernize = function (targetWindow) {
                                 continue;
                             }
                             target.disconnected = false;
+                            data.disconnected = false;
                             target.tag = data.tag;
                             let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
                             post_render_scripts.forEach(script => script_wrapper.append(script));
 
+                            let active_element = document.activeElement;
+                            if (target.contains(active_element)) {
+                                xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
+                            }
                             let changes = xover.xml.getDifferences(target, documentElement);
                             if (!changes) continue;
                             let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: documentElement.cloneNode(true), changes }, data);
@@ -9802,17 +9809,14 @@ xover.modernize = function (targetWindow) {
                                     return cloned;
                                 });
 
-                                let active_element = document.activeElement;
-                                //let active_element_selector = active_element.buildSelector({ ignore: ['.working'] });
+                                //let active_element_selector = active_element.buildSelector({ ignore: ['.xo-working'] });
                                 //if (stylesheet_href == target.getAttribute('xo-stylesheet')) {
                                 let coordinates = active_element.scrollPosition;
                                 for (let [[curr_node, new_node]] of changes) {
                                     if (!target.ownerDocument.contains(curr_node)) continue;
                                     if (curr_node.contains(active_element.parentNode)) await xover.delay(250);
                                     if (!curr_node.parentNode /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element) || */) continue;
-                                    if (active_element === curr_node && active_element instanceof HTMLInputElement) {
-                                        curr_node.classList && curr_node.classList.remove('working')
-                                    } else if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
+                                    if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
                                         continue;
                                     } else if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && !curr_node.matches(".xo-swap") && curr_node.constructor !== new_node.constructor) {
                                         if (target === curr_node) target = new_node;
