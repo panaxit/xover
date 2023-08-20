@@ -948,6 +948,7 @@ xover.mimeTypes["map"] = "text/plain"
 xover.mimeTypes["pdf"] = "application/pdf"
 xover.mimeTypes["png"] = "image/png"
 xover.mimeTypes["resx"] = "text/xml,application/xml,application/octet-stream"
+xover.mimeTypes["svg"] = "image/svg+xml,application/svg+xml"
 xover.mimeTypes["text"] = "text/plain"
 xover.mimeTypes["xml"] = "text/xml,application/xslt+xml"
 xover.mimeTypes["xsl"] = "text/xml,text/xsl,application/xslt+xml"
@@ -2004,7 +2005,7 @@ xover.Source = function (tag) {
                 if (!this.tag) {
                     this.tag = self.tag;
                 }
-                let settings = Object.entries(this.settings || {});
+                let settings = Object.entries(this.settings || self.settings || {});
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint] || [];
                     parameters = parameters.constructor === {}.constructor && Object.entries(parameters) || parameters
@@ -2077,7 +2078,7 @@ xover.Source = function (tag) {
                     try {
                         this["settings"].headers = new Headers(this["settings"].headers || {});
                         let headers = this["settings"].headers;
-                        headers.set("accept", headers.get("accept") || xover.mimeTypes[source.substring(source.lastIndexOf(".") + 1)]);
+                        headers.set("accept", headers.get("accept") || xover.mimeTypes[source.substring(source.lastIndexOf(".") + 1)] || "*/*");
                         let accept_header = headers.get("accept");
                         if (accept_header && (accept_header.indexOf('xml') != -1 || accept_header.indexOf('xsd') != -1 || accept_header.indexOf('xsl') != -1)) {
                             new_document = await xover.fetch.xml.apply(this, [source, this["settings"]]);
@@ -3376,7 +3377,7 @@ xover.Response = function (response, request) {
                 } else if (contentType.toLowerCase().indexOf("json") != -1) {
                     responseContent = await response.json();
                     body = JSON.stringify(responseContent);
-                } else if (contentType.toLowerCase().split("/")[0].includes("image", "video", "audio")) {
+                } else if ((request.headers.get("accept").split(/,|\s+/ig) || [contentType]).includes(contentType) && contentType.toLowerCase().split("/")[0].includes("image", "video", "audio")) {
                     responseContent = await response.blob();
                 } else {
                     responseContent = await response.text();
@@ -9424,7 +9425,7 @@ xover.modernize = function (targetWindow) {
                     } else if (this.hasAttribute("xo-store")) {
                         let target_document = target_store && target_store.document;
                         if (!target_document.documentElement) await target_document.fetch();
-                        if (target_document.firstElementChild instanceof HTMLElement) {
+                        if (target_document.firstElementChild instanceof HTMLElement || target_document.firstElementChild instanceof SVGElement) {
                             return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/html', target: selector })) || null;
                         } else {
                             return target_store.render()
@@ -9582,7 +9583,7 @@ xover.modernize = function (targetWindow) {
                             xover.site.renderingTo = target;
                             let current_cursor_style = (target.style || {}).cursor;
                             //try { current_cursor_style = 'wait' } catch (e) { console.log(e) }
-                            if (!(data.firstElementChild instanceof HTMLElement) && (data.documentElement || data) instanceof Element) {
+                            if (!(data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) && (data.documentElement || data) instanceof Element) {
                                 original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:store", tag);
                                 original_setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
                             }
@@ -9592,7 +9593,7 @@ xover.modernize = function (targetWindow) {
                             if (xsl) {
                                 data.tag = '#' + xsl.href.split(/[\?#]/)[0];
                                 dom = await data.transform(xsl);
-                            } else if (data.firstElementChild instanceof HTMLElement) {
+                            } else if (data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) {
                                 dom = this.cloneNode(true);
                             }
 
