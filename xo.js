@@ -2310,13 +2310,23 @@ xover.dom.createDialog = function (message) {
     if (!dialog) {
         let frag = window.document.createDocumentFragment();
         let p = window.document.createElement('p');
-        p.innerHTML = `<dialog id="${dialog_id}" class="xover-component"><form method="dialog" onsubmit="closest('dialog').remove()"><section></section><menu><button type="submit">Close</button></menu></form></dialog>`;
+        p.innerHTML = `<dialog id="${dialog_id}" class="xover-component"><form method="dialog" onsubmit="closest('dialog').remove()" style="width:100%; height:100%"><section></section><menu><button type="submit">Close</button></menu></form></dialog>`;
         frag.append(...p.childNodes);
         window.document.body.appendChild(frag);
         dialog = document.querySelector(`#${dialog_id}`);
     }
     dialog.querySelector("section").innerHTML = '';
-    if (message.documentElement instanceof HTMLElement) {
+    if (message.documentElement instanceof HTMLHtmlElement) {
+        const blob = new Blob([message], { type: 'text/html' });
+        const blobUrl = URL.createObjectURL(blob);
+        const iframe = document.createElement('iframe');
+        iframe.src = blobUrl;
+        iframe.onload = function () {
+            iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
+            iframe.style.width = iframe.contentWindow.document.body.scrollWidth + 'px';
+        }
+        message=iframe;
+    } else if (message.documentElement instanceof HTMLElement) {
         let frag = window.document.createDocumentFragment();
         let p = window.document.createElement('p');
         p.innerHTML = message.documentElement.outerHTML;
