@@ -4195,7 +4195,7 @@ xover.xml.createFragment = function (xml_string) {
     const xmlDoc = new DOMParser().parseFromString("<root/>", 'text/xml');
     const fragment = xmlDoc.createDocumentFragment();
     let p = top.document.createElement('p');
-    p.innerHTML = xml_string;
+    p.innerHTML = xml_string || "";
     fragment.append(...p.childNodes);
     return fragment;
 }
@@ -6895,18 +6895,19 @@ xover.modernize = function (targetWindow) {
                 if (this instanceof DocumentFragment) {
                     let children = new DocumentFragment();
                     let matches = [];
-                    let original_root = this.ownerDocument.firstChild;
+                    const temp_doc = new DOMParser().parseFromString("<root/>", 'text/xml');
+                    let original_root = temp_doc.firstElementChild;
                     for (let child of [...this.childNodes]) {
-                        let target = this.ownerDocument;
+                        let target = temp_doc;
                         if ([3].includes(child.nodeType)) {
-                            this.ownerDocument.firstChild.replaceChildren(child);
-                            target = this.ownerDocument.firstChild;
+                            temp_doc.firstElementChild.replaceChildren(child);
+                            target = temp_doc.firstElementChild;
                         } else {
-                            this.ownerDocument.firstChild.replaceWith(child);
+                            temp_doc.firstElementChild.replaceWith(child);
                         }
                         matches = matches.concat(target.selectNodes(xpath));
                         children.appendChild(child);
-                        if (!this.ownerDocument.firstChild) this.ownerDocument.append(original_root);
+                        if (!temp_doc.firstChild) temp_doc.append(original_root);
                     }
                     this.append(...children.childNodes)
                     return matches;
@@ -9590,6 +9591,7 @@ xover.modernize = function (targetWindow) {
                             if (xsl) {
                                 data.tag = '#' + xsl.href.split(/[\?#]/)[0];
                                 dom = await data.transform(xsl);
+                                dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']`).remove()
                             } else if (data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) {
                                 dom = this.cloneNode(true);
                             }
