@@ -9688,7 +9688,7 @@ xover.modernize = function (targetWindow) {
 
                             let _applyScripts = async function (targetDocument, scripts = []) {
                                 for (let script of scripts) {
-                                    if (script.hasAttribute("defer")) await xo.delay(1);
+                                    if (script.hasAttribute("async")) await xo.delay(1);
                                     if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
                                         if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
                                             var new_element = targetDocument.createElement(script.tagName);
@@ -9859,7 +9859,7 @@ xover.modernize = function (targetWindow) {
 
                                 target.document = this;
                                 target.context = data;
-                                xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
+                                _applyScripts(document, post_render_scripts);
                                 if (!xsl) {
                                     if (!target.observer) {
                                         const mutation_observer = new MutationObserver(async (mutationList) => {
