@@ -9859,7 +9859,7 @@ xover.modernize = function (targetWindow) {
 
                                 target.document = this;
                                 target.context = data;
-                                _applyScripts(document, post_render_scripts);
+                                xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
                                 if (!xsl) {
                                     if (!target.observer) {
                                         const mutation_observer = new MutationObserver(async (mutationList) => {
