@@ -2322,8 +2322,8 @@ xover.dom.createDialog = function (message) {
         const iframe = document.createElement('iframe');
         iframe.src = blobUrl;
         iframe.onload = function () {
-            iframe.style.height = iframe.contentWindow.document.body.scrollHeight + 'px';
-            iframe.style.width = iframe.contentWindow.document.body.scrollWidth + 'px';
+            iframe.style.height = iframe.contentDocument.firstElementChild.scrollHeight + 'px';
+            iframe.style.width = iframe.contentDocument.firstElementChild.scrollWidth + 'px';
         }
         message=iframe;
     } else if (message.documentElement instanceof HTMLElement) {
