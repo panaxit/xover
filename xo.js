@@ -9608,7 +9608,7 @@ xover.modernize = function (targetWindow) {
                             if (xsl) {
                                 data.tag = '#' + xsl.href.split(/[\?#]/)[0];
                                 dom = await data.transform(xsl);
-                                dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']`).remove()
+                                dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove()
                             } else if (data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) {
                                 dom = this.cloneNode(true);
                             }
@@ -9686,8 +9686,9 @@ xover.modernize = function (targetWindow) {
                             //    data = dom;
                             //}
 
-                            let _applyScripts = function (targetDocument, scripts = []) {
+                            let _applyScripts = async function (targetDocument, scripts = []) {
                                 for (let script of scripts) {
+                                    if (script.hasAttribute("defer")) await xo.delay(1);
                                     if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
                                         if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
                                             var new_element = targetDocument.createElement(script.tagName);
