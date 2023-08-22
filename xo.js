@@ -3359,7 +3359,11 @@ xover.Response = function (response, request) {
             //    }
             //} else {
             let response = this.json || this.document || this.body || `${this.statusText}: ${file_name}`;
-            response.render && response.render();
+            if (this.status == 404 && decodeURI(file_name).indexOf("{$") != -1) {
+                console.warn(`Couldn't fetch: ${file_name}`)
+            } else {
+                response.render && response.render();
+            }
             //}
         }
     });
