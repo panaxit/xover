@@ -4951,7 +4951,7 @@ xover.Store = function (xml, ...args) {
                 if (event && event.type == 'change' && event.srcElement.preventChangeEvent) {
                     event.srcElement.preventChangeEvent = undefined;
                 }
-                let sections_to_render = xover.site.sections.filter(section => section.store === self && !section.get("xo-static"));
+                let sections_to_render = xover.site.sections.filter(section => section.store === self && !(section.matches(".xo-static") || !(section.getAttribute("xo-stylesheet") || "").indexOf("${") != -1));
                 //let sections_to_render = new Map();
                 //for (let section of xover.site.sections.filter(section => section.store === self && !section.get("xo-static"))) {
                 //    //if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section == section) {
