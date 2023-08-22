@@ -2305,7 +2305,7 @@ xover.dom.alert = async function (message) {
 
 xover.dom.createDialog = function (message) {
     if (!message) { return null }
-    if (xover.messages.get(xover.messages)) return;
+    if (xover.messages.get(message)) return;
     let dialog_id = `dialog_${xover.cryptography.generateUUID()}`
     let dialog = document.querySelector(`#${dialog_id}`);
     if (!dialog) {
