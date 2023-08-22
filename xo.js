@@ -1041,7 +1041,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     writable: true, enumerable: false, configurable: false
 });
 xover.manifest = new xover.Manifest();
-xover.messages = {};
+xover.messages = new Map();
 xover.server = new Proxy({}, {
     get: function (self, key) {
         if (key in self) {
@@ -2305,6 +2305,7 @@ xover.dom.alert = async function (message) {
 
 xover.dom.createDialog = function (message) {
     if (!message) { return null }
+    if (xover.messages.get(xover.messages)) return;
     let dialog_id = `dialog_${xover.cryptography.generateUUID()}`
     let dialog = document.querySelector(`#${dialog_id}`);
     if (!dialog) {
@@ -2341,6 +2342,7 @@ xover.dom.createDialog = function (message) {
     dialog.querySelector("section").append(message);
     document.querySelector(`#${dialog_id}`);
     dialog.showModal();
+    xover.messages.set(message, dialog);
     return dialog;
 }
 
