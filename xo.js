@@ -2327,7 +2327,7 @@ xover.dom.createDialog = function (message) {
             iframe.style.height = (iframe.contentDocument.firstElementChild.scrollHeight + 0) + 'px';
             iframe.style.width = (iframe.contentDocument.firstElementChild.scrollWidth + 100) + 'px';
         }
-        message=iframe;
+        message = iframe;
     } else if (message.documentElement instanceof HTMLElement) {
         let frag = window.document.createDocumentFragment();
         let p = window.document.createElement('p');
@@ -9688,6 +9688,7 @@ xover.modernize = function (targetWindow) {
 
                             let _applyScripts = async function (targetDocument, scripts = []) {
                                 for (let script of scripts) {
+                                    let promise;
                                     if (script.hasAttribute("async")) await xo.delay(1);
                                     if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
                                         if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
@@ -9696,11 +9697,14 @@ xover.modernize = function (targetWindow) {
                                             let on_load = script.textContent;
 
                                             if (new_element.tagName.toLowerCase() == "script") {
-                                                new_element.onload = function () {
-                                                    on_load && (function () { return eval.apply(this, arguments) }(on_load))
-                                                };
+                                                promise = new Promise(async (resolve, reject) => {
+                                                    new_element.onload = function () {
+                                                        on_load && (function () { return eval.apply(this, arguments) }(on_load))
+                                                        resolve()
+                                                    };
+                                                });
+                                                targetDocument.head.appendChild(new_element);
                                             }
-                                            targetDocument.head.appendChild(new_element);
                                         }
                                     } else if (!script.getAttribute("src") && script.textContent) {
                                         script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
@@ -9731,6 +9735,7 @@ xover.modernize = function (targetWindow) {
                                     } else {
                                         throw (new Error(`A script couldn't be loaded.`));
                                     }
+                                    if (script.hasAttribute("defer")) await promise;
                                 }
                             }
                             //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
@@ -9859,7 +9864,7 @@ xover.modernize = function (targetWindow) {
 
                                 target.document = this;
                                 target.context = data;
-                                _applyScripts(document, post_render_scripts);
+                                xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
                                 if (!xsl) {
                                     if (!target.observer) {
                                         const mutation_observer = new MutationObserver(async (mutationList) => {
