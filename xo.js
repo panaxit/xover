@@ -2305,7 +2305,8 @@ xover.dom.alert = async function (message) {
 
 xover.dom.createDialog = function (message) {
     if (!message) { return null }
-    if (xover.messages.get(message)) return;
+    let original_message = message;
+    if (xover.messages.get(original_message)) return;
     let dialog_id = `dialog_${xover.cryptography.generateUUID()}`
     let dialog = document.querySelector(`#${dialog_id}`);
     if (!dialog) {
@@ -2342,7 +2343,7 @@ xover.dom.createDialog = function (message) {
     dialog.querySelector("section").append(message);
     document.querySelector(`#${dialog_id}`);
     dialog.showModal();
-    xover.messages.set(message, dialog);
+    xover.messages.set(original_message, dialog);
     return dialog;
 }
 
