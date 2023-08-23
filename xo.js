@@ -9839,7 +9839,7 @@ xover.modernize = function (targetWindow) {
                                 target.observer && target.observer.disconnect();
                                 for (let [[curr_node, new_node]] of changes) {
                                     if (!target.ownerDocument.contains(curr_node)) continue;
-                                    if (curr_node.contains(active_element.parentNode)) await xover.delay(1);
+                                    if (curr_node.contains(active_element.parentNode)) await xover.delay(100);
                                     if (!curr_node.parentNode /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element) || */) continue;
                                     if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
                                         continue;
