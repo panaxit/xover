@@ -7889,7 +7889,7 @@ xover.modernize = function (targetWindow) {
                         //let ref = this.parentElement && this.closest && this || this.parentNode || this
                         let ref = this instanceof Element ? this : this.parentNode;
                         let node_by_id = !ref.hasAttribute("xo-scope") && store.selectFirst(`//*[@xo:id="${ref.id}"]`);
-                        let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("[xo-scope]")].map(el => [el, store.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`)]).pop();
+                        let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("[xo-scope]")].filter(el => el).map(el => [el, store.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`)]).pop() || [];
                         let attribute = ref.closest("[xo-attribute]");
                         if (!dom_scope) {
                             this.scopeNode = null;
