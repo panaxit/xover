@@ -300,13 +300,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -722,6 +722,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         if (xover.init.status != 'initialized') {
             await xover.init();
         }
+        if (xover.listener.off) return;
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
         let context = event.context || event.target;
         if (typeof (context) == 'string') return;
@@ -760,9 +761,9 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 
 xover.listener.shadowbanned = new Map();
 Object.defineProperty(xover.listener, 'shadowban', {
-    value: function (name__or_list) {
-        name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
-        for (let xpath of name__or_list) {
+    value: function (name_or_list) {
+        name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
+        for (let xpath of name_or_list) {
             xover.listener.shadowbanned.set(xpath, true)
         }
     },
@@ -771,22 +772,47 @@ Object.defineProperty(xover.listener, 'shadowban', {
 
 xover.listener.skip_selectors = new Map();
 Object.defineProperty(xover.listener, 'skipSelector', {
-    value: function (name__or_list) {
-        name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
-        for (let xpath of name__or_list) {
+    value: function (name_or_list) {
+        name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
+        for (let xpath of name_or_list) {
             xover.listener.skip_selectors.set(xpath, true)
         }
     },
     writable: true, enumerable: false, configurable: false
 });
 
+xover.listener.disabled = new Map();
+Object.defineProperty(xover.listener, 'off', {
+    get: function () {
+        if (event) {
+            return xover.listener.disabled.get(event.type) || xover.listener.disabled.get('*')
+        } else {
+            return function (name_or_list) {
+                if (!name_or_list) name_or_list = '*';
+                name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
+                for (let name of name_or_list) {
+                    xover.listener.disabled.set(name, true)
+                }
+            }
+        }
+    },
+    enumerable: false, configurable: false
+});
+
 Object.defineProperty(xover.listener, 'on', {
-    value: function (name__or_list, handler, options = {}) {
+    value: function (name_or_list, handler, options = {}) {
         if (xover.init.status != 'initialized') {
             xover.init();
         }
-        name__or_list = name__or_list instanceof Array && name__or_list || [name__or_list];
-        for (let event_name of name__or_list) {
+        if (!handler) {
+            if (!name_or_list) name_or_list = '*';
+            for (let name of name_or_list) {
+                xover.listener.disabled.delete(name)
+            }
+            return;
+        }
+        name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
+        for (let event_name of name_or_list) {
             let [scoped_event, ...predicate] = event_name.split(/::/);
             predicate = predicate.join("::");
             [base_event, scope] = scoped_event.split(/:/).reverse();
@@ -1432,9 +1458,9 @@ Object.defineProperty(xover.site, 'state', {
                 self[key] = input;
                 if (old_value != input && key[0] != '#') {
                     window.top.dispatchEvent(new xover.listener.Event(`change::state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
+                    xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
+                    xover.evaluateReferences()
                 }
-                xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
-                xover.evaluateReferences()
             }
         });
     }
@@ -5173,6 +5199,12 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(this, 'load', {
         value: async function (input) {
             throw (new Error("Load method is deprecated"));
+        }
+    });
+
+    Object.defineProperty(this, 'disconnect', {
+        value: async function () {
+            self.observer.disconnect()
         }
     });
 
