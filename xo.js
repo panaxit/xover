@@ -8813,7 +8813,7 @@ xover.modernize = function (targetWindow) {
                 return !!this.getAttributeNode(attribute_name);
             }
 
-            Attr.prototype.toggle = function (value, else_value = '') {
+            Attr.prototype.toggle = function (value, else_value) {
                 value = typeof value === 'function' && value.call(this, this.value) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                 //if (this.value != value) {
                 this.parentNode.store && this.parentNode.store.render();
