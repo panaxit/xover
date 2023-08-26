@@ -759,12 +759,12 @@ Object.defineProperty(xover.listener, 'dispatcher', {
     writable: true, enumerable: false, configurable: false
 });
 
-xover.listener.shadowbanned = new Map();
-Object.defineProperty(xover.listener, 'shadowban', {
+xover.listener.silenced = new Map();
+Object.defineProperty(xover.listener, 'silence', {
     value: function (name_or_list) {
         name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
         for (let xpath of name_or_list) {
-            xover.listener.shadowbanned.set(xpath, true)
+            xover.listener.silenced.set(xpath, true)
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -2133,8 +2133,6 @@ xover.Source = function (tag) {
                 }
                 if (!(new_document instanceof Node)) {
                     return reject(`No se pudo obtener la fuente de datos ${tag}`);
-                } else {
-                    new_document.seed();
                 }
                 this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag, settings: this.settings }, self));
@@ -4968,7 +4966,7 @@ xover.Store = function (xml, ...args) {
             }
 
             const callback = (mutationList) => {
-                mutationList = mutationList.filter(mutation => !mutation.target.shadowbanned && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
+                mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
                 if (event && event.type == 'input') {
@@ -8290,10 +8288,10 @@ xover.modernize = function (targetWindow) {
                 })
             }
 
-            if (!Node.prototype.hasOwnProperty('shadowbanned')) {
-                Object.defineProperty(Node.prototype, 'shadowbanned', {
+            if (!Node.prototype.hasOwnProperty('silenced')) {
+                Object.defineProperty(Node.prototype, 'silenced', {
                     get: function () {
-                        return !![...xo.listener.shadowbanned].find(([xpath, enabled]) => enabled && this.matches(xpath))
+                        return !![...xo.listener.silenced].find(([xpath, enabled]) => enabled && this.matches(xpath))
                     }
                 })
             }
@@ -9363,6 +9361,7 @@ xover.modernize = function (targetWindow) {
                                 window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: listeners, document: xml, store: xml.store, stylesheet: xsl }, this));
                                 xml = this.cloneNode(true);
                                 let timer_id = `${xsl.href || "Transform"}-${Date.now()}`;
+                                performance.mark(`${timer_id} - Transform start`);
                                 if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                     console.time(timer_id);
                                 }
@@ -9389,6 +9388,7 @@ xover.modernize = function (targetWindow) {
                                 if ((xover.session.debug || {})["transform"] || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                     console.timeEnd(timer_id);
                                 }
+                                performance.mark(`${timer_id} - Transform end`);
                             } catch (e) {
                                 return Promise.reject(e)
                                 //let default_document = xover.sources.defaults[(xsl.selectSingleNode("//xsl:import") || document.createElement('p')).getAttribute("href")];
@@ -9879,7 +9879,7 @@ xover.modernize = function (targetWindow) {
                                         if (target === curr_node) target = new_node;
                                         curr_node.append(new_node);
                                     } else if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && !curr_node.matches(".xo-swap") && (curr_node.constructor !== new_node.constructor || curr_node.getAttribute("xo-stylesheet") || curr_node.cloneNode().isEqualNode(new_node.cloneNode()) || curr_node.matches('.xo-skip-compare'))) {
-                                        [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value));
+                                        [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value, {silent:true}));
                                         curr_node.replaceChildren(...new_node.childNodes)
                                     } else {
                                         //if (curr_node.matches('.xo-skip-copy-attributes')) /*TODO*/
@@ -9901,7 +9901,7 @@ xover.modernize = function (targetWindow) {
                                     if (!target.observer) {
                                         const mutation_observer = new MutationObserver(async (mutationList) => {
                                             await xover.delay(100); /*Added to wait for all changes to apply*/
-                                            mutationList = mutationList.filter(mutation => !mutation.target.shadowbanned && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
+                                            mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
                                             if (!mutationList.length) return;
                                             //for (mutation of mutationList) {
                                             //    for (removed of mutation.removedNodes) {
@@ -10128,7 +10128,7 @@ xover.listener.on(['change::*[xo-attribute]'], function () {
     let scope = this.scope;
     if (!scope) return;
     let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : srcElement.value;
+    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : (srcElement instanceof HTMLSelectElement ? srcElement.options[srcElement.selectedIndex].getAttribute("value") : srcElement.value);
     //if (srcElement.defaultPrevented) {
 
     //}
