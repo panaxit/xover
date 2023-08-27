@@ -688,7 +688,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         node = node instanceof Document && node.documentElement || node;
     }
     if (context) {
-        _event.detail["tag"] = _event.detail["tag"] || context.tag;
+        _event.detail["tag"] = _event.detail["tag"] || context.tag || typeof(context) === 'string' && context;
     }
     //if (_event.detail["store"]) {
     //    _event.detail["tag"] = _event.detail["tag"] || _event.detail["store"].tag;
@@ -705,10 +705,11 @@ Object.defineProperty(xover.listener, 'matches', {
         event_type = scoped_event;
 
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
-        let tag = context.tag || '';
+        let tag = context.tag || (event.detail || {}).tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            for (let [, handler] of ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat()).filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+            let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
+            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(handler.toString(), handler);
             }
         }
@@ -725,17 +726,15 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         if (xover.listener.off) return;
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
         let context = event.context || event.target;
-        if (typeof (context) == 'string') return;
+        //if (typeof (context) == 'string') return;
         let fns = xover.listener.matches(context, event.type);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
-        context.eventHistory = context.eventHistory || new Map();
+        //context.eventHistory = context.eventHistory || new Map();
         for (let handler of [...handlers.values()].reverse()) {
-            if (context.eventHistory.get(handler)) {
-                console.warn(`Event ${event.type} recursed`)
-            }
-            context.eventHistory.set(handler, event.type);
-            //console.log(`Dispatching event: ${event.type}`)
-            //console.log(handler)
+            //if (context.eventHistory.get(handler)) {
+            //    console.warn(`Event ${event.type} recursed`)
+            //}
+            //context.eventHistory.set(handler, event.type);
             let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [{ event: event, ...event.detail }, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 event.returnValue = returnValue;
@@ -753,7 +752,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 event.srcEvent.stopPropagation();
             }
             if (event.propagationStopped) break;
-            context.eventHistory.delete(handler);
+            //context.eventHistory.delete(handler);
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -10177,7 +10176,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     try {
         let reason = event.message || event.reason;
         if (!reason) return;
-        if (!(typeof (reason) == 'string' || reason instanceof Error)) {
+        if (!(/*typeof (reason) == 'string' || */reason instanceof Error)) {
             let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
             window.top.dispatchEvent(unhandledrejection_event);
             if (unhandledrejection_event.defaultPrevented) return;
