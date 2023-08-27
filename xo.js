@@ -300,13 +300,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -1493,16 +1493,16 @@ Object.defineProperty(xover.site, 'sections', {
                 let active_section = active_element.closest(`[xo-stylesheet]`) || this.filter(section => section.store.tag == xover.site.active).find(section => xo.stores.seed.stylesheets.map(stylesheet => stylesheet.href).includes(section.getAttribute("xo-stylesheet")));
                 return active_section;
             }
-        })
+        });
+
+        Object.defineProperty(sections, 'render', {
+            value() {
+                this.forEach(section => section.render())
+            }, writable: false, configurable: false, enumerable: false
+        });
         return sections;
     }
     , enumerable: false
-});
-
-Object.defineProperty(xover.site.sections, 'render', {
-    value() {
-        this.forEach(section => section.render())
-    }, writable: false, configurable: false, enumerable: false
 });
 
 Object.defineProperty(xover.site, 'set', {
@@ -4460,52 +4460,6 @@ xover.xml.encodeEntities = function (text) {
     return new_text;
 }
 
-xover.dom.findClosestElementWithAttribute = function (element, attribute) {
-    if (!element) return element;
-    if (element.getAttribute(attribute)) {
-        return element;
-    } else if (element.parentElement) {
-        return xover.dom.findClosestElementWithAttribute(element.parentElement, attribute);
-    } else {
-        return undefined;
-    }
-}
-
-xover.dom.findClosestElementWithTagName = function (element, tagName) {
-    if (!element) return element;
-    if ((element.tagName || "").toUpperCase() == tagName.toUpperCase()) {
-        return element;
-    } else if (element.parentElement) {
-        return xover.dom.findClosestElementWithTagName(element.parentElement, tagName);
-    } else {
-        return undefined;
-    }
-}
-
-xover.dom.findClosestElementWithClassName = function (element, className) {
-    if (!element) return element;
-    var regex = new RegExp('\b(' + className + ')\b', "ig");
-
-    if (element.classList && element.classList.contains && element.classList.contains(className)) {
-        return element;
-    } else if (element.parentElement) {
-        return xover.dom.findClosestElementWithClassName(element.parentElement, className);
-    } else {
-        return undefined;
-    }
-}
-
-xover.dom.findClosestElementWithId = function (element) {
-    if (!element) return element;
-    if (element.id && !element.id.startsWith("_")) {
-        return element;
-    } else if (element.parentElement) {
-        return xover.dom.findClosestElementWithId(element.parentElement);
-    } else {
-        return undefined;
-    }
-}
-
 xover.dom.setEncryption = function (dom, encryption) {
     var encryption = (encryption || "UTF-7")
     if (typeof (dom.selectSingleNode) != 'undefined') {
@@ -6316,8 +6270,8 @@ xover.listener.on('input', function (event) {
 
 xover.listener.on('click', function (event) {
     if (event.defaultPrevented) return;
-    var srcElement = xover.dom.findClosestElementWithAttribute(event.target, "href");
-    var hashtag = (srcElement ? srcElement.getAttribute("href") : "");
+    let srcElement = event.target.closest("[href]");
+    let hashtag = (srcElement ? srcElement.getAttribute("href") : "");
 
     if (!hashtag.match(/^#/)) {
         return;
@@ -9627,6 +9581,9 @@ xover.modernize = function (targetWindow) {
                             let data = this.cloneNode(true);
                             stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
                             let target = stylesheet_target;
+                            let active_element = document.activeElement;
+                            if (target.contains(active_element)) await xover.delay(100);
+
                             xover.site.renderingTo = target;
                             let current_cursor_style = (target.style || {}).cursor;
                             //try { current_cursor_style = 'wait' } catch (e) { console.log(e) }
@@ -9798,7 +9755,6 @@ xover.modernize = function (targetWindow) {
                             let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
                             post_render_scripts.forEach(script => script_wrapper.append(script));
 
-                            let active_element = document.activeElement;
                             if (target.contains(active_element)) {
                                 xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
                             }
@@ -9879,7 +9835,7 @@ xover.modernize = function (targetWindow) {
                                         if (target === curr_node) target = new_node;
                                         curr_node.append(new_node);
                                     } else if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && !curr_node.matches(".xo-swap") && (curr_node.constructor !== new_node.constructor || curr_node.getAttribute("xo-stylesheet") || curr_node.cloneNode().isEqualNode(new_node.cloneNode()) || curr_node.matches('.xo-skip-compare'))) {
-                                        [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value, {silent:true}));
+                                        [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value, { silent: true }));
                                         curr_node.replaceChildren(...new_node.childNodes)
                                     } else {
                                         //if (curr_node.matches('.xo-skip-copy-attributes')) /*TODO*/
