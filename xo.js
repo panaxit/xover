@@ -521,17 +521,7 @@ xover.init = async function () {
         try {
             xover.modernize();
             if (history.state) delete history.state.active;
-            for (let link of [...document.querySelectorAll('link[rel="xover-manifest"]')].filter(manifest => (manifest.getAttribute("href") || {}).indexOf('.manifest') != -1 || (manifest.getAttribute("href") || {}).indexOf('manifest.json') != -1)) {
-                let url = xover.URL(link.getAttribute("href"));
-                try {
-                    let manifest = await xover.fetch.json(url, { headers: { Accept: "*/*" } }).catch(e => console.log(e));
-                    manifest = new xo.Manifest(manifest);
-                    manifest.stylesheets = (manifest.stylesheets || []).map(el => new URL(el, url).href);
-                    xover.manifest.merge(manifest)
-                } catch (e) {
-                    Promise.reject(e);
-                }
-            }
+            await xover.manifest.init()
             Object.assign(xover.spaces, xover.manifest.spaces);
             this.init.status = 'initialized';
             let stylesheet_promises = [];
@@ -688,7 +678,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         node = node instanceof Document && node.documentElement || node;
     }
     if (context) {
-        _event.detail["tag"] = _event.detail["tag"] || context.tag || typeof(context) === 'string' && context;
+        _event.detail["tag"] = _event.detail["tag"] || context.tag || typeof (context) === 'string' && context;
     }
     //if (_event.detail["store"]) {
     //    _event.detail["tag"] = _event.detail["tag"] || _event.detail["store"].tag;
@@ -1052,6 +1042,37 @@ xover.Manifest = function (manifest = {}) {
 
     return _manifest;
 }
+
+Object.defineProperty(xover.Manifest.prototype, 'init', {
+    value: function () {
+        this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
+            try {
+                xover.modernize();
+                for (let link of [...document.querySelectorAll('link[rel="xover-manifest"]')].filter(manifest => (manifest.getAttribute("href") || {}).indexOf('.manifest') != -1 || (manifest.getAttribute("href") || {}).indexOf('manifest.json') != -1)) {
+                    let url = xover.URL(link.getAttribute("href"));
+                    try {
+                        let manifest = await xover.fetch.json(url, { headers: { Accept: "*/*" } }).catch(e => console.log(e));
+                        manifest = new xo.Manifest(manifest);
+                        manifest.stylesheets = (manifest.stylesheets || []).map(el => new URL(el, url).href);
+                        xover.manifest.merge(manifest)
+                    } catch (e) {
+                        Promise.reject(e);
+                    }
+                }
+                this.init.status = 'initialized';
+            } catch (e) {
+                return Promise.reject(e)
+            }
+        }).catch(e => {
+            return Promise.reject(e);
+        }).finally(() => {
+            this.init.initializing = undefined;
+        });
+        return this.init.initializing;
+
+    },
+    writable: true, enumerable: false, configurable: false
+});
 
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
@@ -2024,8 +2045,8 @@ xover.Source = function (tag) {
     })
     Object.defineProperty(this, `fetch`, {
         value: async function (...args) {
-            if (tag[0] == '#' && xover.init.status != 'initialized') {
-                await xover.init();
+            if (tag[0] == '#' && xover.manifest.init.status != 'initialized') {
+                await xover.manifest.init();
             }
             let source = self.definition;
 
