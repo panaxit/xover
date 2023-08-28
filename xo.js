@@ -1925,16 +1925,17 @@ xover.Source = function (tag) {
     }
     if (!(this instanceof xover.Source)) return new xover.Source(tag/*source, tag, manifest_key*/);
     let self = this;
-    let _manifest = xover.manifest.sources || {};
-
     let __document = xover.xml.createDocument();
 
-    const manifest_key = Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && tag.match(new RegExp(manifest_key, "i")) || manifest_key === tag || tag[0] == '#' && manifest_key === '#' + xover.URL(tag.substring(1)).pathname.substring(1)).pop();
+    let _manifest;
+    let manifest_key;
 
     let definition;
     if (!__document.hasOwnProperty("definition")) {
         Object.defineProperty(this, 'definition', {
             get: function () {
+                _manifest = _manifest || xover.manifest.sources || {};
+                manifest_key = manifest_key || Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && tag.match(new RegExp(manifest_key, "i")) || manifest_key === tag || tag[0] == '#' && manifest_key === '#' + xover.URL(tag.substring(1)).pathname.substring(1)).pop();
                 if (definition !== undefined) return definition;
                 if (manifest_key) {
                     let source = JSON.parse(JSON.stringify(xover.manifest.sources[manifest_key]));
@@ -2023,6 +2024,9 @@ xover.Source = function (tag) {
     })
     Object.defineProperty(this, `fetch`, {
         value: async function (...args) {
+            if (tag[0] == '#' && xover.init.status != 'initialized') {
+                await xover.init();
+            }
             let source = self.definition;
 
             this.fetching = this.fetching || new Promise(async (resolve, reject) => {
