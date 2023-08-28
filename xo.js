@@ -705,7 +705,7 @@ Object.defineProperty(xover.listener, 'matches', {
         event_type = scoped_event;
 
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
-        let tag = context.tag || (event.detail || {}).tag || '';
+        let tag = context.tag || ((event || {}).detail || {}).tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
             let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
@@ -9825,15 +9825,14 @@ xover.modernize = function (targetWindow) {
                                 const observer_config = { characterData: true, attributes: true, childList: true, subtree: true };
                                 target.observer && target.observer.disconnect();
                                 for (let [[curr_node, new_node]] of changes) {
+                                    if (!curr_node.parentNode) continue;
                                     if (!target.ownerDocument.contains(curr_node)) continue;
-                                    if (curr_node.contains(active_element.parentNode)) await xover.delay(100);
-                                    if (!curr_node.parentNode /*|| active_element instanceof HTMLInputElement && curr_node.contains(active_element) || */) continue;
                                     if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
                                         continue;
                                     } else if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && !curr_node.matches(".xo-swap") && curr_node.constructor !== new_node.constructor) {
                                         if (target === curr_node) target = new_node;
                                         curr_node.append(new_node);
-                                    } else if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && !curr_node.matches(".xo-swap") && (curr_node.constructor !== new_node.constructor || curr_node.getAttribute("xo-stylesheet") || curr_node.cloneNode().isEqualNode(new_node.cloneNode()) || curr_node.matches('.xo-skip-compare'))) {
+                                    } else if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && !curr_node.matches(".xo-swap") && (curr_node.constructor !== new_node.constructor || curr_node.getAttribute("xo-stylesheet") || ![HTMLSelectElement].includes(curr_node.constructor) && curr_node.cloneNode().isEqualNode(new_node.cloneNode()) || curr_node.matches('.xo-skip-compare'))) {
                                         [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value, { silent: true }));
                                         curr_node.replaceChildren(...new_node.childNodes)
                                     } else {
