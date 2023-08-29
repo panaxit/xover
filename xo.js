@@ -7627,34 +7627,38 @@ xover.modernize = function (targetWindow) {
                         }
                         let __document = self;
                         let store = self.store;
-                        return self.source.fetch.apply(context, args).then(new_document => {
-                            if (!(new_document instanceof Node)) {
-                                Promise.reject(new_document);
-                            }
-                            window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store, old: __document, target: __document }, new_document));
-                            __document.href = new_document.href;
-                            __document.url = new_document.url;
-                            if (new_document instanceof Document || new_document instanceof DocumentFragment) {
-                                __document.replaceBy(new_document); //transfers all contents
-                            } else {
-                                __document.replaceContent(new_document);
-                            }
-                            return Promise.resolve(__document);
-                        }).catch(async (e) => {
-                            if (!e) {
-                                return Promise.reject(e);
-                            }
-                            let document = e.document;
-                            let targets = []
-                            if (e.status != 404 && document && document.render) {
-                                targets = await document.render();
-                                if (!(targets && targets.length)) {
-                                    return Promise.reject(e)
+                        if (self.fetching) {
+                            return self.fetching.then((new_document) => Promise.resolve(self))
+                        } else {
+                            return self.source.fetch.apply(context, args).then(new_document => {
+                                if (!(new_document instanceof Node)) {
+                                    Promise.reject(new_document);
                                 }
-                            } else {
-                                return Promise.reject(e);
-                            }
-                        });
+                                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store, old: __document, target: __document }, new_document));
+                                __document.href = new_document.href;
+                                __document.url = new_document.url;
+                                if (new_document instanceof Document || new_document instanceof DocumentFragment) {
+                                    __document.replaceBy(new_document); //transfers all contents
+                                } else {
+                                    __document.replaceContent(new_document);
+                                }
+                                return Promise.resolve(__document);
+                            }).catch(async (e) => {
+                                if (!e) {
+                                    return Promise.reject(e);
+                                }
+                                let document = e.document;
+                                let targets = []
+                                if (e.status != 404 && document && document.render) {
+                                    targets = await document.render();
+                                    if (!(targets && targets.length)) {
+                                        return Promise.reject(e)
+                                    }
+                                } else {
+                                    return Promise.reject(e);
+                                }
+                            });
+                        }
                     }
                 }
             })
