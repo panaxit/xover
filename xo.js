@@ -1060,6 +1060,7 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
                     }
                 }
                 this.init.status = 'initialized';
+                return Promise.resolve()
             } catch (e) {
                 return Promise.reject(e)
             }
