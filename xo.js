@@ -7620,48 +7620,41 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(XMLDocument.prototype, `fetch`, {
                 get: function () {
                     let self = this;
-                    return async function (...args) {
+                    return function (...args) {
                         let context = this;
                         if (!self.hasOwnProperty("source")) {
                             return Promise.reject("Document is not associated to a Source and can't be fetched");
                         }
                         let __document = self;
                         let store = self.store;
-                        context.fetching = context.fetching || new Promise((resolve, reject) => {
-                            self.source && self.source.fetch.apply(context, args).then(new_document => {
-                                if (!(new_document instanceof Node)) {
-                                    Promise.reject(new_document);
-                                }
-                                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store, old: __document, target: __document }, new_document));
-                                __document.href = new_document.href;
-                                __document.url = new_document.url;
-                                if (new_document instanceof Document || new_document instanceof DocumentFragment) {
-                                    __document.replaceBy(new_document); //transfers all contents
-                                } else {
-                                    __document.replaceContent(new_document);
-                                }
-                                resolve(__document);
-                            }).catch(async (e) => {
-                                if (!e) {
-                                    return reject(e);
-                                }
-                                let document = e.document;
-                                let targets = []
-                                if (e.status != 404 && document && document.render) {
-                                    targets = await document.render();
-                                    if (!(targets && targets.length)) {
-                                        return reject(e)
-                                    }
-                                } else {
-                                    return reject(e);
-                                }
-                            }).finally(() => {
-                                context.fetching = undefined;
-                            });
+                        return self.source.fetch.apply(context, args).then(new_document => {
+                            if (!(new_document instanceof Node)) {
+                                Promise.reject(new_document);
+                            }
+                            window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store, old: __document, target: __document }, new_document));
+                            __document.href = new_document.href;
+                            __document.url = new_document.url;
+                            if (new_document instanceof Document || new_document instanceof DocumentFragment) {
+                                __document.replaceBy(new_document); //transfers all contents
+                            } else {
+                                __document.replaceContent(new_document);
+                            }
+                            return Promise.resolve(__document);
                         }).catch(async (e) => {
-                            return Promise.reject(e);
+                            if (!e) {
+                                return Promise.reject(e);
+                            }
+                            let document = e.document;
+                            let targets = []
+                            if (e.status != 404 && document && document.render) {
+                                targets = await document.render();
+                                if (!(targets && targets.length)) {
+                                    return Promise.reject(e)
+                                }
+                            } else {
+                                return Promise.reject(e);
+                            }
                         });
-                        return context.fetching;
                     }
                 }
             })
