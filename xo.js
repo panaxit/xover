@@ -2051,7 +2051,7 @@ xover.Source = function (tag) {
             }
             let source = self.definition;
 
-            this.fetching = this.fetching || new Promise(async (resolve, reject) => {
+            try {
                 let new_document;
                 if (!this.tag) {
                     this.tag = self.tag;
@@ -2122,7 +2122,7 @@ xover.Source = function (tag) {
                         documents = await Promise.all(promises).then(document => document);
                     } catch (e) {
                         window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { response: e }, this));
-                        return reject(e);
+                        return Promise.reject(e);
                     }
                     new_document = documents[0];
                 } else if (source && source[0] !== '#') {
@@ -2139,7 +2139,7 @@ xover.Source = function (tag) {
                             new_document = await xover.fetch.apply(this, [source, this["settings"]]);
                         }
                     } catch (e) {
-                        return reject(e);
+                        return Promise.reject(e);
                     }
                 }
                 if (new_document instanceof Response) {
@@ -2157,12 +2157,12 @@ xover.Source = function (tag) {
                     new_document = xover.xml.fromJSON(new_document);
                 }
                 if (!(new_document instanceof Node)) {
-                    return reject(`No se pudo obtener la fuente de datos ${tag}`);
+                    return Promise.reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
                 this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag, settings: this.settings }, self));
-                return resolve(new_document);
-            }).catch(async (e) => {
+                return Promise.resolve(new_document);
+            } catch(e) {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
                 if (!e) {
                     return Promise.reject(e);
@@ -2177,10 +2177,7 @@ xover.Source = function (tag) {
                 } else {
                     return Promise.reject(e);
                 }
-            }).finally(() => {
-                this.fetching = undefined;
-            });
-            return this.fetching;
+            }
         },
         writable: false, enumerable: false, configurable: false
     });
@@ -7627,10 +7624,8 @@ xover.modernize = function (targetWindow) {
                         }
                         let __document = self;
                         let store = self.store;
-                        if (self.fetching) {
-                            return self.fetching.then((new_document) => Promise.resolve(self))
-                        } else {
-                            return self.source.fetch.apply(context, args).then(new_document => {
+                        context.fetching = context.fetching || new Promise((resolve, reject) => {
+                            self.source && self.source.fetch.apply(context, args).then(new_document => {
                                 if (!(new_document instanceof Node)) {
                                     Promise.reject(new_document);
                                 }
@@ -7642,23 +7637,28 @@ xover.modernize = function (targetWindow) {
                                 } else {
                                     __document.replaceContent(new_document);
                                 }
-                                return Promise.resolve(__document);
+                                resolve(__document);
                             }).catch(async (e) => {
                                 if (!e) {
-                                    return Promise.reject(e);
+                                    return reject(e);
                                 }
                                 let document = e.document;
                                 let targets = []
                                 if (e.status != 404 && document && document.render) {
                                     targets = await document.render();
                                     if (!(targets && targets.length)) {
-                                        return Promise.reject(e)
+                                        return reject(e)
                                     }
                                 } else {
-                                    return Promise.reject(e);
+                                    return reject(e);
                                 }
                             });
-                        }
+                        }).catch(async (e) => {
+                            return Promise.reject(e);
+                        }).finally(() => {
+                            context.fetching = undefined;
+                        });
+                        return context.fetching;
                     }
                 }
             })
