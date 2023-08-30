@@ -10095,7 +10095,7 @@ xover.modernize = function (targetWindow) {
 //    }
 //});
 
-xover.listener.on(['change::*[xo-attribute]'], function () {
+xover.listener.on(['change::*[xo-attribute]:not([onchange])'], function () {
     if (this.type === 'date' && this.value != '' && !isValidISODate(this.value) || this.preventChangeEvent) {
         this.preventChangeEvent = undefined;
         event.preventDefault();
