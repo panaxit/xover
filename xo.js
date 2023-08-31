@@ -7180,8 +7180,11 @@ xover.modernize = function (targetWindow) {
                         }
                         return false;
                     }
-                    return [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches("*"));
-                    //return !!(node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node)))
+                    let node = this.documentElement;
+                    return node.matches(predicate);
+
+                    //return [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches("*"));
+                    ////return !!(node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node)))
                 }
             })
 
