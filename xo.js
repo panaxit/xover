@@ -300,13 +300,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-    get: function (self, key) {
-        if (key in self) {
-            return self[key];
+        get: function (self, key) {
+            if (key in self) {
+                return self[key];
+            }
+            return self.open(key);
         }
-        return self.open(key);
-    }
-});
+    });
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -2147,7 +2147,7 @@ xover.Source = function (tag) {
                     if (body_content instanceof Node) {
                         new_document = body_content;
                     } else {
-                        new_document = xover.xml.createFragment(body_content);
+                        new_document = await xover.xml.createDocument(body_content).catch (e => Promise.reject(e))
                     }
                 }
                 if (!new_document) {
@@ -2162,7 +2162,7 @@ xover.Source = function (tag) {
                 this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag, settings: this.settings }, self));
                 return Promise.resolve(new_document);
-            } catch(e) {
+            } catch (e) {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
                 if (!e) {
                     return Promise.reject(e);
@@ -4120,10 +4120,10 @@ xover.fetch.xml = async function (url, ...args) {
     try {
         let response = await xover.fetch.apply(this, [url, ...args]);
         let return_value = response.document || response;
-        //if (!return_value.documentElement && response.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
-        //    return_value = xover.xml.fromJSON(return_value.documentElement);
-        //}
-        if (xover.session.debug) {
+        if (return_value instanceof Response && return_value.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
+            return_value = xover.xml.fromJSON(return_value.body);
+        }
+        if (return_value instanceof Document && xover.session.debug) {
             for (let el of return_value.select(`//xsl:template[not(contains(@mode,'-attribute') or contains(@mode,':attribute'))]/*[not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy or following-sibling::xsl:apply-templates[contains(@mode,'-attribute') or contains(@mode,':attribute')])]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
                 let ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
                 let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template 
