@@ -7180,8 +7180,8 @@ xover.modernize = function (targetWindow) {
                         }
                         return false;
                     }
-                    let node = this.documentElement;
-                    return !!(node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node)))
+                    return [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches("*"));
+                    //return !!(node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node)))
                 }
             })
 
@@ -9782,7 +9782,7 @@ xover.modernize = function (targetWindow) {
                             }
                             let changes = xover.xml.getDifferences(target, documentElement);
                             if (!changes) continue;
-                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document: data, dom: documentElement.cloneNode(true), changes }, data);
+                            let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document, context: data, dom: documentElement.cloneNode(true), element: documentElement, changes }, documentElement);
                             window.top.dispatchEvent(before_dom);
                             if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
                             if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
