@@ -3167,7 +3167,7 @@ Object.defineProperty(xover.stores, 'seed', {
 xover.NodeSet = function (nodeSet = []) {
     if (!(this instanceof xover.NodeSet)) return new xover.NodeSet(nodeSet);
     for (let prop of ['set', 'setAttribute', 'setAttributeNS', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value']) {
-        let prop_desc = Object.getPropertyDescriptor(Node.prototype, prop);
+        let prop_desc = Object.getPropertyDescriptor(Node.prototype, prop) || Object.getPropertyDescriptor(Element.prototype, prop);
         if (!prop_desc) {
             continue
         }
