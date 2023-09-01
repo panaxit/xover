@@ -6645,6 +6645,25 @@ xover.modernize = function (targetWindow) {
     var targetWindow = (targetWindow || window);
     if (targetWindow.modernized) return;
     with (targetWindow) {
+        Sum = function (x, y) { return +x + y }
+
+        Avg = function (x) { return ((this.Count * this.Value) + x) / ((this.Count || 0) + 1) }
+
+        Group = (result, arg) => {
+            result = result instanceof Node && {} || result;
+            [key, value] = arg instanceof Attr && Entries(arg) || arg;
+            Object.defineProperty(result, "Count", { value: !result.hasOwnProperty("Count") ? 0 : result.Count, writable: true, enumerable: false, configurable: true });
+            result.Count += 1;
+
+            Object.defineProperty(result, "Operator", { value: result.Operator || (x => x), writable: true, enumerable: false, configurable: true });
+
+            if (!result[key]) result[key] = 0;
+            result.Value = result[key];
+            result[key] = result.Operator.apply(result, [value, result[key]]);
+            delete result["Value"]
+            return result
+        }
+
         function extend(sup, base) {
             var descriptor = Object.getOwnPropertyDescriptor(
                 base.prototype, "constructor"
