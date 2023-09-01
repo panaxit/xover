@@ -2147,7 +2147,7 @@ xover.Source = function (tag) {
                     if (body_content instanceof Node) {
                         new_document = body_content;
                     } else {
-                        new_document = await xover.xml.createDocument(body_content).catch (e => Promise.reject(e))
+                        new_document = await xover.xml.createDocument(body_content).catch(e => Promise.reject(e))
                     }
                 }
                 if (!new_document) {
@@ -3166,150 +3166,87 @@ Object.defineProperty(xover.stores, 'seed', {
 
 xover.NodeSet = function (nodeSet = []) {
     if (!(this instanceof xover.NodeSet)) return new xover.NodeSet(nodeSet);
-    Object.defineProperty(nodeSet, 'remove', {
-        value: function (refresh) {
-            nodeSet.removeAll(refresh);
-            return nodeSet;
-            //var stores = [];
-            //for (let i = nodeSet.length - 1; i >= 0; --i) {
-            //    var target = nodeSet.pop();
-            //    if (refresh !== false && target.ownerDocument.store && !stores.find(store => store === target.ownerDocument.store)) {
-            //        stores.push(target.ownerDocument.store)
-            //    }
-            //    if (target.nodeType == 2/*attribute*/) {
-            //        //var attribute_name = target.name;
-            //        var ownerElement = target.ownerElement;
-            //        if (ownerElement) {
-            //            target.remove(); //original_removeAttribute.apply(ownerElement, [attribute_name]);
-            //            //ownerElement.removeAttribute(attribute_name, refresh);
-            //        }
-            //    } else {
-            //        refresh = [refresh, true].coalesce();
-            //        target.remove(); //original_remove.apply(target, arguments);
-            //        //target.remove(refresh);
-            //        //target.parentNode.removeChild(target); //Se cambió el método por remove para que sea responsivo
-            //    }
-            //}
-            ////stores.map(store => store.render(refresh));
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'setAttribute', {
-        value: function (attribute, value, refresh) {
-            //attribute = attribute.replace(/^@/, "");
-            for (let target of nodeSet) {
-                if (target instanceof Element || target.nodeType == 1) {
-                    target.setAttribute(attribute, value, refresh);
-                }
-            }
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'set', {
-        value: async function (...args) {
-            for (let target of nodeSet) {
-                target.set.apply(target, args);
-            }
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'setAttributeNS', {
-        value: async function (namespaceURI, attribute, value, refresh) {
-            //attribute = attribute.replace(/^@/, "");
-            for (let target of nodeSet) {
-                if (target instanceof Element || target.nodeType == 1) {
-                    target.setAttributeNS(namespaceURI, attribute, value, refresh);
-                }
-            }
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'getAttribute', {
-        value: function (attribute) {
-            //attribute = attribute.replace(/^@/, "");
-            return nodeSet.reduce((arr, item) => { arr.push(item.getAttribute(attribute)); return arr; }, []);
-        },
-        writable: true, enumerable: false, configurable: false
-    });
+    for (let prop of ['set', 'setAttribute', 'setAttributeNS', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value']) {
+        let prop_desc = Object.getPropertyDescriptor(Node.prototype, prop);
+        if (!prop_desc) {
+            continue
+        }
+        if (prop_desc.value) {
+            Object.defineProperty(nodeSet, prop, {
+                value: prop_desc.value && function (...args) {
+                    results = [];
+                    for (let target of this) {
+                        if (typeof (target[prop]) == 'function') {
+                            results.push(target[prop].apply(target, args))
+                        } else {
+                            results.push()
+                        }
+                    }
+                    return results;
+                },
+                writable: true, enumerable: false, configurable: false
+            });
+        } else {
+            Object.defineProperty(nodeSet, prop, {
+                get: prop_desc.get && function () {
+                    results = [];
+                    for (let target of this) {
+                        if (typeof (target) == 'object' && prop in target) {
+                            results.push(target[prop])
+                        } else {
+                            results.push()
+                        }
+                    }
+                    return results;
+                },
+                set: prop_desc.set && function (value) {
+                    results = [];
+                    for (let target of this) {
+                        if (typeof (target) == 'object' && prop in target) {
+                            results.push(target[prop] = value)
+                        } else {
+                            results.push()
+                        }
+                    }
+                    return results;
+                },
+                enumerable: false, configurable: false
+            });
+
+        }
+    }
     Object.defineProperty(nodeSet, 'highlight', {
         value: function () {
             nodeSet.forEach(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-source='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
         },
         writable: true, enumerable: false, configurable: false
     });
-    Object.defineProperty(nodeSet, 'setAttributes', {
-        value: async function (delay) {
-            if (!isNaN(parseInt(delay))) {
-                await xover.delay(delay);
-            }
-            return new Promise((resolve, reject) => {
-                nodeSet.forEach(target => {
-                    if (target instanceof Element || target.nodeType == 1) {
-                        target.setAttributes.apply(target, arguments).then(() => resolve(true));
-                    }
-                });
-            });
-        },
-        writable: true, enumerable: false, configurable: false
+    for (let prop of ['distinct','map']) {
+        Object.defineProperty(nodeSet, prop, {
+            value: function (...args) {
+                return new xover.NodeSet(Array.prototype[prop].apply(nodeSet, args))
+            },
+            writable: true, enumerable: false, configurable: false
+        });
+    }
+    Object.defineProperty(nodeSet, 'toTable', {
+        value: function (attributes) {
+            let formats = attributes && attributes.constructor == {}.constructor && attributes || {};
+            attributes = attributes && attributes.constructor == {}.constructor && Object.keys(attributes);
+            return console.table([...this].map(node => Object.fromEntries([...(node instanceof Attr ? [node] : node.attributes || [])].map(el => [el.name, formats[el.name] ? formats[el.name](el) : (+el.value == el.value ? +el.value : el.value)]))), attributes)
+        }
     });
-    Object.defineProperty(nodeSet, 'removeAttribute', {
-        value: function (attribute, refresh, delay) {
-            //attribute = attribute.replace(/^@/, "");
-            var stores = [];
-            for (let target of nodeSet) {
-                if (target.ownerDocument.store && !stores.find(store => store === target.ownerDocument.store)) {
-                    stores.push(target.ownerDocument.store)
-                }
-                if (target instanceof Element || target.nodeType == 1) {
-                    refresh = [refresh, true].coalesce();
-                    original_removeAttribute.apply(target, [attribute]);
-                }
-            }
-            stores.map(store => store.render(refresh));
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'appendBefore', {
-        value: function () {
-            for (let target of nodeSet) {
-                if (target instanceof Element || target.nodeType == 1) {
-                    target.appendBefore.apply(target, arguments);
-                }
-            }
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'appendAfter', {
-        value: function () {
-            for (let target of nodeSet) {
-                if (target instanceof Element || target.nodeType == 1) {
-                    target.appendAfter.apply(target, arguments);
-                }
-            }
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'textContent', {
-        value: function () {
-            for (let target of nodeSet) {
-                if (target instanceof Element || target.nodeType == 1) {
-                    target.textContent.apply(target, arguments, false);
-                }
-            }
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.defineProperty(nodeSet, 'moveTo', {
-        value: function () {
-            for (let target of nodeSet) {
-                if (target instanceof Element || target.nodeType == 1) {
-                    target.moveTo.apply(target, arguments);
-                }
-            }
-        },
-        writable: true, enumerable: false, configurable: false
-    });
-    Object.setPrototypeOf(nodeSet, this);
+    //Object.defineProperty(nodeSet, 'moveTo', {
+    //    value: function () {
+    //        for (let target of nodeSet) {
+    //            if (target instanceof Element || target.nodeType == 1) {
+    //                target.moveTo.apply(target, arguments);
+    //            }
+    //        }
+    //    },
+    //    writable: true, enumerable: false, configurable: false
+    //});
+    Object.setPrototypeOf(nodeSet, xover.NodeSet);
     Object.setPrototypeOf(nodeSet, Array.prototype);
     return nodeSet;
 }
@@ -3331,16 +3268,16 @@ xover.xml.createFromActiveX = function () {
     return new ActiveXObject(arguments.callee.activeXString);
 }
 
-xover.xml.getNamespaces = function () {
+xover.xml.getNamespaces = function (...args) {
     var namespaces = {};
-    for (let a = 0; a < arguments.length; ++a) {
-        if (!arguments[a]) {
+    for (let a = 0; a < args.length; ++a) {
+        if (!args[a]) {
             continue;
         }
-        if (arguments[a].getNamespaces) {
-            namespaces.merge(arguments[a].getNamespaces())
-        } else if (typeof (arguments[a].selectSingleNode) != 'undefined') {
-            var sXML = (arguments[a].document || arguments[a]).toString();
+        if (args[a].getNamespaces) {
+            namespaces.merge(args[a].getNamespaces())
+        } else if (typeof (args[a].selectSingleNode) != 'undefined') {
+            var sXML = (args[a].document || args[a]).toString();
             if (sXML) {
                 if (sXML.match(/\bxml:/)) {
                     namespaces["xml"] = "http://www.w3.org/XML/1998/namespace";
@@ -6984,6 +6921,7 @@ xover.modernize = function (targetWindow) {
                         selection[i] = new xover.ProcessingInstruction(selection[i]);
                     }
                 }
+
                 //Object.setPrototypeOf(selection, NodeList.prototype); /*TODO - extend from NodeList*/
                 return new xover.NodeSet(selection);
             }
@@ -7096,13 +7034,6 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
-            Array.prototype.native.toTable = Object.getOwnPropertyDescriptor(Array.prototype, 'toTable');
-            Object.defineProperty(Array.prototype, 'toTable', {
-                value: function (attributes = "@*") {
-                    return console.table(this.map(el => Object.fromEntries(el.select(attributes).map(attr => [attr.name, +attr.value == attr.value ? +attr.value : attr.value]))))
-                }
-            })
-
             NodeList.prototype.native.toArray = Object.getOwnPropertyDescriptor(NodeList.prototype, 'toArray');
             Object.defineProperty(NodeList.prototype, 'toArray', {
                 value: function () {
@@ -7180,11 +7111,10 @@ xover.modernize = function (targetWindow) {
                         }
                         return false;
                     }
-                    let node = this.documentElement;
-                    return node.matches(predicate);
+                    //let node = this.documentElement;
+                    //return node.matches(predicate);
 
-                    //return [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches("*"));
-                    ////return !!(node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node)))
+                    return [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches(predicate));
                 }
             })
 
@@ -9068,23 +8998,6 @@ xover.modernize = function (targetWindow) {
                     e.parentNode.insertBefore(i, e.nextElementSibling);
                 } else {
                     (p || (e || {}).parentNode).appendChild(i);
-                }
-            }
-
-            Node.prototype.moveTo = function (target, position = 'child') {
-                let source = this;
-                switch (position) {
-                    case 'child':
-                        target.appendChild(source);
-                        break;
-                    case 'before':
-                        target.appendBefore(source)
-                        break;
-                    case 'after':
-                        target.appendAfter(source)
-                        break;
-                    default:
-                        throw (new Error('Invalid option'));
                 }
             }
 
