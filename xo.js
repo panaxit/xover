@@ -6645,6 +6645,8 @@ xover.modernize = function (targetWindow) {
     var targetWindow = (targetWindow || window);
     if (targetWindow.modernized) return;
     with (targetWindow) {
+        Parent = function (node) { return node.parentNode }
+
         Sum = function (x, y) { return +x + y }
 
         Avg = function (x) { return ((this.Count * this.Value) + x) / ((this.Count || 0) + 1) }
@@ -6662,6 +6664,31 @@ xover.modernize = function (targetWindow) {
             result[key] = result.Operator.apply(result, [value, result[key]]);
             delete result["Value"]
             return result
+        }
+
+        class TimeoutError extends Error {
+            constructor(message = 'Timeout waiting for condition to be met') {
+                super(message);
+                this.name = 'TimeoutError';
+            }
+        }
+
+        async function waitFor(conditionFn, timeout = 30000) {
+            return new Promise((resolve, reject) => {
+                const startTime = Date.now();
+
+                function check() {
+                    if (conditionFn()) {
+                        resolve();
+                    } else if (Date.now() - startTime >= timeout) {
+                        reject(new Error('Timeout waiting for condition to be met'));
+                    } else {
+                        setTimeout(check, 100); // Check again in 100ms
+                    }
+                }
+
+                check();
+            });
         }
 
         function extend(sup, base) {
@@ -7053,10 +7080,32 @@ xover.modernize = function (targetWindow) {
                 }
             })
 
+            if (!Array.prototype.hasOwnProperty('Nodes')) {
+                Object.defineProperty(Array.prototype, 'Nodes', {
+                    get: function () {
+                        return new xover.NodeSet(this);
+                    }
+                })
+            }
+
+            Array.prototype.native.toNodeSet = Object.getOwnPropertyDescriptor(Array.prototype, 'toNodeSet');
+            Object.defineProperty(Array.prototype, 'toNodeSet', {
+                value: function () {
+                    return new xover.NodeSet(this);
+                }
+            })
+
             NodeList.prototype.native.toArray = Object.getOwnPropertyDescriptor(NodeList.prototype, 'toArray');
             Object.defineProperty(NodeList.prototype, 'toArray', {
                 value: function () {
                     return [...this];
+                }
+            })
+
+            NodeList.prototype.native.toNodeSet = Object.getOwnPropertyDescriptor(NodeList.prototype, 'toNodeSet');
+            Object.defineProperty(NodeList.prototype, 'toNodeSet', {
+                value: function () {
+                    return new xover.NodeSet(this);
                 }
             })
 
@@ -7065,6 +7114,13 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(NamedNodeMap.prototype, 'toArray', {
                 value: function () {
                     return [...this];
+                }
+            })
+
+            NamedNodeMap.prototype.native.toNodeSet = Object.getOwnPropertyDescriptor(NamedNodeMap.prototype, 'toNodeSet');
+            Object.defineProperty(NamedNodeMap.prototype, 'toNodeSet', {
+                value: function () {
+                    return new xover.NodeSet(this);
                 }
             })
 
@@ -9017,6 +9073,23 @@ xover.modernize = function (targetWindow) {
                     e.parentNode.insertBefore(i, e.nextElementSibling);
                 } else {
                     (p || (e || {}).parentNode).appendChild(i);
+                }
+            }
+
+            Node.prototype.moveTo = function (target, position = 'child') {
+                let source = this;
+                switch (position) {
+                    case 'child':
+                        target.appendChild(source);
+                        break;
+                    case 'before':
+                        target.appendBefore(source)
+                        break;
+                    case 'after':
+                        target.appendAfter(source)
+                        break;
+                    default:
+                        throw (new Error('Invalid option'));
                 }
             }
 
