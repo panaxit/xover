@@ -2325,6 +2325,7 @@ xover.spaces["search"] = "http://panax.io/state/search"
 xover.spaces["filter"] = "http://panax.io/state/filter"
 xover.spaces["prev"] = "http://panax.io/state/previous"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
+xover.spaces["draft"] = "http://panax.io/state/draft"
 xover.spaces["text"] = "http://panax.io/state/text"
 xover.spaces["env"] = "http://panax.io/state/environment"
 
@@ -3221,7 +3222,7 @@ xover.NodeSet = function (nodeSet = []) {
         },
         writable: true, enumerable: false, configurable: false
     });
-    for (let prop of ['distinct','map']) {
+    for (let prop of ['distinct', 'map']) {
         Object.defineProperty(nodeSet, prop, {
             value: function (...args) {
                 return new xover.NodeSet(Array.prototype[prop].apply(nodeSet, args))
@@ -3230,10 +3231,23 @@ xover.NodeSet = function (nodeSet = []) {
         });
     }
     Object.defineProperty(nodeSet, 'toTable', {
-        value: function (attributes) {
-            let formats = attributes && attributes.constructor == {}.constructor && attributes || {};
-            attributes = attributes && attributes.constructor == {}.constructor && Object.keys(attributes);
-            return console.table([...this].map(node => Object.fromEntries([...(node instanceof Attr ? [node] : node.attributes || [])].map(el => [el.name, formats[el.name] ? formats[el.name](el) : (+el.value == el.value ? +el.value : el.value)]))), attributes)
+        value: function (...args) {
+            let show_all = false;
+            let columns = {};
+            for (let i = args.length - 1; i >= 0; --i) {
+                if (typeof (args[i]) == 'string') {
+                    if (args[i] == '*') {
+                        show_all = true;
+                    } else {
+                        columns[args[i]] = undefined;
+                    }
+                }
+                if (args[i].constructor == {}.constructor) {
+                    Object.assign(columns, args[i]);
+                }
+                args.splice(i, 1)
+            }
+            return console.table([...this].map(node => Object.fromEntries([...(node instanceof Attr ? [node] : node.attributes || [])].map(el => [el.name, columns[el.name] ? columns[el.name](el) : (+el.value == el.value ? +el.value : el.value)]))), show_all && [] || Object.keys(columns))
         }
     });
     //Object.defineProperty(nodeSet, 'moveTo', {
@@ -6147,6 +6161,10 @@ xover.listener.on('fetch::xo:message[.!=""]', function ({ target, attribute: key
     this.render()
 });
 
+xover.listener.on('fetch::~.xslt', function ({ tag }) {
+    document.querySelectorAll(`[xo-stylesheet='${tag.replace(/^#/, '')}']`).forEach(section => section.render())
+});
+
 xo.listener.on('xo.Source:fetch', async function ({ settings = {} }) {
     let progress = await settings.progress;
     progress && progress.remove();
@@ -6645,11 +6663,21 @@ xover.modernize = function (targetWindow) {
     var targetWindow = (targetWindow || window);
     if (targetWindow.modernized) return;
     with (targetWindow) {
+        Entries = (node) => [node.name, +node.value];
+
         Parent = function (node) { return node.parentNode }
 
         Sum = function (x, y) { return +x + y }
 
         Avg = function (x) { return ((this.Count * this.Value) + x) / ((this.Count || 0) + 1) }
+
+        Money = function(x, format = xover.site.locale) {
+            let money = new Intl.NumberFormat(format, {
+                style: 'currency',
+                currency: 'USD',
+            });
+            return money.format(x)
+        }
 
         Group = (result, arg) => {
             result = result instanceof Node && {} || result;
@@ -7261,6 +7289,30 @@ xover.modernize = function (targetWindow) {
                             let key = args[0];
                             try {
                                 let return_value = this.matches(key) || this.ownerElement && this.ownerElement.selectFirst(`ancestor-or-self::${key}[1]`);
+                                return return_value;
+                            } catch (err) {
+                                return undefined;
+                            }
+                        }
+                    }
+                }
+            })
+
+            var original_comment_closest = Object.getOwnPropertyDescriptor(Comment.prototype, 'closest');
+            Object.defineProperty(Comment.prototype, 'closest', {
+                value: function (...args) {
+                    let node = this;
+                    try {
+                        //if (!(original_comment_closest && node.parentNode instanceof HTMLElement)) {
+                        //    throw new DOMException('not a valid selector');
+                        //}
+                        return (original_comment_closest || {}).value && original_comment_closest.value.apply(node, args) || (original_element_closest || {}).value && original_element_closest.value.apply(node.parentNode, args);
+                    } catch (e) {
+                        if (e.message.indexOf('not a valid selector') != -1) {
+                            node = node.parentNode || node.formerParentNode;
+                            let key = args[0];
+                            try {
+                                let return_value = this.matches(key) || this.parentNode && this.parentNode.selectFirst(`ancestor-or-self::${key}[1]`);
                                 return return_value;
                             } catch (err) {
                                 return undefined;
@@ -7979,13 +8031,14 @@ xover.modernize = function (targetWindow) {
                 });
             }
 
-            if (!Element.prototype.hasOwnProperty('section')) {
-                Object.defineProperty(Element.prototype, 'section', {
+            if (!Node.prototype.hasOwnProperty('section')) {
+                Object.defineProperty(Node.prototype, 'section', {
                     get: function () {
                         if (this.ownerDocument instanceof XMLDocument) {
                             return undefined
                         } else {
                             let node = this.parentElement && this || this.parentNode || this;
+                            if (typeof (node.closest) !== 'function') return;
                             return node.closest("[xo-stylesheet],[xo-store]")
                         }
                     }
@@ -8777,6 +8830,28 @@ xover.modernize = function (targetWindow) {
                 }
             });
 
+            Object.defineProperty(Node.prototype, 'trace', {
+                value: function () {
+                    try {
+                        return this.select(`./comment()[contains(.,'debug:trace')]`).map(comment => comment.trace()).flat();
+                    } catch (e) {
+                        console.log(e);
+                        return null;
+                    }
+                }
+            });
+
+            Object.defineProperty(Comment.prototype, 'trace', {
+                value: function () {
+                    try {
+                        return this.section.document.select(this.textContent.replace(/^debug:trace=/, '').split(/;/).map(ref => ref.replace(/^[^/]+/, `.//*[@xo:id="$&"]`)).join('|'))
+                    } catch (e) {
+                        console.log(e)
+                        return null;
+                    }
+                }
+            });
+
             Comment.prototype.set = function (value) {
                 if (this.textContent !== "ack:no_match") {
                     this.textContent = value
@@ -9306,8 +9381,9 @@ xover.modernize = function (targetWindow) {
                                 });
                                 xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`).map(param => {
                                     try {
-                                        let key = param.getAttribute("name").split(/:/).pop()
-                                        let state_value = [xover.site.state[key], xover.stores.active.state[key], xover.site[key]].coalesce();
+                                        let param_name = param.getAttribute("name").split(/:/).pop();
+                                        if (!(param_name in xover.state)) xover.state[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
+                                        let state_value = [xover.state[param_name], xover.stores.active.state[param_name], xover.site[param_name]].coalesce();
                                         if (state_value !== undefined) {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), state_value);
                                         }
@@ -9318,8 +9394,8 @@ xover.modernize = function (targetWindow) {
                                 });
                                 xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
                                     try {
-                                        let key = param.getAttribute("name").split(/:/).pop()
-                                        let param_value = xover.site[key];
+                                        let param_name = param.getAttribute("name").split(/:/).pop()
+                                        let param_value = xover.site[param_name];
                                         if (param_value !== undefined) {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                         }
