@@ -611,7 +611,7 @@ xover.evaluateReferences = async function (context = window.document) {
 
     context.references = context.references || new Map();
 
-    context.select(`.//@*[contains(.,'{$state:')]|.//text()[contains(.,'{$state:')]|.//@*[contains(.,'{$session:')]|.//text()[contains(.,'{$session:')]`).forEach(attr => context.references.set(attr, attr.value))
+    context.select(`.//@*[contains(.,'{$state:')]|.//text()[contains(.,'{$state:')]|.//@*[contains(.,'{$session:')]|.//text()[contains(.,'{$session:')]`).forEach(attr => context.references.set(attr, attr.value));
     for (let [attr, formula] of context.references.entries()) {
         let new_value = formula.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => (name in xover[prefix] || attr instanceof Text) ? (xover[prefix][name] || '') : match);
         if (attr.name == 'style') {
@@ -6675,11 +6675,21 @@ xover.modernize = function (targetWindow) {
     var targetWindow = (targetWindow || window);
     if (targetWindow.modernized) return;
     with (targetWindow) {
+        if (typeof (HasContent) == 'undefined') HasContent = async (element) => (element.ownerElement || element).hasChildNodes();
+
+        if (typeof (Await) == 'undefined') Await = async (script) => xover.waitFor(script);
+
+        if (typeof (Delay) == 'undefined') Delay = async (time = 2000) => xo.delay(time);
+
+        if (typeof (CurrentYear) == 'undefined') CurrentYear = () => new Date().getFullYear();
+
         if (typeof (Entries) == 'undefined') Entries = (node) => [node.name, +node.value];
 
         if (typeof (Parent) == 'undefined') Parent = function (node) { return node.parentNode }
 
         if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + y }
+
+        if (typeof (Find) == 'undefined') Find = (selector) => document.querySelector(selector);
 
         if (typeof (Avg) == 'undefined') Avg = function (x) { return ((this.Count * this.Value) + x) / ((this.Count || 0) + 1) }
 
@@ -6714,14 +6724,16 @@ xover.modernize = function (targetWindow) {
             }
         }
 
-        async function waitFor(conditionFn, timeout = 30000) {
+        xover.waitFor = async function (conditionFn, timeout) {
             return new Promise((resolve, reject) => {
                 const startTime = Date.now();
 
                 function check() {
-                    if (conditionFn()) {
+                    if (typeof (conditionFn) == 'function' && conditionFn()) {
                         resolve();
-                    } else if (Date.now() - startTime >= timeout) {
+                    } else if (typeof (conditionFn) == 'string' && (function () { return eval.apply(this, arguments) }(conditionFn))) {
+                        resolve();
+                    } else if (timeout && Date.now() - startTime >= timeout) {
                         reject(new Error('Timeout waiting for condition to be met'));
                     } else {
                         setTimeout(check, 100); // Check again in 100ms
@@ -6731,6 +6743,8 @@ xover.modernize = function (targetWindow) {
                 check();
             });
         }
+
+        if (typeof (WaitFor) == 'undefined') WaitFor = xover.waitFor;
 
         function extend(sup, base) {
             var descriptor = Object.getOwnPropertyDescriptor(
@@ -9544,7 +9558,8 @@ xover.modernize = function (targetWindow) {
                         }
                     } else if (this.hasAttribute("xo-store")) {
                         let target_document = target_store && target_store.document;
-                        if (!target_document.documentElement) await target_document.fetch();
+                        if (!target_document) return;
+                        if (!target_document.firstChild) await target_document.fetch();
                         if (target_document.firstElementChild instanceof HTMLElement || target_document.firstElementChild instanceof SVGElement) {
                             return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/html', target: selector })) || null;
                         } else {
