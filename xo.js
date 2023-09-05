@@ -3173,6 +3173,7 @@ xover.NodeSet = function (nodeSet = []) {
             continue
         }
         if (prop_desc.value) {
+            if (nodeSet.hasOwnProperty(prop)) continue;
             Object.defineProperty(nodeSet, prop, {
                 value: prop_desc.value && function (...args) {
                     results = [];
@@ -3188,6 +3189,7 @@ xover.NodeSet = function (nodeSet = []) {
                 writable: true, enumerable: false, configurable: false
             });
         } else {
+            if (nodeSet.hasOwnProperty(prop)) continue;
             Object.defineProperty(nodeSet, prop, {
                 get: prop_desc.get && function () {
                     results = [];
@@ -3216,13 +3218,16 @@ xover.NodeSet = function (nodeSet = []) {
 
         }
     }
-    Object.defineProperty(nodeSet, 'highlight', {
-        value: function () {
-            nodeSet.forEach(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-source='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
-        },
-        writable: true, enumerable: false, configurable: false
-    });
+    if (!nodeSet.hasOwnProperty("highlight")) {
+        Object.defineProperty(nodeSet, 'highlight', {
+            value: function () {
+                nodeSet.forEach(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-source='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
+            },
+            writable: true, enumerable: false, configurable: false
+        });
+    }
     for (let prop of ['distinct', 'map']) {
+        if (nodeSet.hasOwnProperty(prop)) continue;
         Object.defineProperty(nodeSet, prop, {
             value: function (...args) {
                 return new xover.NodeSet(Array.prototype[prop].apply(nodeSet, args))
@@ -3230,26 +3235,33 @@ xover.NodeSet = function (nodeSet = []) {
             writable: true, enumerable: false, configurable: false
         });
     }
-    Object.defineProperty(nodeSet, 'toTable', {
-        value: function (...args) {
-            let show_all = false;
-            let columns = {};
-            for (let i = args.length - 1; i >= 0; --i) {
-                if (typeof (args[i]) == 'string') {
-                    if (args[i] == '*') {
-                        show_all = true;
-                    } else {
-                        columns[args[i]] = undefined;
+    if (!nodeSet.hasOwnProperty("showTable")) {
+        Object.defineProperty(nodeSet, 'showTable', {
+            value: function (...args) {
+                let entries = [...this].map(node => [...(node instanceof Attr ? [node] : node.attributes || [])].map(el => [el.name, el]));
+                let show_all = false;
+                let columns = Object.fromEntries(Object.keys(Object.fromEntries(entries.flat())).map(key => [key]));
+                for (let i = args.length - 1; i >= 0; --i) {
+                    if (typeof (args[i]) == 'string') {
+                        if (args[i] == '*') {
+                            show_all = true;
+                        } else {
+                            columns[args[i]] = undefined;
+                        }
                     }
+                    if (args[i].constructor == {}.constructor) {
+                        for (let key in args[i]) {
+                            columns[key] = args[i][key];
+                            if (args[i][key] === false) delete columns[key]
+                        }
+                    }
+                    args.splice(i, 1)
                 }
-                if (args[i].constructor == {}.constructor) {
-                    Object.assign(columns, args[i]);
-                }
-                args.splice(i, 1)
+                let rows = entries.map(entry => Object.fromEntries(entry.filter(([key]) => key in columns).map(([key, el]) => [key, columns[key] ? columns[key](el) : (+el.value == el.value ? +el.value : el.value)])))
+                return console.table(rows, show_all && [] || Object.keys(columns))
             }
-            return console.table([...this].map(node => Object.fromEntries([...(node instanceof Attr ? [node] : node.attributes || [])].map(el => [el.name, columns[el.name] ? columns[el.name](el) : (+el.value == el.value ? +el.value : el.value)]))), show_all && [] || Object.keys(columns))
-        }
-    });
+        });
+    }
     //Object.defineProperty(nodeSet, 'moveTo', {
     //    value: function () {
     //        for (let target of nodeSet) {
@@ -6663,6 +6675,38 @@ xover.modernize = function (targetWindow) {
     var targetWindow = (targetWindow || window);
     if (targetWindow.modernized) return;
     with (targetWindow) {
+        if (typeof (Entries) == 'undefined') Entries = (node) => [node.name, +node.value];
+
+        if (typeof (Parent) == 'undefined') Parent = function (node) { return node.parentNode }
+
+        if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + y }
+
+        if (typeof (Avg) == 'undefined') Avg = function (x) { return ((this.Count * this.Value) + x) / ((this.Count || 0) + 1) }
+
+        if (typeof (Money) == 'undefined') Money = function (x, format = xover.site.locale) {
+            let money = new Intl.NumberFormat(format, {
+                style: 'currency',
+                currency: 'USD',
+            });
+            return money.format(x)
+        }
+
+        if (typeof (Group) == 'undefined') Group = (result, arg) => {
+            result = result instanceof Node && {} || result;
+            for (let [key, value] of [(arg instanceof Attr && Entries(arg) || arg instanceof Element && [...arg.attributes].map(attr => [attr.name, attr.value]) || [])]) {
+                Object.defineProperty(result, "Count", { value: !result.hasOwnProperty("Count") ? 0 : result.Count, writable: true, enumerable: false, configurable: true });
+                result.Count += 1;
+
+                Object.defineProperty(result, "Operator", { value: result.Operator || (x => x), writable: true, enumerable: false, configurable: true });
+
+                if (!result[key]) result[key] = 0;
+                result.Value = result[key];
+                result[key] = result.Operator.apply(result, [value, result[key]]);
+                delete result["Value"]
+            }
+            return result
+        }
+
         class TimeoutError extends Error {
             constructor(message = 'Timeout waiting for condition to be met') {
                 super(message);
@@ -8802,12 +8846,12 @@ xover.modernize = function (targetWindow) {
             Object.defineProperty(Node.prototype, 'trace', {
                 value: function () {
                     try {
-                        return this.select(`./comment()[contains(.,'debug:trace')]`).map(comment => comment.trace()).flat();
+                        return this.select(`./comment()[starts-with(normalize-space(.),'debug:trace')]`).map(comment => comment.trace()).flat();
                     } catch (e) {
                         console.log(e);
                         return null;
                     }
-                }
+                }, writable: true, enumerable: false, configurable: false
             });
 
             Object.defineProperty(Comment.prototype, 'trace', {
