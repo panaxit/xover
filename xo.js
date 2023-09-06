@@ -300,13 +300,13 @@ xover.storehouse = new Proxy({
         , 'sources': { autoIncrement: true }
     }
 }, {
-        get: function (self, key) {
-            if (key in self) {
-                return self[key];
-            }
-            return self.open(key);
+    get: function (self, key) {
+        if (key in self) {
+            return self[key];
         }
-    });
+        return self.open(key);
+    }
+});
 
 Object.defineProperty(xover.storehouse, 'files', {
     get: async function () {
@@ -512,7 +512,7 @@ xover.dom.refreshTitle = function (input) {
 }
 
 xover.delay = function (ms) {
-    return ms ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve();
+    return ms ? new Promise(resolve => setTimeout(() => resolve(true), ms)) : Promise.resolve(true);
 }
 
 
@@ -1497,7 +1497,7 @@ Object.defineProperty(xover, 'state', {
 
 Object.defineProperty(xover.site, 'sections', {
     get() {
-        let sections = new Proxy([...top.window.document.querySelectorAll(`[xo-stylesheet],[xo-store]`)], {
+        let sections = new Proxy([...top.window.document.querySelectorAll(`[xo-store],[xo-source],[xo-stylesheet]`)], {
             get: function (self, key) {
                 if (key in self) {
                     return self[key]
@@ -1974,6 +1974,8 @@ xover.Source = function (tag) {
                         source = __document.source.definition;
                     }
                     definition = source != null ? source : tag;
+                } else if (existsFunction(tag)) {
+                    definition = eval(tag);
                 } else {
                     definition = tag;
                 }
@@ -1998,7 +2000,7 @@ xover.Source = function (tag) {
 
     if (!this.hasOwnProperty("tag")) {
         Object.defineProperty(this, 'tag', {
-            value: tag[0] !== '#' ? `#${tag}` : tag,
+            value: tag,/*tag[0] !== '#' ? `#${tag}` : tag,*/
             writable: false, enumerable: false, configurable: false
         });
     }
@@ -2125,6 +2127,8 @@ xover.Source = function (tag) {
                         return Promise.reject(e);
                     }
                     new_document = documents[0];
+                } else if (typeof (source) == 'function') {
+                    new_document = await source.apply(this, args);
                 } else if (source && source[0] !== '#') {
                     try {
                         this["settings"].headers = new Headers(this["settings"].headers || {});
@@ -2155,9 +2159,6 @@ xover.Source = function (tag) {
                 }
                 if (!(new_document instanceof Node) && xover.json.isValid(new_document)) {
                     new_document = xover.xml.fromJSON(new_document);
-                }
-                if (!(new_document instanceof Node)) {
-                    return Promise.reject(`No se pudo obtener la fuente de datos ${tag}`);
                 }
                 this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag, settings: this.settings }, self));
@@ -3221,7 +3222,7 @@ xover.NodeSet = function (nodeSet = []) {
     if (!nodeSet.hasOwnProperty("highlight")) {
         Object.defineProperty(nodeSet, 'highlight', {
             value: function () {
-                nodeSet.forEach(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-source='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
+                nodeSet.forEach(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-scope='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
             },
             writable: true, enumerable: false, configurable: false
         });
@@ -4228,7 +4229,7 @@ xover.xml.createFragment = function (xml_string) {
 
 xover.xml.createNode = function (xml_string, notify_error) {
     let result = xover.xml.createDocument(xml_string, notify_error)
-    return result.documentElement || result;
+    return result.firstElementChild || result;
 }
 
 xover.xml.createElement = function (tagName) {
@@ -6671,6 +6672,13 @@ xover.debug.brokenXmlAttributes = function (node) {
     return node.selectNodes(`@*`).filter(attr => (!attr.prefix && attr.name.indexOf(':') != -1))
 }
 
+class TimeoutError extends Error {
+    constructor(message = 'Timeout waiting for condition to be met!') {
+        super(message);
+        this.name = 'TimeoutError';
+    }
+}
+
 xover.modernize = function (targetWindow) {
     var targetWindow = (targetWindow || window);
     if (targetWindow.modernized) return;
@@ -6717,27 +6725,33 @@ xover.modernize = function (targetWindow) {
             return result
         }
 
-        class TimeoutError extends Error {
-            constructor(message = 'Timeout waiting for condition to be met') {
-                super(message);
-                this.name = 'TimeoutError';
-            }
-        }
-
         xover.waitFor = async function (conditionFn, timeout) {
             return new Promise((resolve, reject) => {
                 const startTime = Date.now();
 
-                function check() {
+                async function check() {
                     if (typeof (conditionFn) == 'function' && conditionFn()) {
-                        resolve();
-                    } else if (typeof (conditionFn) == 'string' && (function () { return eval.apply(this, arguments) }(conditionFn))) {
-                        resolve();
+                        return resolve(true);
+                    } else if (typeof (conditionFn) == 'string') {
+                        try {
+                            if (!existsFunction(conditionFn)) {
+                                if (document.querySelector(conditionFn)) {
+                                    return resolve(true)
+                                }
+                            }
+                        } catch (e) {
+                            if (e.message.indexOf('not a valid selector') != -1) {
+                                if (await (function () { return eval.apply(this, arguments) }(conditionFn))) {
+                                    return resolve(true)
+                                }
+                            }
+                        }
+                    } else if (typeof (conditionFn) == 'string') {
+                        return resolve(true);
                     } else if (timeout && Date.now() - startTime >= timeout) {
-                        reject(new Error('Timeout waiting for condition to be met'));
-                    } else {
-                        setTimeout(check, 100); // Check again in 100ms
+                        return reject(new TimeoutError(''));
                     }
+                    setTimeout(check, 100);
                 }
 
                 check();
@@ -7713,8 +7727,11 @@ xover.modernize = function (targetWindow) {
                         let store = self.store;
                         context.fetching = context.fetching || new Promise((resolve, reject) => {
                             self.source && self.source.fetch.apply(context, args).then(new_document => {
+                                if (!(new_document instanceof Node) && xover.json.isValid(new_document)) {
+                                    new_document = xover.xml.fromJSON(new_document);
+                                }
                                 if (!(new_document instanceof Node)) {
-                                    Promise.reject(new_document);
+                                    new_document = new DOMParser().parseFromString(new_document, 'text/html');
                                 }
                                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store, old: __document, target: __document }, new_document));
                                 __document.href = new_document.href;
@@ -8031,7 +8048,7 @@ xover.modernize = function (targetWindow) {
                         return this.ownerDocument.store
                     } else {
                         let node = this.parentElement && this.closest && this || this.parentNode || this;
-                        let store_name = [node.closest && node.closest("[xo-store],[xo-stylesheet]")].map(el => el && el.getAttribute("xo-store") || null)[0];
+                        let store_name = [node.closest && node.closest("[xo-store],[xo-source],[xo-stylesheet]")].map(el => el && el.getAttribute("xo-store") || null)[0];
                         let store = store_name && store_name in xover.stores && xover.stores[store_name] || null;
                         return store;
                     }
@@ -9548,6 +9565,28 @@ xover.modernize = function (targetWindow) {
                     if (!selector) return;
                     let stylesheet = this.getAttribute("xo-stylesheet");
                     let target_store = this.store;
+                    let schedule_condition = this.getAttribute("xo-schedule");
+                    if (schedule_condition) {
+                        let schedule = xover.waitFor(schedule_condition);
+                        await schedule;
+                        if (typeof (schedule) == 'function') await eval(schedule).apply(this);
+                    }
+
+                    let suspense_condition = this.getAttribute("xo-suspense");
+                    let suspense = suspense_condition && await xover.waitFor(suspense_condition);
+                    if (typeof (suspense) == 'function') await eval(suspense).apply(this);
+                    if (this.hasAttribute("xo-source")) {
+                        let source = this.getAttribute("xo-source");
+                        let document = xover.sources[source];
+
+                        if (document) {
+                            let response = await document.fetch();
+                            let body = response.querySelector('html > body') || response;
+                            this.replaceChildren(...body.childNodes);
+                            return this;
+                        }
+
+                    }
                     if (this.hasAttribute("xo-stylesheet")) {
                         if (target_store) {
                             let target_document = target_store && target_store.document;
@@ -10068,7 +10107,7 @@ xover.modernize = function (targetWindow) {
                             //target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
                             //    return new bootstrap.Tooltip(tooltipTriggerEl)
                             //})
-                            dependants = [...target.querySelectorAll('[xo-store],[xo-stylesheet]')];
+                            dependants = [...target.querySelectorAll('[xo-store],[xo-source],[xo-stylesheet]')];
                             //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
                             dependants.forEach(el => el.render());
                             delete xover.site.renderingTo;
