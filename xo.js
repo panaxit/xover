@@ -520,21 +520,17 @@ xover.init = async function () {
     this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
         try {
             await xover.modernize();
+            xover.init.Observer();
             if (history.state) delete history.state.active;
             await xover.manifest.init()
             Object.assign(xover.spaces, xover.manifest.spaces);
             this.init.status = 'initialized';
-            let stylesheet_promises = [];
-            for (let source of xover.manifest.stylesheets.map(href => xover.sources[href])) {
-                stylesheet_promises.push(source.fetch().catch(e => Promise.reject(e)));
-            }
-            await Promise.all(stylesheet_promises).catch(e => e.render && e.render() || console.error(e));
 
-            let store_promises = [];
-            for (let store of xover.manifest.stores.map(tag => new xover.Store(xover.sources[tag], { tag: tag }))) {
-                store_promises.push(store.fetch().catch(e => Promise.reject(e)));
+            let source_promises = [];
+            for (let source of xover.manifest.start.map(href => xover.sources[href])) {
+                source_promises.push(source.fetch().catch(e => Promise.reject(e)));
             }
-            await Promise.all(store_promises).catch(e => e.render && e.render() || console.error(e));
+            await Promise.all(source_promises).catch(e => e.render && e.render() || console.error(e));
             xover.manifest.state.refresh();
             xover.manifest.session.refresh();
 
@@ -555,6 +551,52 @@ xover.init = async function () {
         this.init.initializing = undefined;
     });
     return this.init.initializing;
+}
+
+xover.init.Observer = function (document = window.document) {
+    const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-attribute", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
+
+    const observer = new MutationObserver((mutationsList, observer) => {
+        for (const mutation of mutationsList) {
+            if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
+            let target = mutation.target;
+
+            if (mutation.type == 'attributes' && ["xo-store", "xo-source", "xo-stylesheet"].includes(mutation.attributeName)) {
+                target.render()
+            }
+            for (node of [...mutation.addedNodes].concat(target)) {
+                if (node.closest("[xo-id]")) {
+                    let observer_node = node.selectFirst(`ancestor-or-self::*[@xo-id][last()]`);
+                    let observer_config = { characterData: true, attributes: true, childList: true, subtree: true }
+                    observer_node.observer = observer_node.observer || new MutationObserver((mutationsList) => {
+                        for (const mutation of mutationsList) {
+                            let target = mutation.target;
+                            let target_element = mutation.target.closest('*');
+                            //await xover.delay(100); /*Added to wait for all changes to apply*/
+                            let xo_id = target_element.getAttribute("xo-id");
+                            if (xo_id) {
+                                for (let synced_node of [...window.document.querySelectorAll(`[xo-id="${xo_id}"]`)].filter(el => el !== target_element && !el.isEqualNode(target_element))) {
+                                    target_element.observer && target_element.observer.disconnect();
+                                    xover.xml.combine(synced_node, target_element.cloneNode(true))
+                                    target_element.observer && target_element.observer.observe(target_element, observer_config);
+                                }
+                            }
+                        }
+                    });
+                    observer_node.observer.observe(observer_node, observer_config);
+                }
+            }
+            for (node of [...mutation.addedNodes]) {
+                if (node instanceof HTMLElement || node instanceof SVGElement) {
+                    dependants = [...node.querySelectorAll('[xo-store],[xo-source],[xo-stylesheet]')];
+                    dependants.forEach(el => el.render());
+                //} else if (node instanceof Text) {
+                //    console.log(node)
+                }
+            }
+        }
+    });
+    observer.observe(document, config);
 }
 
 xover.initializeElementListeners = function (document = window.document) {
@@ -1005,9 +1047,8 @@ xover.Manifest = function (manifest = {}) {
         "server": {},
         "session": [],
         "sources": {},
-        "stores": [],
+        "start": [],
         "state": [],
-        "stylesheets": [],
         "spaces": {},
         "settings": {}
     }
@@ -1852,7 +1893,8 @@ xover.xml.getDifferences = function (node1, node2) {
 xover.xml.createDocument = function (xml, options = { autotransform: true }) {
     let result = undefined;
     if (xml instanceof Node) {
-        result = xml.cloneNode(true);
+        result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
+        result.append(xml.cloneNode(true));
     } else {
         let sXML = (xml && xml.document || xml || '').toString();
         if (sXML.indexOf('<<<<<<< ') != -1) {
@@ -3611,7 +3653,7 @@ xover.URL = function (url, base, settings = {}) {
 
     url.settings = url.settings || {};
     url.settings.method = method || url.settings.method;
-    url.settings.merge(settings);
+    url.settings = Object.assign(url.settings, settings);
     url.settings.headers = new Headers(url.settings.headers || {});
 
     [...new Headers(settings["headers"] || {}).entries()].forEach(([key, value]) => {
@@ -4242,6 +4284,7 @@ xover.xml.createNode = function (xml_string, notify_error) {
 }
 
 xover.xml.combine = function (curr_node, new_node) {
+    if (curr_node.isEqualNode(new_node)) return curr_node;
     if (curr_node instanceof Element && !curr_node.matches(".xo-swap") && curr_node.constructor !== new_node.constructor) {
         if (curr_node.matches(".xo-static")) {
             curr_node.append(new_node);
@@ -4259,6 +4302,287 @@ xover.xml.combine = function (curr_node, new_node) {
         curr_node.replaceWith(new_node)
         return new_node
     }
+}
+
+xover.dom.combine = async function (target, documentElement) {
+    let scripts;
+    let script_wrapper = window.document.firstElementChild.cloneNode();
+    script_wrapper.append(...documentElement.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
+
+    //documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
+    //if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-store])`)) {
+    //    action = 'replace';
+    //} else if (target.constructor == documentElement.constructor && target.getAttribute("xo-store") == documentElement.getAttribute("xo-store") && target.getAttribute("xo-stylesheet") == documentElement.getAttribute("xo-stylesheet")) {
+    //    action = 'replace';
+    //} else if (!action && xsl && target.matches(`[xo-store="${tag}"]:not([xo-stylesheet])`)) {
+    //    action = 'append';
+    //} else if (target.matches(`[xo-store="${tag}"][xo-stylesheet="${stylesheet_href}"]`)) {
+    //    action = 'replace';
+    //} else if (target.matches(`[xo-store="${tag}"][xo-stylesheet]`)) {
+    //    continue;
+    //}
+
+    //if (action === 'replace') {
+    //    if (target.constructor !== documentElement.constructor) {
+    //        let new_node = documentElement.cloneNode();
+    //        target = target.replaceWith(new_node);
+    //    } else {
+    //        target.attributes.toArray().filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !documentElement.hasAttribute(attr.name)).forEach(attr => documentElement.setAttribute(attr.name, attr.value));
+    //        //target.classList.forEach(class_name => documentElement.classList.add(class_name));
+    //    }
+    //}
+
+    //if (target === document.body && action === 'replace') {
+    //    action = null;
+    //}
+
+    //if (!stylesheet_href) {
+    //    console.warn(`There's a missing href in a processing-instruction`)
+    //}
+    //if (((dom || {}).namespaceURI || "").indexOf("http://www.mozilla.org/TransforMiix") != -1) {
+    //    // TODO: Revisar esta parte, regularmente esto sucede cuando la transformación trae más de un nodo
+    //    data.selectNodes(`processing-instruction('xml-stylesheet')`).remove();
+    //    if (!this.sources[stylesheet_href]) {
+    //        dom = data.transform(xover.sources[stylesheet_href] || xover.sources.defaults[stylesheet_href] || xover.sources.defaults["shell.xslt"]);
+    //    } else {
+    //        dom = data.transform(this.sources[stylesheet_href]);
+    //    }
+    //}
+    //if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
+    //    data = dom;
+    //}
+
+    let _applyScripts = async function (targetDocument, scripts = []) {
+        for (let script of scripts) {
+            let promise;
+            if (script.hasAttribute("async")) await xo.delay(1);
+            if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
+                if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
+                    var new_element = targetDocument.createElement(script.tagName);
+                    [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
+                    let on_load = script.textContent;
+
+                    if (new_element.tagName.toLowerCase() == "script") {
+                        promise = new Promise(async (resolve, reject) => {
+                            new_element.onload = function () {
+                                on_load && (function () { return eval.apply(this, arguments) }(on_load))
+                                resolve()
+                            };
+                        });
+                        targetDocument.head.appendChild(new_element);
+                    }
+                }
+            } else if (!script.getAttribute("src") && script.textContent) {
+                script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
+                if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
+                    if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
+                        targetDocument.documentElement.appendChild(script);
+                    }
+                } else {
+                    try {
+                        //function evalInScope(js, scope) {
+                        //    return function () {
+                        //        with (this) { return eval(js) }
+                        //    }.call(scope)
+                        //}
+                        //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
+                        let result = (function () {
+                            xover.context = script;
+                            return eval.apply(this, arguments)
+                        }(`/*${target.getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
+                        if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
+                            let target = document.getElementById(script.id);
+                            target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
+                        }
+                    } catch (message) {
+                        console.error(message)
+                    }
+                }
+            } else {
+                throw (new Error(`A script couldn't be loaded.`));
+            }
+            if (script.hasAttribute("defer")) await promise;
+        }
+    }
+    //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
+
+    _applyScripts(document, [...script_wrapper.children]);
+    target.disconnected = false;
+    let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
+    post_render_scripts.forEach(script => script_wrapper.append(script));
+
+    let active_element = document.activeElement;
+    if (target.contains(active_element)) {
+        await xover.delay(100);
+        xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
+    }
+
+    //const config = { characterData: true, attributes: true, childList: true, subtree: true };
+    //target.observer = target.observer || new MutationObserver((mutationsList) => {
+    //    for (const mutation of mutationsList) {
+    //        let target = mutation.target;
+    //        let target_element = mutation.target.closest('*');
+    //        //await xover.delay(100); /*Added to wait for all changes to apply*/
+    //        let xo_id = target_element.getAttribute("xo-id");
+    //        if (xo_id) {
+    //            for (let synced_node of [...window.document.querySelectorAll(`[xo-id="${xo_id}"]`)].filter(el => el !== target_element)) {
+    //                xover.xml.combine(synced_node, target_element.cloneNode(true))
+    //            }
+    //        }
+    //    }
+    //});
+
+    //target.observer.observe(target, config);
+
+    let changes = xover.xml.getDifferences(target, documentElement);
+    if (!changes) return target;
+    let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: documentElement.cloneNode(true), element: documentElement, changes }, documentElement);
+    window.top.dispatchEvent(before_dom);
+    if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
+    if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
+        //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
+        //target = document.body;
+        xover.dom.setEncryption(dom, 'UTF-7');
+        documentElement.select('//text()[.="�"]').remove();
+        let iframe;
+        if (document.activeElement.tagName.toLowerCase() == 'iframe') {
+            iframe = document.activeElement;
+            target = (document.activeElement || {}).contentDocument.querySelector('main,table,div,span');
+            target.parentElement.replaceChild(documentElement.querySelector(target.tagName.toLowerCase()), target);
+        } else {
+            target.replaceChildren();
+            if (target.tagName.toLowerCase() == "iframe") {
+                iframe = target;
+            } else {
+                iframe = document.createElement('iframe');
+                documentElement.select(`.//@src|.//@href`).forEach(attr => attr.value = xover.URL(attr.value).toString());
+                //iframe.width = "100%"
+                //iframe.height = "1000"
+                iframe.setAttributeNS(null, "xo-store", tag);
+                stylesheet_href && iframe.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
+                iframe.style.backgroundColor = 'white';
+                target.replaceWith(iframe);
+                Object.entries(xover.listener).forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
+                //iframe.addEventListener('focusout', xover.listeners.dom.onfocusout);
+                //iframe.addEventListener('change', xover.listeners.dom.onchange);
+            }
+            let url = xover.dom.getGeneratedPageURL({
+                html: xover.string.htmlDecode(documentElement.toString()),
+                css: (documentElement.querySelector('style') || {}).innerHTML,
+                js: `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; let iframe=parent.document.querySelector('iframe'); iframe.height=document.querySelector('body').scrollHeight+10; iframe.width=document.querySelector('body').scrollWidth+10; xover.modernize(iframe.contentWindow); document.querySelector('body').setAttributeNS(null, "xo-store", '${tag}');` //+ js//((dom.querySelector('script') || {}).innerHTML || "")
+                //window.top.document.querySelector('body').setAttributeNS(null, "xo-store", window.top.location.hash)
+            });
+            iframe.src = url;
+        }
+        target = iframe;
+        //xover.site.restore(target);
+        //} else if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
+        //    dom = await dom.transform('error.xslt');
+        //    target = document.querySelector('main') || document.querySelector('body')
+        //    if (stylesheet.action == "replace") {
+        //        target = target.replaceWith(dom);
+        //    } else {
+        //        xover.dom.clear(target);
+        //        target.append(...dom.parentElement.childNodes);
+        //    }
+    } else {
+        scripts = documentElement.selectNodes('//*[self::html:script][not(@src)][text()]').map(el => {
+            //!el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
+            let cloned = el.cloneNode(true);
+            el.textContent = ''
+            Object.defineProperty(cloned, 'parentNode', {
+                value: el.parentNode
+            });
+            return cloned;
+        });
+
+        //let active_element_selector = active_element.buildSelector({ ignore: ['.xo-working'] });
+        //if (stylesheet_href == target.getAttribute('xo-stylesheet')) {
+        let coordinates = active_element.scrollPosition;
+
+        //target.observer && target.observer.disconnect();
+        for (let [[curr_node, new_node]] of changes) {
+            if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
+                continue;
+            }
+            if (!curr_node.parentNode) continue;
+            if (!curr_node.ownerDocument.contains(curr_node)) continue;
+            let result = xover.xml.combine(curr_node, new_node);
+            if (target === curr_node) target = result;
+        }
+        if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
+
+        const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-attribute"], childList: true, subtree: true };
+
+        //} else {
+        //    target.append(documentElement);
+        //    target = documentElement;
+        //}
+        xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
+        //if (action == "replace") {
+        //    target = target.replaceWith(dom)//target = [target.replace(dom)];
+        //    //let to_be_replaced = target.querySelector(active_element_selector)
+        //    //to_be_replaced && to_be_replaced.replaceWith(active_element)
+        //    target.document = data;
+        //} else {//if (action == "append") {
+        //    //target.append(dom);
+        //    //} else {
+        //    //    xover.dom.clear(target);
+        //    //target.append(...documentElement.cloneNode(true).childNodes);
+        //    documentElement.childNodes.filter(el => el instanceof Element).forEach(el => el.document = data)
+        //    target.append(...documentElement.parentNode.childNodes);
+        //}
+
+        //let lines = documentElement.querySelectorAll(".leader-line") /*TODO: Mover este código a algún script diferido*/
+        //for (let l = 0; l < lines.length; ++l) {
+        //    lines[l].remove();
+        //}
+        if (documentElement.selectNodes) {
+            _applyScripts(document, documentElement.selectNodes('//*[self::html:script][text()]'));
+        }
+        return target;
+        //xover.site.restore(target);
+    }
+
+    let render_event = new xover.listener.Event('render', { store: target.store, stylesheet: target.stylesheet, target, dom: documentElement, context: target.context, changes }, target);
+    window.top.dispatchEvent(render_event);
+    if (render_event.cancelBubble || render_event.defaultPrevented) return target;
+
+    //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target, dom: target }, self));
+
+
+    //if (window.MathJax) {/*TODO: Mover este código a algún script diferido*/
+    //    MathJax.typeset && MathJax.typeset();
+    //} else if (target.selectSingleNode('//mml:math') || ((target || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
+    //    if (!window.MathJax) {
+    //        window.MathJax = {
+    //            loader: { load: ['[mml]/mml3'] }
+    //        }
+    //    }
+    //    let script = document.createElement('script');
+    //    script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js';
+    //    document.head.appendChild(script);
+    //}
+
+    let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
+    if (unbound_elements.length) {
+        console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
+    }
+    //let invalid_scope = target.querySelectorAll('[xo-store][xo-scope],[xo-stylesheet][xo-scope]');
+    //if (invalid_scope.length) {
+    //    console.warn(`There ${invalid_scope.length > 1 ? 'are' : 'is'} ${invalid_scope.length} misconfigured element${invalid_scope.length > 1 ? 's' : ''}`, invalid_scope)
+    //}
+
+    _applyScripts(document, scripts);
+    xover.initializeElementListeners(target);
+
+    ///*TODO: Mover este código a algún script diferido*/
+    //target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
+    //    return new bootstrap.Tooltip(tooltipTriggerEl)
+    //})
+    //dependants = [...target.querySelectorAll('[xo-store],[xo-source],[xo-stylesheet]')];
+    ////window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
+    //dependants.forEach(el => el.render());
 }
 
 xover.xml.createElement = function (tagName) {
@@ -7392,6 +7716,30 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
+                var original_text_closest = Object.getOwnPropertyDescriptor(Text.prototype, 'closest');
+                Object.defineProperty(Text.prototype, 'closest', {
+                    value: function (...args) {
+                        let node = this;
+                        try {
+                            //if (!(original_text_closest && node.parentNode instanceof HTMLElement)) {
+                            //    throw new DOMException('not a valid selector');
+                            //}
+                            return (original_text_closest || {}).value && original_text_closest.value.apply(node, args) || (original_element_closest || {}).value && original_element_closest.value.apply(node.parentNode, args);
+                        } catch (e) {
+                            if (e.message.indexOf('not a valid selector') != -1) {
+                                node = node.parentNode || node.formerParentNode;
+                                let key = args[0];
+                                try {
+                                    let return_value = this.matches(key) || this.parentNode && this.parentNode.selectFirst(`ancestor-or-self::${key}[1]`);
+                                    return return_value;
+                                } catch (err) {
+                                    return undefined;
+                                }
+                            }
+                        }
+                    }
+                })
+
                 var original_StopPropagation = Object.getOwnPropertyDescriptor(Event.prototype, 'stopPropagation');
                 Object.defineProperty(Event.prototype, 'stopPropagation', {
                     value: function () {
@@ -9616,12 +9964,13 @@ xover.modernize = async function (targetWindow) {
                             this.stop = this.stop || xover.waitFor.call(this, stop_condition);
                         }
 
+                        let source = this.getAttribute("xo-source");
+                        let source_document;
                         if (this.hasAttribute("xo-source")) {
-                            let source = this.getAttribute("xo-source");
-                            let document = xover.sources[source];
-                            if (document) {
-                                let node = xover.xml.createDocument();
+                            source_document = xover.sources[source];
+                            if (source_document) {
                                 if (this.hasAttribute("xo-settings")) {
+                                    let document = xover.xml.createDocument();
                                     let headers = this.getAttribute("xo-settings");
                                     try {
                                         headers = eval(`({${headers}})`)
@@ -9632,33 +9981,25 @@ xover.modernize = async function (targetWindow) {
                                             throw (e)
                                         }
                                     }
-                                    node.settings.headers = new Headers(headers || {});
+                                    document.settings.headers = new Headers(headers || {});
+                                    source_document = await source_document.source.fetch.apply(document);
+                                } else {
+                                    await source_document.ready
                                 }
-                                node = await document.fetch.apply(node);
-                                let body = (node.querySelector('html > body') || node).firstChild.cloneNode(true);
-                                if (body instanceof Element && this.hasAttribute("xo-stylesheet")) {
-                                    let document = xover.xml.createDocument(body);
-                                    await document.render(document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector })) || null;
-                                }
-                                if (body.constructor === this.constructor) {
-                                    for (let attribute of this.attributes.toArray().filter(attribute => attribute.name.startsWith("xo-"))) {
-                                        if (!body.hasAttribute(attribute.name)) body.setAttributeNode(attribute.cloneNode(true))
-                                    }
-                                }
-                                let changes = xover.xml.getDifferences(this, body) || [];
-                                for (let [[curr_node, new_node]] of changes) {
-                                    let combined = xover.xml.combine(curr_node, new_node);
-                                    if (curr_node === this) {
-                                        self = combined;
-                                        self.stop = this.stop
-                                    }
+                                //document = await source_document.source.fetch.apply(document);
+                                source_document = (source_document.querySelector('html > body') || source_document);
+                                let body = source_document.firstChild.cloneNode(true);
+                                let result = await xover.dom.combine(self, body);
+                                result.stop = self.stop;
+                                if (source_document.matches('html > body')) {
+                                    source_document = xover.xml.createDocument(source_document)
                                 }
                             }
                         }
                         if (this.hasAttribute("xo-stylesheet")) {
-                            if (target_store) {
-                                let target_document = target_store && target_store.document;
-                                return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector, action: "replace" })) || null;
+                            if (target_store || source_document) {
+                                let target_document = source_document || target_store && target_store.document;
+                                return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector })) || null;
                             } else {
                                 let document = xo.sources[stylesheet];
                                 return document.render();
@@ -9831,8 +10172,6 @@ xover.modernize = async function (targetWindow) {
                                 let data = this.cloneNode(true);
                                 stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
                                 let target = stylesheet_target;
-                                let active_element = document.activeElement;
-                                if (target.contains(active_element)) await xover.delay(100);
 
                                 xover.site.renderingTo = target;
                                 let current_cursor_style = (target.style || {}).cursor;
@@ -9843,6 +10182,10 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 //original_append.call(target, xover.xml.createNode(`<div xmlns="http://www.w3.org/1999/xhtml" xmlns:js="http://panax.io/xover/javascript" class="loading" onclick="this.remove()" role="alert" aria-busy="true"><div class="modal_content-loading"><div class="modal-dialog modal-dialog-centered"><div class="no-freeze-spinner"><div id="no-freeze-spinner"><div><i class="icon"><img src="assets/favicon.ico" class="ring_image" onerror="this.remove()" /></i><div></div></div></div></div></div></div></div>`));
                                 data.target = target;
+                                data.disconnected = false;
+                                target.tag = data.tag;
+                                target.document = this;
+                                target.context = data;
                                 let dom;
                                 if (xsl) {
                                     data.tag = '#' + xsl.href.split(/[\?#]/)[0];
@@ -9852,134 +10195,12 @@ xover.modernize = async function (targetWindow) {
                                     dom = this.cloneNode(true);
                                 }
 
-                                let documentElement = dom.firstElementChild;
-                                //target.select("xhtml:div[@class='loading']").remove()
-                                try { target.style.cursor = current_cursor_style } catch (e) { console.log(e) }
                                 dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
+
+                                let documentElement = dom.firstElementChild;
                                 if (!documentElement) {
                                     continue;
                                 }
-
-                                let scripts_external = [], scripts;
-                                let script_wrapper = window.document.firstElementChild.cloneNode();
-
-                                if (dom instanceof DocumentFragment) {
-                                    let content = target.cloneNode();
-                                    dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());
-                                    content.append(...dom.children);
-                                    script_wrapper.append(...content.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
-                                    documentElement = content;
-                                } else {
-                                    script_wrapper.append(...dom.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
-                                    documentElement.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
-                                }
-                                documentElement.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
-                                documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
-
-                                //documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
-                                let current_scope = target.getAttribute("xo-scope");
-                                current_scope && documentElement.setAttributeNS(null, "xo-scope", current_scope);
-                                let store_tag = documentElement.getAttribute("xo-store") || target.getAttribute("xo-store") || tag;
-                                store_tag && documentElement.setAttributeNS(null, "xo-store", store_tag);
-                                let stylesheet_href = stylesheet.href;
-                                stylesheet_href && documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
-                                //if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-store])`)) {
-                                //    action = 'replace';
-                                //} else if (target.constructor == documentElement.constructor && target.getAttribute("xo-store") == documentElement.getAttribute("xo-store") && target.getAttribute("xo-stylesheet") == documentElement.getAttribute("xo-stylesheet")) {
-                                //    action = 'replace';
-                                //} else if (!action && xsl && target.matches(`[xo-store="${tag}"]:not([xo-stylesheet])`)) {
-                                //    action = 'append';
-                                //} else if (target.matches(`[xo-store="${tag}"][xo-stylesheet="${stylesheet_href}"]`)) {
-                                //    action = 'replace';
-                                //} else if (target.matches(`[xo-store="${tag}"][xo-stylesheet]`)) {
-                                //    continue;
-                                //}
-
-                                //if (action === 'replace') {
-                                //    if (target.constructor !== documentElement.constructor) {
-                                //        let new_node = documentElement.cloneNode();
-                                //        target = target.replaceWith(new_node);
-                                //    } else {
-                                //        target.attributes.toArray().filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !documentElement.hasAttribute(attr.name)).forEach(attr => documentElement.setAttribute(attr.name, attr.value));
-                                //        //target.classList.forEach(class_name => documentElement.classList.add(class_name));
-                                //    }
-                                //}
-
-                                //if (target === document.body && action === 'replace') {
-                                //    action = null;
-                                //}
-
-                                //if (!stylesheet_href) {
-                                //    console.warn(`There's a missing href in a processing-instruction`)
-                                //}
-                                //if (((dom || {}).namespaceURI || "").indexOf("http://www.mozilla.org/TransforMiix") != -1) {
-                                //    // TODO: Revisar esta parte, regularmente esto sucede cuando la transformación trae más de un nodo
-                                //    data.selectNodes(`processing-instruction('xml-stylesheet')`).remove();
-                                //    if (!this.sources[stylesheet_href]) {
-                                //        dom = data.transform(xover.sources[stylesheet_href] || xover.sources.defaults[stylesheet_href] || xover.sources.defaults["shell.xslt"]);
-                                //    } else {
-                                //        dom = data.transform(this.sources[stylesheet_href]);
-                                //    }
-                                //}
-                                //if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
-                                //    data = dom;
-                                //}
-
-                                let _applyScripts = async function (targetDocument, scripts = []) {
-                                    for (let script of scripts) {
-                                        let promise;
-                                        if (script.hasAttribute("async")) await xo.delay(1);
-                                        if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
-                                            if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
-                                                var new_element = targetDocument.createElement(script.tagName);
-                                                [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
-                                                let on_load = script.textContent;
-
-                                                if (new_element.tagName.toLowerCase() == "script") {
-                                                    promise = new Promise(async (resolve, reject) => {
-                                                        new_element.onload = function () {
-                                                            on_load && (function () { return eval.apply(this, arguments) }(on_load))
-                                                            resolve()
-                                                        };
-                                                    });
-                                                    targetDocument.head.appendChild(new_element);
-                                                }
-                                            }
-                                        } else if (!script.getAttribute("src") && script.textContent) {
-                                            script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
-                                            if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
-                                                if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
-                                                    targetDocument.documentElement.appendChild(script);
-                                                }
-                                            } else {
-                                                try {
-                                                    //function evalInScope(js, scope) {
-                                                    //    return function () {
-                                                    //        with (this) { return eval(js) }
-                                                    //    }.call(scope)
-                                                    //}
-                                                    //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
-                                                    let result = (function () {
-                                                        xover.context = script;
-                                                        return eval.apply(this, arguments)
-                                                    }(`/*${stylesheet_href}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
-                                                    if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
-                                                        let target = document.getElementById(script.id);
-                                                        target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
-                                                    }
-                                                } catch (message) {
-                                                    console.error(message)
-                                                }
-                                            }
-                                        } else {
-                                            throw (new Error(`A script couldn't be loaded.`));
-                                        }
-                                        if (script.hasAttribute("defer")) await promise;
-                                    }
-                                }
-                                //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
-
-                                _applyScripts(document, [...script_wrapper.children]);
                                 if (!target) {
                                     if (xover.debug.enabled) {
                                         if (stylesheet_target) {
@@ -9999,186 +10220,27 @@ xover.modernize = async function (targetWindow) {
                                     //self.isActive = false;
                                     continue;
                                 }
-                                target.disconnected = false;
-                                data.disconnected = false;
-                                target.tag = data.tag;
-                                let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
-                                post_render_scripts.forEach(script => script_wrapper.append(script));
-
-                                if (target.contains(active_element)) {
-                                    xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
-                                }
-                                let changes = xover.xml.getDifferences(target, documentElement);
-                                if (!changes) continue;
-                                let before_dom = new xover.listener.Event('beforeRender', { store: store, stylesheet: stylesheet, target: target, document, context: data, dom: documentElement.cloneNode(true), element: documentElement, changes }, documentElement);
-                                window.top.dispatchEvent(before_dom);
-                                if (before_dom.cancelBubble || before_dom.defaultPrevented) continue;
-                                if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
-                                    //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
-                                    //target = document.body;
-                                    xover.dom.setEncryption(dom, 'UTF-7');
-                                    documentElement.select('//text()[.="�"]').remove();
-                                    let iframe;
-                                    if (document.activeElement.tagName.toLowerCase() == 'iframe') {
-                                        iframe = document.activeElement;
-                                        target = (document.activeElement || {}).contentDocument.querySelector('main,table,div,span');
-                                        target.parentElement.replaceChild(documentElement.querySelector(target.tagName.toLowerCase()), target);
-                                    } else {
-                                        target.replaceChildren();
-                                        if (target.tagName.toLowerCase() == "iframe") {
-                                            iframe = target;
-                                        } else {
-                                            iframe = document.createElement('iframe');
-                                            documentElement.select(`.//@src|.//@href`).forEach(attr => attr.value = xover.URL(attr.value).toString());
-                                            //iframe.width = "100%"
-                                            //iframe.height = "1000"
-                                            iframe.setAttributeNS(null, "xo-store", tag);
-                                            stylesheet_href && iframe.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
-                                            iframe.style.backgroundColor = 'white';
-                                            target.replaceWith(iframe);
-                                            Object.entries(xover.listener).forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
-                                            //iframe.addEventListener('focusout', xover.listeners.dom.onfocusout);
-                                            //iframe.addEventListener('change', xover.listeners.dom.onchange);
-                                        }
-                                        let url = xover.dom.getGeneratedPageURL({
-                                            html: xover.string.htmlDecode(documentElement.toString()),
-                                            css: (documentElement.querySelector('style') || {}).innerHTML,
-                                            js: `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; let iframe=parent.document.querySelector('iframe'); iframe.height=document.querySelector('body').scrollHeight+10; iframe.width=document.querySelector('body').scrollWidth+10; xover.modernize(iframe.contentWindow); document.querySelector('body').setAttributeNS(null, "xo-store", '${tag}');` //+ js//((dom.querySelector('script') || {}).innerHTML || "")
-                                            //window.top.document.querySelector('body').setAttributeNS(null, "xo-store", window.top.location.hash)
-                                        });
-                                        iframe.src = url;
-                                    }
-                                    target = iframe;
-                                    //xover.site.restore(target);
-                                    //} else if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
-                                    //    dom = await dom.transform('error.xslt');
-                                    //    target = document.querySelector('main') || document.querySelector('body')
-                                    //    if (stylesheet.action == "replace") {
-                                    //        target = target.replaceWith(dom);
-                                    //    } else {
-                                    //        xover.dom.clear(target);
-                                    //        target.append(...dom.parentElement.childNodes);
-                                    //    }
+                                if (dom instanceof DocumentFragment) {
+                                    let content = target.cloneNode();
+                                    dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());
+                                    content.append(...dom.children);
+                                    documentElement = content;
                                 } else {
-                                    scripts = documentElement.selectNodes('//*[self::html:script][not(@src)][text()]').map(el => {
-                                        //!el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
-                                        let cloned = el.cloneNode(true);
-                                        el.textContent = ''
-                                        Object.defineProperty(cloned, 'parentNode', {
-                                            value: el.parentNode
-                                        });
-                                        return cloned;
-                                    });
-
-                                    //let active_element_selector = active_element.buildSelector({ ignore: ['.xo-working'] });
-                                    //if (stylesheet_href == target.getAttribute('xo-stylesheet')) {
-                                    let coordinates = active_element.scrollPosition;
-                                    const observer_config = { characterData: true, attributes: true, childList: true, subtree: true };
-                                    target.observer && target.observer.disconnect();
-                                    for (let [[curr_node, new_node]] of changes) {
-                                        if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
-                                            continue;
-                                        }
-                                        if (!curr_node.parentNode) continue;
-                                        if (!curr_node.ownerDocument.contains(curr_node)) continue;
-                                        xover.xml.combine(curr_node, new_node);
-                                        if (target === curr_node) target = new_node;
-                                    }
-                                    target.observer && target.observer.observe(target, observer_config);
-                                    if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
-                                    //} else {
-                                    //    target.append(documentElement);
-                                    //    target = documentElement;
-                                    //}
-
-                                    target.document = this;
-                                    target.context = data;
-                                    xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
-                                    if (!xsl) {
-                                        if (!target.observer) {
-                                            const mutation_observer = new MutationObserver(async (mutationList) => {
-                                                await xover.delay(100); /*Added to wait for all changes to apply*/
-                                                mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
-                                                if (!mutationList.length) return;
-                                                //for (mutation of mutationList) {
-                                                //    for (removed of mutation.removedNodes) {
-                                                //        self.documentElement.select(`//*[@xo:id="${removed.getAttribute("xo:id")}"]`).remove()
-                                                //    }
-                                                //}
-                                                self.documentElement.replaceWith(target.cloneNode(true))
-                                            });
-                                            target.observer = mutation_observer;
-                                            mutation_observer.observe(target, observer_config);
-                                        }
-                                    }
-                                    //if (action == "replace") {
-                                    //    target = target.replaceWith(dom)//target = [target.replace(dom)];
-                                    //    //let to_be_replaced = target.querySelector(active_element_selector)
-                                    //    //to_be_replaced && to_be_replaced.replaceWith(active_element)
-                                    //    target.document = data;
-                                    //} else {//if (action == "append") {
-                                    //    //target.append(dom);
-                                    //    //} else {
-                                    //    //    xover.dom.clear(target);
-                                    //    //target.append(...documentElement.cloneNode(true).childNodes);
-                                    //    documentElement.childNodes.filter(el => el instanceof Element).forEach(el => el.document = data)
-                                    //    target.append(...documentElement.parentNode.childNodes);
-                                    //}
-
-                                    //let lines = documentElement.querySelectorAll(".leader-line") /*TODO: Mover este código a algún script diferido*/
-                                    //for (let l = 0; l < lines.length; ++l) {
-                                    //    lines[l].remove();
-                                    //}
-                                    if (documentElement.selectNodes) {
-                                        _applyScripts(document, documentElement.selectNodes('//*[self::html:script][text()]'));
-                                    }
-                                    //xover.site.restore(target);
+                                    documentElement.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
                                 }
+                                documentElement.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
+                                documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
-                                let render_event = new xover.listener.Event('render', { store, stylesheet, target, dom, context: data, changes }, target);
-                                window.top.dispatchEvent(render_event);
-                                if (render_event.cancelBubble || render_event.defaultPrevented) continue;
+                                let current_scope = target.getAttribute("xo-scope");
+                                current_scope && documentElement.setAttributeNS(null, "xo-scope", current_scope);
+                                let store_tag = documentElement.getAttribute("xo-store") || target.getAttribute("xo-store") || tag;
+                                store_tag && documentElement.setAttributeNS(null, "xo-store", store_tag);
+                                let stylesheet_href = stylesheet.href;
+                                stylesheet_href && documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
 
-                                //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target, dom: target }, self));
-
+                                target = await xover.dom.combine(target, documentElement);
                                 targets.push(target);
 
-                                //if (window.MathJax) {/*TODO: Mover este código a algún script diferido*/
-                                //    MathJax.typeset && MathJax.typeset();
-                                //} else if (target.selectSingleNode('//mml:math') || ((target || {}).textContent || '').match(/(?:\$\$|\\\(|\\\[|\\begin\{.*?})/)) { //soporte para MathML
-                                //    if (!window.MathJax) {
-                                //        window.MathJax = {
-                                //            loader: { load: ['[mml]/mml3'] }
-                                //        }
-                                //    }
-                                //    let script = document.createElement('script');
-                                //    script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js';
-                                //    document.head.appendChild(script);
-                                //}
-
-                                let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
-                                if (unbound_elements.length) {
-                                    console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
-                                }
-                                //let invalid_scope = target.querySelectorAll('[xo-store][xo-scope],[xo-stylesheet][xo-scope]');
-                                //if (invalid_scope.length) {
-                                //    console.warn(`There ${invalid_scope.length > 1 ? 'are' : 'is'} ${invalid_scope.length} misconfigured element${invalid_scope.length > 1 ? 's' : ''}`, invalid_scope)
-                                //}
-
-                                _applyScripts(document, scripts);
-                                target.children.toArray().forEach(child => xover.evaluateReferences(child));
-                                target.querySelectorAll('[xo-stylesheet]:not([xo-store])').forEach(el => data.render(
-                                    data.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: el.getAttribute("xo-stylesheet"), target: el.selector, action: "replace" })
-                                ));
-                                xover.initializeElementListeners(target);
-
-                                ///*TODO: Mover este código a algún script diferido*/
-                                //target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
-                                //    return new bootstrap.Tooltip(tooltipTriggerEl)
-                                //})
-                                dependants = [...target.querySelectorAll('[xo-store],[xo-source],[xo-stylesheet]')];
-                                //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
-                                dependants.forEach(el => el.render());
                                 delete xover.site.renderingTo;
                             }
                             return Promise.resolve(targets);
@@ -10300,7 +10362,7 @@ xover.modernize = async function (targetWindow) {
             targetWindow.modernized = true;
         }
     }).catch(e => {
-        throw(e)
+        throw (e)
     }).finally(() => {
         delete this.modernizing
     })
