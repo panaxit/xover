@@ -556,6 +556,16 @@ xover.init = async function () {
 xover.init.Observer = function (document = window.document) {
     const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-attribute", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
 
+
+    const intersection_observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            entry.target.isIntersecting = entry.isIntersecting;
+        });
+    }, {
+        root: null, // The element that is used as the viewport
+        rootMargin: '0px', // Margin around the root
+        threshold: 0, // Percentage of the element's visibility to trigger the callback
+    });
     const observer = new MutationObserver((mutationsList, observer) => {
         for (const mutation of mutationsList) {
             if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
@@ -587,7 +597,12 @@ xover.init.Observer = function (document = window.document) {
                 }
             }
             for (node of [...mutation.addedNodes]) {
+
                 if (node instanceof HTMLElement || node instanceof SVGElement) {
+                    const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersection"]');
+                    elementsToObserve.forEach(element => {
+                        intersection_observer.observe(element);
+                    });
                     dependants = [...node.querySelectorAll('[xo-store],[xo-source],[xo-stylesheet]')];
                     dependants.forEach(el => el.render());
                     //} else if (node instanceof Text) {
@@ -597,6 +612,11 @@ xover.init.Observer = function (document = window.document) {
         }
     });
     observer.observe(document, config);
+
+    const elementsToObserve = document.querySelectorAll('[xo-suspense*="Intersection"]');
+    elementsToObserve.forEach(element => {
+        intersection_observer.observe(element);
+    });
 }
 
 xover.initializeElementListeners = function (document = window.document) {
@@ -5268,7 +5288,7 @@ xover.Store = function (xml, ...args) {
                 if (event && event.type == 'change' && event.srcElement.preventChangeEvent) {
                     event.srcElement.preventChangeEvent = undefined;
                 }
-                let sections_to_render = xover.site.sections.filter(section => section.store === self && !(section.matches(".xo-static") || decodeURI(section.getAttribute("xo-stylesheet") || "").indexOf("{$") != -1));
+                let sections_to_render = xover.site.sections.filter(section => section.store === self && !(section.matches(".xo-static")));
                 //let sections_to_render = new Map();
                 //for (let section of xover.site.sections.filter(section => section.store === self && !section.get("xo-static"))) {
                 //    //if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section == section) {
@@ -7059,6 +7079,8 @@ xover.modernize = async function (targetWindow) {
             if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + y }
 
             if (typeof (Find) == 'undefined') Find = (selector) => document.querySelector(selector);
+
+            if (typeof (Intersection) == 'undefined') Intersection = function () { return this.isIntersecting || null };
 
             if (typeof (Avg) == 'undefined') Avg = function (x) { return ((this.Count * this.Value) + x) / ((this.Count || 0) + 1) }
 
@@ -9980,7 +10002,11 @@ xover.modernize = async function (targetWindow) {
                         let self = this;
                         let selector = this.ownerDocument.contains(this) && this.selector || undefined;
                         if (!selector) return;
-                        let stylesheet = this.getAttribute("xo-stylesheet");
+                        let stylesheet = this.getAttribute("xo-stylesheet") || '';
+                        if (stylesheet.indexOf("{$") != -1) {
+                            return;
+                        }
+
                         let target_store = this.store;
 
                         let do_render = true;
@@ -10063,7 +10089,7 @@ xover.modernize = async function (targetWindow) {
                                     await xover.waitFor.call(self, suspense_node.getAttribute("xo-schedule"));
                                 }
                             }
-                            self.stop && self.stop.then(result => xover.manager.stoped.set(self, result)).finally(()=>delete self.stop)
+                            self.stop && self.stop.then(result => xover.manager.stoped.set(self, result)).finally(() => delete self.stop)
                             xo.delay(1).then(() => suspense_node.render())
                         }
                     }).catch((e) => {
