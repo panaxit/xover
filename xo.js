@@ -360,7 +360,7 @@ Object.defineProperty(xover.storehouse, 'sources', {
             try {
                 if (record && record.type.indexOf("json") != -1) {
                     document = JSON.parse(content)
-                } else { 
+                } else {
                     document = content && xover.xml.createDocument(content) || content
                 }
             } catch (e) {
@@ -1482,7 +1482,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             self[key] = new_value;
             if (key === 'seed') xover.site['active'] = new_value
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
-            history.replaceState(Object.assign({ position: history.length - 1 }, history.state), ((event || {}).target || {}).textContent, location.pathname + location.search + hash);
+            history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
 
             ////let pending_stylesheets = xover.site.sections.map(el => el.stylesheet).filter(doc => doc && !doc.documentElement)
 
@@ -5007,16 +5007,13 @@ xover.Store = function (xml, ...args) {
     if (!this.hasOwnProperty('save')) {
         Object.defineProperty(this, 'save', {
             value: async function () {
-                let source = __document.source;
-                if (source) {
-                    xover.session.setKey(store.tag, { source: source.tag });
-                    source.save();
-                } else {
-                    _async_save = _async_save || xover.delay(1).then(async () => {
-                        xover.storehouse.write('sources', store.tag, __document);
-                        _async_save = undefined;
-                    });
-                }
+                //let source = __document.source;
+                //if (source) {
+                //    xover.session.setKey(store.tag, { source: source.tag });
+                //    source.save();
+                //} else {
+                await xover.storehouse.write('sources', store.tag, __document);
+                //}
             },
             writable: false, enumerable: false, configurable: false
         })
@@ -5509,7 +5506,7 @@ xover.Store = function (xml, ...args) {
                 if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
                     self.render()
                 }
-                self.save && self.save();
+                //self.save && self.save();
             };
 
             const mutation_observer = new MutationObserver(callback);
@@ -5885,6 +5882,11 @@ xover.Store = function (xml, ...args) {
     xover.manifest.getSettings(this, 'stylesheets').flat().forEach(stylesheet => store.addStylesheet(stylesheet, false));
     window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }, this));
     xover.stores[_tag] = this;
+    xover.storehouse.read('sources', store.tag).then((stored_document) => {
+        if (stored_document && stored_document.firstChild) {
+            __document.replaceContent(...stored_document.childNodes)
+        }
+    })
     return this;
 }
 
@@ -10295,7 +10297,6 @@ xover.modernize = async function (targetWindow) {
                                 stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-store="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-store])`) || stylesheet_target;
                                 let target = stylesheet_target;
 
-                                xover.site.renderingTo = target;
                                 let current_cursor_style = (target.style || {}).cursor;
                                 //try { current_cursor_style = 'wait' } catch (e) { console.log(e) }
                                 if (!(data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) && (data.documentElement || data) instanceof Element) {
@@ -10362,8 +10363,6 @@ xover.modernize = async function (targetWindow) {
 
                                 target = await xover.dom.combine(target, documentElement);
                                 targets.push(target);
-
-                                delete xover.site.renderingTo;
                             }
                             return Promise.resolve(targets);
                         },
