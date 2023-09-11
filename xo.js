@@ -337,28 +337,37 @@ Object.defineProperty(xover.storehouse, 'sources', {
     get: async function () {
         let store = await xover.storehouse.open('sources');
         let _add = store.add;
-        store.add = function (source, name = '') {
-            let record_key = name;
-            let file = new File([source], record_key, {
-                type: "application/xml",
+        store.add = function (source, name = '', type = 'text/html') {
+            let file = new File([`${source}`], name, {
+                type: (xover.mimeTypes[source.type] || type || "text/plain").split(",")[0],
             });
             _add(file, record_key);
         }
         let _put = store.put;
-        store.put = function (source, name = '') {
-            let record_key = name;
-            let file = new File([source], record_key, {
-                type: "application/xml",
+        store.put = function (source, name = '', type = 'text/html') {
+            if (source.constructor === {}.constructor) source = JSON.stringify(source);
+            if (source instanceof Document) source = source.cloneNode(true);
+            let file = new File([`${source}`], name, {
+                type: (xover.mimeTypes[source.type] || type || "text/plain").split(",")[0],
             });
-            _put(file, record_key);
+            _put(file, name);
         }
         let _get = store.get;
         store.get = async function (name = '') {
-            let record_key = name;
-            let record = await _get(record_key);
+            let record = await _get(name);
             let content = record && record.text && await record.text() || undefined;
-            let document = content && xover.xml.createDocument(content) || undefined;
+            let document = content;
+            try {
+                if (record && record.type.indexOf("json") != -1) {
+                    document = JSON.parse(content)
+                } else { 
+                    document = content && xover.xml.createDocument(content) || content
+                }
+            } catch (e) {
+                console.log(e)
+            }
             if (document instanceof Document && record) {
+                document.href = record.name
                 document.lastModifiedDate = record.lastModified;
             }
             return document;
@@ -377,17 +386,15 @@ Object.defineProperties(xover.storehouse, {
     },
     remove: {
         value: async function (store_name, key) {
-            store = await this[store_name];
+            let store = await this[store_name];
             return store.delete(key);
         }
     },
     write: {
-        value: async function (store_name, key, value) {
-            store = await this[store_name];
-            //if (value instanceof Document) {
-            //    value = value.toString();
-            //}
-            return store.put(value, key);
+        value: async function (store_name, key, value, type) {
+            if (value instanceof Document) value = value.cloneNode(true)
+            let store = await this[store_name];
+            return store.put(value, key, type);
         }
     },
     open: {
@@ -1138,8 +1145,8 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
 
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
-        let tag_name = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
-        let settings = Object.entries(this.settings).filter(([key, value]) => value.constructor === {}.constructor && (tag_name === key || key[0] === '.' && tag_name && tag_name.endsWith(key) || key[0] === '^' && tag_name && tag_name.match(RegExp(key, "i")) || !['#', '^', '.'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key))).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
+        let tag = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
+        let settings = Object.entries(this.settings).filter(([full_key, value]) => full_key.split(/\|\|/g).some(key => value.constructor === {}.constructor && (tag === key || key[0] === '.' && tag && tag.endsWith(key) || key[0] === '^' && tag && tag.match(RegExp(key, "i")) || key[0] == '~' && tag.endsWith(key.substr(1)) || key.indexOf('~') != -1 && new RegExp(key.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || !['#', '^', '.'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key)))).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
         if (config_name) {
             settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => value.constructor === {}.constructor && Object.entries(value) || value);
             settings = settings.flat();
@@ -2123,7 +2130,7 @@ xover.Source = function (tag) {
                 if (!this.tag) {
                     this.tag = self.tag;
                 }
-                let settings = Object.entries(this.settings || self.settings || {});
+                let settings = Object.entries(xover.json.merge({}, Object.fromEntries(xover.manifest.getSettings(source)), self.settings, this.settings));
                 let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
                     let parameters = source[endpoint] || [];
                     parameters = parameters.constructor === {}.constructor && Object.entries(parameters) || parameters
@@ -2139,19 +2146,7 @@ xover.Source = function (tag) {
                 let before_event = new xover.listener.Event('beforeFetch', { tag: tag, settings: settings }, this);
                 window.top.dispatchEvent(before_event);
                 if (before_event.cancelBubble || before_event.defaultPrevented) return;
-                let stored_document;
-                if (!xover.session.rebuild && !(source instanceof Document)) {
-                    let sources = await xover.storehouse.sources;
-                    stored_document = !xover.session.disableCache && await sources.get(tag + (tag === xover.site.active ? location.search : '')) || new_document;
-
-                    let expiry = expiration_ms(this["settings"]["expiry"])
-                    if (stored_document && ((Date.now() - stored_document.lastModifiedDate) > (expiry || 0))) {
-                        stored_document = null;
-                    }
-                }
-                if (stored_document) {
-                    new_document = stored_document
-                } else if (source && source.constructor === {}.constructor) {
+                if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     for (let [endpoint, parameters] of endpoints) {
                         if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
@@ -2208,6 +2203,7 @@ xover.Source = function (tag) {
                             new_document = await xover.fetch.apply(this, [source, this["settings"]]);
                         }
                     } catch (e) {
+                        if (e instanceof Error) return Promise.reject(e);
                         if (headers.get("accept").indexOf(e.headers.get("content-type")) != -1) {
                             new_document = e;
                         } else {
@@ -4016,6 +4012,15 @@ xover.fetch = async function (url, ...args) {
     }
     //settings.headers = new Headers(Object.fromEntries([...new Headers(this instanceof xover.Source && this.headers || {}), ...new Headers(this instanceof xover.Source && (this.settings || {}).headers || {}), ...new Headers(settings.headers)]));
     let request = new xover.Request(url, settings);
+
+    let stored_document;
+    let storehouse = await xover.storehouse.sources;
+    stored_document = !xover.session.disableCache && await storehouse.get(request.url.href);
+    let expiry = (new URLSearchParams(new Headers(settings.headers || {}).get("cache-control") || {}).get("max-age") || 0) * 1000/*expiration_ms(this["settings"]["expiry"])*/
+    if (stored_document && (stored_document instanceof Document || stored_document instanceof File || stored_document instanceof Blob) && expiry > 0 && !((Date.now() - stored_document.lastModifiedDate) > expiry)) {
+        return stored_document;
+    }
+
     var original_response;
     const controller = new AbortController();
     const signal = controller.signal;
@@ -4115,6 +4120,10 @@ xover.fetch = async function (url, ...args) {
             xover.mimeTypes[response.bodyType] == request.headers.get("Accept") ||
             (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(document.type) != -1 ||
             (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
+
+            if (!["no-store"].includes(settings.headers.get("Cache-Control"))) {
+                xover.storehouse.write('sources', url.href, response.body, response.headers.get("content-type"));
+            }
             return Promise.resolve(response);
         } else {
             return Promise.reject(response);
@@ -4922,7 +4931,7 @@ xover.Store = function (xml, ...args) {
     if (__document.source instanceof xover.Source && !__document.source.hasOwnProperty("save")) {
         Object.defineProperty(__document.source, 'save', {
             value: async function () {
-                xover.storehouse.write('sources', __document.source.tag, __document.toString());
+                xover.storehouse.write('sources', __document.source.tag, __document);
             },
             writable: false, enumerable: false, configurable: false
         })
