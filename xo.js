@@ -1520,7 +1520,49 @@ Object.defineProperty(xover.site, 'hash', {
 
 Object.defineProperty(xover.site, 'querystring', {
     get() {
-        return new URLSearchParams(location.search)
+        class ObservableURLSearchParams {
+            constructor(queryString) {
+                this.params = new URLSearchParams(queryString);
+                this.handlers = new Map();
+            }
+
+            set(param, value) {
+                if (value == undefined) {
+                    this.params.delete(param);
+                } else {
+                    this.params.set(param, value);
+                }
+                this.notify(param, value);
+                let searchText = this.params.toString();
+                history.replaceState(Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '') + (location.hash || ''));
+            }
+
+            get(param) {
+                return this.params.get(param);
+            }
+
+            addObserver(param, callback) {
+                if (!this.handlers.has(param)) {
+                    this.handlers.set(param, []);
+                }
+                this.handlers.get(param).push(callback);
+            }
+
+            notify(param, value) {
+                if (this.handlers.has(param)) {
+                    this.handlers.get(param).forEach(callback => {
+                        callback(value);
+                    });
+                }
+            }
+        }
+
+        const observableParams = new ObservableURLSearchParams(location.search);
+        //observableParams.addObserver('param1', (value) => {
+        //    console.log(`param1 has been changed to: ${value}`);
+        //});
+
+        return observableParams
     }
     , enumerable: false
 });
