@@ -563,6 +563,16 @@ xover.init = async function () {
     return this.init.initializing;
 }
 
+Object.defineProperty(xover, 'ready', {
+    enumerable: false,
+    get: async function () {
+        if (xover.init.status != 'initialized') {
+            await xover.init();
+        }
+        return true;
+    }
+})
+
 xover.init.Observer = function (document = window.document) {
     const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-attribute", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
 
@@ -677,10 +687,7 @@ xover.initializeElementListeners = function (document = window.document) {
 }
 
 xover.evaluateReferences = async function (context = window.document) {
-    if (xover.init.status != 'initialized') {
-        await xover.init();
-    }
-
+    await xover.ready;
     context.references = context.references || new Map();
 
     context.select(`.//@*[contains(.,'{$state:')]|.//text()[contains(.,'{$state:')]|.//@*[contains(.,'{$session:')]|.//text()[contains(.,'{$session:')]`).forEach(attr => context.references.set(attr, attr.value));
@@ -782,9 +789,7 @@ Object.defineProperty(xover.listener, 'matches', {
 
 Object.defineProperty(xover.listener, 'dispatcher', {
     value: async function (event) {
-        if (xover.init.status != 'initialized') {
-            await xover.init();
-        }
+        await xover.ready;
         if (xover.listener.off) return;
         /*Los listeners se adjuntan y ejecutan en el orden en que fueron creados. Con este método se ejecutan en orden inverso y pueden detener la propagación para quitar el comportamiento de ejecución natural. Se tienen que agregar con el método */
         let context = event.context || event.target;
@@ -5799,9 +5804,7 @@ xover.Store = function (xml, ...args) {
             //let before = new xover.listener.Event('beforeRender', this);
             //xover.listener.dispatchEvent(before, this);
             //if (before.cancelBubble || before.defaultPrevented) return;
-            if (xover.init.status != 'initialized') {
-                await xover.init();
-            }
+            await xover.ready;
             _render_manager = _render_manager || xover.delay(1).then(async () => {
                 let tag = self.tag;
                 if (!__document.documentElement && __document.source) {
@@ -10614,9 +10617,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
     }
-    if (xover.init.status != 'initialized') {
-        await xover.init();
-    }
+    await xover.ready;
     try {
         let reason = event.message || event.reason;
         if (!reason) return;
