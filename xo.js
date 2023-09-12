@@ -1538,9 +1538,9 @@ Object.defineProperty(xover.site, 'searchParams', {
                 if (value === null) {
                     params.delete(param);
                 } else {
-                    params.set(param, value || "");
+                    params.set(param, value != undefined? value : "");
                 }
-                this.notify(param, value);
+                //this.notify(param, value);
                 let searchText = params.toString();
                 history.replaceState(Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
                 xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
@@ -7220,8 +7220,7 @@ xover.modernize = async function (targetWindow) {
                         }
                         return result;
                     } else if (e instanceof ReferenceError) {
-                        console.error(e)
-                        return false;
+                        return condition;
                     }
                 }
             }
@@ -9944,6 +9943,12 @@ xover.modernize = async function (targetWindow) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             let param_value = xover.site.searchParams.get(param_name);
+                                            let default_value = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
+                                            if (typeof (default_value) === 'function') {
+                                                param_value = default_value(param_value)
+                                            } else {
+                                                param_value = default_value !== undefined ? default_value : '';
+                                            }
                                             if (param_value !== undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
