@@ -5001,12 +5001,13 @@ xover.Store = function (xml, ...args) {
             if (key in self) {
                 return self[key];
             }
-            if (!self.hasOwnProperty(key)) {
-                self[key] = self[key] || xover.sources[key].cloneNode(true);
-            }
-            if (self[key] instanceof Document) {
-                self[key].store = store;
-            }
+            self[key] = self[key] || xover.sources[key];//.cloneNode(true)
+            //if (!self.hasOwnProperty(key)) {
+            //    self[key] = self[key] || xover.sources[key].cloneNode(true);
+            //}
+            //if (self[key] instanceof Document) {
+            //    self[key].store = store;
+            //}
             return self[key];
         },
         set: function (self, key, value) {
