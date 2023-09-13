@@ -7149,7 +7149,7 @@ xover.modernize = async function (targetWindow) {
 
             if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + y }
 
-            if (typeof (Find) == 'undefined') Find = (selector) => document.querySelector(selector);
+            if (typeof (Find) == 'undefined') Find = function (selector, target = document) { return selector ? target.querySelector(selector) : target.contains(this) && this }
 
             if (typeof (Intersection) == 'undefined') Intersection = function () { return this.isIntersecting || null };
 
