@@ -10116,11 +10116,15 @@ xover.modernize = async function (targetWindow) {
                         }
                         if (do_render) {
                             let source = this.getAttribute("xo-source") || this.getAttribute("xo-store");
+                            if (source && source.indexOf("{$") != -1) {
+                                source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => (name in xover[prefix] || attr instanceof Text) ? (xover[prefix][name] || '') : match)
+                            }
+
                             let source_document;
                             if (this.hasAttribute("xo-source") || this.hasAttribute("xo-store")) {
                                 source_document = (source[0] == '#' || source in xover.stores) && xover.stores[source] || xover.sources[source];
-                                source_document = source_document.document || source_document;
                                 if (source_document) {
+                                    source_document = source_document.document || source_document;
                                     if (this.hasAttribute("xo-settings")) {
                                         let document = xover.xml.createDocument();
                                         let headers = this.getAttribute("xo-settings");
