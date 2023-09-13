@@ -574,7 +574,7 @@ Object.defineProperty(xover, 'ready', {
 })
 
 xover.init.Observer = function (document = window.document) {
-    const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-attribute", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
+    const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
 
 
     const intersection_observer = new IntersectionObserver(entries => {
@@ -677,8 +677,8 @@ xover.initializeElementListeners = function (document = window.document) {
         //}
     }));
 
-    document.querySelectorAll('[xo-attribute="text()"]').forEach(el => observer.observe(el, { characterData: true, subtree: true }));
-    document.querySelectorAll('[xo-attribute="text()"]').forEach(el => el.addEventListener('blur', function () {
+    document.querySelectorAll('[xo-slot="text()"]').forEach(el => observer.observe(el, { characterData: true, subtree: true }));
+    document.querySelectorAll('[xo-slot="text()"]').forEach(el => el.addEventListener('blur', function () {
         let target = event.target;
         let new_text = target.textContent;
         let scope = target.scope;
@@ -2707,8 +2707,8 @@ Object.defineProperty(xover.server, 'uploadFile', {
                             let temp_value = source.value;
                             //if (temp_value.match(/^blob:http:/)) {
                             if (source instanceof HTMLElement) {
-                                if (!source.getAttribute("xo-attribute")) {
-                                    source.setAttribute("xo-attribute", "x:value");
+                                if (!source.getAttribute("xo-slot")) {
+                                    source.setAttribute("xo-slot", "x:value");
                                 }
                                 source = source.scope;
                                 source.set(file_name)
@@ -4249,8 +4249,8 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or @xo-stylesheet or ancestor-or-self::*[@xo-attribute or @xo-scope])]`)) {
-                el.set("xo-attribute", "{name(current()[not(self::*)])}")
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
+                el.set("xo-slot", "{name(current()[not(self::*)])}")
             }
 
             for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script)]|//svg:*[not(ancestor::svg:*)])[not(@xo-store or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
@@ -4258,7 +4258,7 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
             }
 
             for (let el of return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`)) {
-                el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-attribute"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
+                el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
                 el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
             }
         }
@@ -4602,7 +4602,7 @@ xover.dom.combine = async function (target, documentElement) {
         }
         if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 
-        const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-attribute"], childList: true, subtree: true };
+        const config = { characterData: true, attributeFilter: ["xo-store", "xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-slot"], childList: true, subtree: true };
 
         //} else {
         //    target.append(documentElement);
@@ -4654,7 +4654,7 @@ xover.dom.combine = async function (target, documentElement) {
     //    document.head.appendChild(script);
     //}
 
-    let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-attribute=""]');
+    let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-scope=""],[xo-slot=""]');
     if (unbound_elements.length) {
         console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
     }
@@ -5414,7 +5414,7 @@ xover.Store = function (xml, ...args) {
                 //        }
                 //    }
 
-                //    let attrs = [...section.select('.//@xo-attribute')].filter(el => el.parentNode.store === self && el.parentNode.closest('[xo-stylesheet]') === section);
+                //    let attrs = [...section.select('.//@xo-slot')].filter(el => el.parentNode.store === self && el.parentNode.closest('[xo-stylesheet]') === section);
                 //    for (attrib of attrs) {
                 //        for (mutation of mutationList) {
                 //            if (!sections_to_render.get(section)) {
@@ -8505,12 +8505,12 @@ xover.modernize = async function (targetWindow) {
                             let ref = this instanceof Element ? this : this.parentNode;
                             let node_by_id = !ref.hasAttribute("xo-scope") && store.selectFirst(`//*[@xo:id="${ref.id}"]`);
                             let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("[xo-scope]")].filter(el => el).map(el => [el, store.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`)]).pop() || [];
-                            let attribute = ref.closest("[xo-attribute]");
+                            let attribute = ref.closest("[xo-slot]");
                             if (!dom_scope) {
                                 this.scopeNode = null;
                                 return this.scopeNode;
                             } else if (dom_scope.contains(attribute)) {
-                                attribute = attribute.getAttribute("xo-attribute");
+                                attribute = attribute.getAttribute("xo-slot");
                             } else {
                                 attribute = null;
                             }
@@ -9291,7 +9291,7 @@ xover.modernize = async function (targetWindow) {
                                     ////let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
                                     ////context && context.render();
                                     //let prefixes = Object.entries(xover.spaces).filter(([key, value]) => this.namespaceURI.indexOf(value) == 0).map(([key]) => key);
-                                    //[...top.document.querySelectorAll('[xo-stylesheet]'), ...top.document.querySelectorAll(`[xo-attribute="${this.name}"]`)].filter(el => el.store === store).filter(el => el.get('xo-attribute') || el.stylesheet.$(`xsl:stylesheet/xsl:param[@name="${this.name}"]${prefixes.map(prefix => `|xsl:stylesheet/xsl:param[@name="${prefix}:dirty"]`).join('')}`)).forEach((el) => el.render())
+                                    //[...top.document.querySelectorAll('[xo-stylesheet]'), ...top.document.querySelectorAll(`[xo-slot="${this.name}"]`)].filter(el => el.store === store).filter(el => el.get('xo-slot') || el.stylesheet.$(`xsl:stylesheet/xsl:param[@name="${this.name}"]${prefixes.map(prefix => `|xsl:stylesheet/xsl:param[@name="${prefix}:dirty"]`).join('')}`)).forEach((el) => el.render())
                                 }
                             }
                             return return_value;
@@ -10369,7 +10369,7 @@ xover.modernize = async function (targetWindow) {
                                 } else {
                                     documentElement.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
                                 }
-                                documentElement.selectNodes('//@xo-attribute[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
+                                documentElement.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
                                 documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                                 let current_scope = target.getAttribute("xo-scope");
@@ -10521,7 +10521,7 @@ xover.modernize = async function (targetWindow) {
 //    }
 //});
 
-xover.listener.on(['change::*[xo-attribute]:not([onchange])'], function () {
+xover.listener.on(['change::*[xo-slot]:not([onchange])'], function () {
     if (this.type === 'date' && this.value != '' && !isValidISODate(this.value) || this.preventChangeEvent) {
         this.preventChangeEvent = undefined;
         event.preventDefault();
