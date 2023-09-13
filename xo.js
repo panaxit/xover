@@ -1538,7 +1538,7 @@ Object.defineProperty(xover.site, 'searchParams', {
                 if (value === null) {
                     params.delete(param);
                 } else {
-                    params.set(param, value != undefined? value : "");
+                    params.set(param, value != undefined ? value : "");
                 }
                 //this.notify(param, value);
                 let searchText = params.toString();
@@ -4375,7 +4375,7 @@ xover.xml.combine = function (curr_node, new_node) {
         new_node.append(text);
     }
     if (curr_node.isEqualNode(new_node)) return curr_node;
-    if (curr_node instanceof Element && !curr_node.matches(".xo-swap") && curr_node.constructor !== new_node.constructor) {
+    if (!(new_node instanceof HTMLBodyElement) && curr_node instanceof Element && !curr_node.matches(".xo-swap") && curr_node.constructor !== new_node.constructor) {
         if (curr_node.matches(".xo-static")) {
             curr_node.append(new_node);
             return new_node
@@ -10115,10 +10115,11 @@ xover.modernize = async function (targetWindow) {
                             }
                         }
                         if (do_render) {
-                            let source = this.getAttribute("xo-source");
+                            let source = this.getAttribute("xo-source") || this.getAttribute("xo-store");
                             let source_document;
-                            if (this.hasAttribute("xo-source")) {
-                                source_document = xover.sources[source];
+                            if (this.hasAttribute("xo-source") || this.hasAttribute("xo-store")) {
+                                source_document = (source[0] == '#' || source in xover.stores) && xover.stores[source] || xover.sources[source];
+                                source_document = source_document.document || source_document;
                                 if (source_document) {
                                     if (this.hasAttribute("xo-settings")) {
                                         let document = xover.xml.createDocument();
@@ -10134,35 +10135,21 @@ xover.modernize = async function (targetWindow) {
                                         }
                                         document.settings.headers = new Headers(headers || {});
                                         source_document = await source_document.source.fetch.apply(document);
-                                    } else {
-                                        await source_document.ready
                                     }
-                                    source_document = (source_document.querySelector('body') || source_document);
-                                    let body = source_document.firstChild.cloneNode(true);
-                                    let result = await xover.dom.combine(self, body);
-                                    result.stop = self.stop;
-                                    if (source_document.matches('body')) {
-                                        source_document = xover.xml.createDocument(source_document)
-                                    }
+                                    await source_document.ready
                                 }
                             }
                             if (this.hasAttribute("xo-stylesheet")) {
-                                if (target_store || source_document) {
-                                    let target_document = source_document || target_store && target_store.document;
-                                    return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: stylesheet, target: selector })) || null;
+                                if (source_document) {
+                                    return source_document && source_document.render({ type: 'text/xsl', href: stylesheet, target: selector }) || null;
                                 } else {
                                     let document = xo.sources[stylesheet];
                                     return document.render();
                                 }
-                            } else if (this.hasAttribute("xo-store")) {
-                                let target_document = target_store && target_store.document;
-                                if (!target_document) return;
-                                if (!target_document.firstChild) await target_document.fetch();
-                                if (target_document.firstElementChild instanceof HTMLElement || target_document.firstElementChild instanceof SVGElement) {
-                                    return target_document && target_document.render(target_document.createProcessingInstruction('xml-stylesheet', { type: 'text/html', target: selector })) || null;
-                                } else {
-                                    return target_store.render()
-                                }
+                            } else {
+                                let body = source_document.firstChild.cloneNode(true);
+                                let result = await xover.dom.combine(self, body);
+                                result.stop = self.stop;
                             }
                         }
                         for (let suspense_node of [self.matches("[xo-schedule],[xo-suspense]") && self, ...self.querySelectorAll("[xo-schedule],[xo-suspense]")]) {
@@ -10291,25 +10278,24 @@ xover.modernize = async function (targetWindow) {
                                 return null;
                             }
                             let last_argument = [...arguments].pop();
-                            let options = last_argument && typeof (last_argument) == 'object' && last_argument.constructor === {}.constructor && last_argument || undefined;
-                            stylesheets = stylesheets !== options && stylesheets || this.stylesheets;
+                            //let options = last_argument && typeof (last_argument) == 'object' && last_argument.constructor === {}.constructor && last_argument || undefined;
+                            //stylesheets = stylesheets !== options && stylesheets || this.stylesheets;
                             stylesheets = stylesheets instanceof Array && stylesheets || stylesheets && [stylesheets] || [];
                             let self = this;
                             let tag = store && store.tag || '';
+                            
+                            let targets = [];
                             if (this.selectSingleNode('xsl:*')) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
-                                options = options || {};
-                                options["target"] = options["target"] || document.querySelector(`[xo-store="${options["document"] && options["document"].tag || options["document"] || tag}"]`);
-                                options["action"] = options["action"] || undefined
-                                this.copyPropertiesFrom(options);
-                                this.target = options.target
-                                this.action = options.action
-                                return (options["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).seed()).render(this);
+                                for (let stylesheet of stylesheets) {
+                                    targets.push((stylesheet["document"] || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).seed()).render(this));
+                                }
+                                return targets;
                             }
                             let stylesheet_target = 'body';
-                            let targets = [];
                             for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                                 /*let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document && stylesheet.href && (stylesheet.document.documentElement && stylesheet.document || await stylesheet.document.fetch()) || stylesheet.href;*/
-                                let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document || xover.sources[stylesheet];
+                                stylesheet = !(stylesheet instanceof ProcessingInstruction) && stylesheet.type == 'text/xsl' && this.createProcessingInstruction('xml-stylesheet', stylesheet) || stylesheet;
+                                let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document || xover.sources[stylesheet.href];
                                 xsl && await xsl.ready;
                                 let action = stylesheet.action;// || !stylesheet.target && "append";
                                 stylesheet_target = stylesheet.target instanceof HTMLElement && stylesheet.target || document.querySelector(stylesheet.target || stylesheet_target);
