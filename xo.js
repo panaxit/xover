@@ -2171,7 +2171,7 @@ xover.Source = function (tag) {
             let source = self.definition;
 
             try {
-                let new_document;
+                let response;
                 if (!this.tag) {
                     this.tag = self.tag;
                 }
@@ -2205,15 +2205,15 @@ xover.Source = function (tag) {
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
                                 if (endpoint.replace(/^server:/, '') in xover.server) {
-                                    new_document = await xover.server[endpoint.replace(/^server:/, '')].apply(this, parameters);
+                                    response = await xover.server[endpoint.replace(/^server:/, '')].apply(this, parameters);
                                 } else if (existsFunction(endpoint)) {
                                     let fn = eval(endpoint);
-                                    new_document = await fn.apply(this, args.concat(parameters));
+                                    response = await fn.apply(this, args.concat(parameters));
                                 }
                             } catch (e) {
                                 if (e instanceof Response && e.document instanceof XMLDocument) {
                                     if ([412].includes(e.status)) {
-                                        new_document = e.document;
+                                        response = e.document;
                                     } else {
                                         return reject(e.document)
                                     }
@@ -2221,7 +2221,7 @@ xover.Source = function (tag) {
                                     return reject(e)
                                 }
                             }
-                            resolve(new_document);
+                            resolve(response);
                         }));
                     }
                     let documents;
@@ -2231,9 +2231,9 @@ xover.Source = function (tag) {
                         window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { response: e }, this));
                         return Promise.reject(e);
                     }
-                    new_document = documents[0];
+                    response = documents[0];
                 } else if (typeof (source) == 'function') {
-                    new_document = await source.apply(this, args);
+                    response = await source.apply(this, args);
                 } else if (source && source[0] !== '#') {
                     this["settings"].headers = new Headers(this["settings"].headers || {});
                     let headers = this["settings"].headers;
@@ -2241,38 +2241,41 @@ xover.Source = function (tag) {
                         headers.set("accept", headers.get("accept") || xover.mimeTypes[source.substring(source.lastIndexOf(".") + 1)] || "*/*");
                         let accept_header = headers.get("accept");
                         if (accept_header && (accept_header.indexOf('xml') != -1 || accept_header.indexOf('xsd') != -1 || accept_header.indexOf('xsl') != -1)) {
-                            new_document = await xover.fetch.xml.apply(this, [source, this["settings"]]);
+                            response = await xover.fetch.xml.apply(this, [source, this["settings"]]);
                         } else if (accept_header && accept_header.indexOf('json') != -1) {
-                            new_document = await xover.fetch.json.apply(this, [source, this["settings"]]);
+                            response = await xover.fetch.json.apply(this, [source, this["settings"]]);
                         } else {
-                            new_document = await xover.fetch.apply(this, [source, this["settings"]]);
+                            response = await xover.fetch.apply(this, [source, this["settings"]]);
                         }
                     } catch (e) {
                         if (e instanceof Error) return Promise.reject(e);
                         if (headers.get("accept").indexOf(e.headers.get("content-type")) != -1) {
-                            new_document = e;
+                            response = e;
                         } else {
                             return Promise.reject(e);
                         }
                     }
                 }
-                if (new_document instanceof Response) {
-                    let body_content = new_document.body;
+                if (response instanceof Response) {
+                    let body_content = response.body;
                     if (body_content instanceof Node) {
-                        new_document = body_content;
+                        response = body_content;
                     } else {
-                        new_document = await xover.xml.createDocument(body_content).catch(e => Promise.reject(e))
+                        response = await xover.xml.createDocument(body_content).catch(e => Promise.reject(e))
                     }
                 }
-                if (!new_document) {
-                    new_document = xover.sources.defaults[source];
+                if (!response) {
+                    response = xover.sources.defaults[source];
                 }
-                if (!(new_document instanceof Node) && xover.json.isValid(new_document)) {
-                    new_document = xover.xml.fromJSON(new_document);
+                if (!(response instanceof Node) && xover.json.isValid(response)) {
+                    response = xover.xml.fromJSON(response);
                 }
-                this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => new_document.addStylesheet(stylesheet));
-                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, tag, settings: this.settings }, self));
-                return Promise.resolve(new_document);
+                if (!(response instanceof Node)) {
+                    response = __document.createTextNode(response)
+                }
+                this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => response.addStylesheet(stylesheet));
+                window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: response, tag, settings: this.settings }, self));
+                return Promise.resolve(response);
             } catch (e) {
                 //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
                 if (!e) {
@@ -4366,6 +4369,11 @@ xover.xml.createNode = function (xml_string, notify_error) {
 }
 
 xover.xml.combine = function (curr_node, new_node) {
+    if (curr_node instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
+        let text = curr_node.ownerDocument.createTextNode(new_node);
+        new_node = document.createElement(`code`);
+        new_node.append(text);
+    }
     if (curr_node.isEqualNode(new_node)) return curr_node;
     if (curr_node instanceof Element && !curr_node.matches(".xo-swap") && curr_node.constructor !== new_node.constructor) {
         if (curr_node.matches(".xo-static")) {
@@ -8220,22 +8228,24 @@ xover.modernize = async function (targetWindow) {
                             }
                             let store = self.store;
                             context.fetching = context.fetching || new Promise((resolve, reject) => {
-                                self.source && self.source.fetch.apply(context, args).then(new_document => {
-                                    if (!(new_document instanceof Node) && xover.json.isValid(new_document)) {
-                                        new_document = xover.xml.fromJSON(new_document);
+                                self.source && self.source.fetch.apply(context, args).then(response => {
+                                    if (!(response instanceof Node) && xover.json.isValid(response)) {
+                                        response = xover.xml.fromJSON(response);
                                     }
-                                    if (!(new_document instanceof Node)) {
-                                        new_document = new DOMParser().parseFromString(new_document, 'text/html');
+                                    if (!(response instanceof Node) || response instanceof Text) {
+                                        response = new DOMParser().parseFromString(response, 'text/html');
+                                        response = response.querySelector('html > body');
+                                        response && response.ownerDocument.documentElement.replaceWith(response);
                                     }
                                     let old = context.cloneNode(true);
-                                    context.href = new_document.href;
-                                    context.url = new_document.url;
-                                    if (new_document instanceof Document || new_document instanceof DocumentFragment) {
-                                        context.replaceBy(new_document); //transfers all contents
+                                    context.href = response.href;
+                                    context.url = response.url;
+                                    if (response instanceof Document || response instanceof DocumentFragment) {
+                                        context.replaceBy(response); //transfers all contents
                                     } else {
-                                        context.replaceContent(new_document);
+                                        context.replaceContent(response);
                                     }
-                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: new_document, store: store, old: old, target: context }, context));
+                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: response, store: store, old: old, target: context }, context));
                                     resolve(context);
                                 }).catch(async (e) => {
                                     if (!e) {
@@ -10127,12 +10137,11 @@ xover.modernize = async function (targetWindow) {
                                     } else {
                                         await source_document.ready
                                     }
-                                    //document = await source_document.source.fetch.apply(document);
-                                    source_document = (source_document.querySelector('html > body') || source_document);
+                                    source_document = (source_document.querySelector('body') || source_document);
                                     let body = source_document.firstChild.cloneNode(true);
                                     let result = await xover.dom.combine(self, body);
                                     result.stop = self.stop;
-                                    if (source_document.matches('html > body')) {
+                                    if (source_document.matches('body')) {
                                         source_document = xover.xml.createDocument(source_document)
                                     }
                                 }
