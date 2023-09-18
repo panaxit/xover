@@ -7746,6 +7746,12 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
+                Object.defineProperty(Document.prototype, 'closest', {
+                    value: function (...args) {
+                       return null
+                    }
+                })
+
                 var original_element_closest = Object.getOwnPropertyDescriptor(Element.prototype, 'closest');
                 Object.defineProperty(Element.prototype, 'closest', {
                     value: function (...args) {
@@ -8529,12 +8535,13 @@ xover.modernize = async function (targetWindow) {
                         if (source && source.indexOf("{$") != -1) {
                             source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => (name in xover[prefix] || attr instanceof Text) ? (xover[prefix][name] || '') : match)
                         }
-                        let store = (source[0] == '#' || source in xover.stores) && xover.stores[source];
-                        return store || null;
+                        let store = source in xover.stores && xover.stores[source] || null;
+                        return store;
                     }
                 }
-                if (!Node.prototype.hasOwnProperty('source')) {
-                    Object.defineProperty(Node.prototype, 'source', source_handler);
+
+                if (!Node.prototype.hasOwnProperty('store')) {
+                    Object.defineProperty(Node.prototype, 'store', source_handler);
                 }
 
                 if (!Node.prototype.hasOwnProperty('stylesheet')) {
