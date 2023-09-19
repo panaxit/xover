@@ -2224,7 +2224,6 @@ xover.Source = function (tag) {
                     try {
                         documents = await Promise.all(promises).then(document => document);
                     } catch (e) {
-                        window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { response: e }, this));
                         return Promise.reject(e);
                     }
                     response = documents[0];
@@ -2273,10 +2272,11 @@ xover.Source = function (tag) {
                 window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: response, tag, settings: this.settings }, self));
                 return Promise.resolve(response);
             } catch (e) {
-                //window.top.dispatchEvent(new xover.listener.Event('failure::fetch', { tag: tag, document: __document, response: e }, self));
                 if (!e) {
                     return Promise.reject(e);
                 }
+                window.top.dispatchEvent(new xover.listener.Event('failure', { response: e }, this));
+
                 let document = e.document;
                 let targets = []
                 if (e.status != 404 && document && document.render) {
@@ -5760,6 +5760,7 @@ xover.Store = function (xml, ...args) {
         value: async function () {
             await xover.storehouse.read('sources', store.tag).then((stored_document) => {
                 if (stored_document && stored_document.firstChild) {
+                    __document.disconnect();
                     __document.replaceContent(...stored_document.childNodes)
                 }
             })
@@ -5809,13 +5810,14 @@ xover.Store = function (xml, ...args) {
                 if (xo.stores.seed === self && !xover.site.sections[tag].length) {
                     progress = xover.sources['loading.xslt'].render({ action: "append" });
                 }
-                await store.fetch();
+                if (!__document.firstChild) {
+                    await store.fetch();
+                }
                 let sections = xover.site.sections.filter(el => el.store && el.store === self);
                 let stylesheets = [..._store_stylesheets, ...__document.stylesheets].distinct();
                 if (sections.length) {
                     return sections.map(el => el.render());
                 } else if (stylesheets.length) {
-                    await store.sources.load();
                     stylesheets = stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)).concat([["document", stylesheet.document], ["store", tag]])));
                     return __document.render(stylesheets)
                 } else {
@@ -7745,7 +7747,7 @@ xover.modernize = async function (targetWindow) {
 
                 Object.defineProperty(Document.prototype, 'closest', {
                     value: function (...args) {
-                       return null
+                        return null
                     }
                 })
 
@@ -8221,15 +8223,16 @@ xover.modernize = async function (targetWindow) {
                                     } else {
                                         context.replaceContent(response);
                                     }
-                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { tag:'', document: context, store: store, old: old, target: context }, context));
+                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { tag: '', document: context, store: store, old: old, target: context }, context));
                                     resolve(context);
                                 }).catch(async (e) => {
                                     if (!e) {
                                         return reject(e);
                                     }
-                                    let document = e.document;
+                                    let document = e.document || e instanceof Document && e || e;
                                     let targets = []
                                     if (e.status != 404 && document && document.render) {
+                                        window.top.dispatchEvent(new xover.listener.Event(`failure`, { tag: '', document }, document));
                                         targets = await document.render();
                                         if (!(targets && targets.length)) {
                                             return reject(e)
