@@ -368,7 +368,7 @@ Object.defineProperties(xover.storehouse, {
         value: async function (store_name, key) {
             let store;
             store = await this[store_name];
-            let record = store.get(key);
+            let record = await store.get(key);
             let content = record && record.text && await record.text() || undefined;
             let document = content;
             try {
@@ -4359,27 +4359,27 @@ xover.xml.createNode = function (xml_string, notify_error) {
     return result.firstElementChild || result;
 }
 
-xover.xml.combine = function (curr_node, new_node) {
-    if (curr_node instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
-        let text = curr_node.ownerDocument.createTextNode(new_node);
+xover.xml.combine = function (target, new_node) {
+    if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
+        let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
         new_node.append(text);
     }
-    if (curr_node.isEqualNode(new_node)) return curr_node;
+    if (target.isEqualNode(new_node)) return target;
 
-    if (curr_node instanceof Element && curr_node.matches(".xo-swap") || (!(curr_node instanceof Element) || [HTMLSelectElement].includes(curr_node.constructor)) && curr_node.constructor == new_node.constructor) {
-        curr_node.replaceWith(new_node)
+    if (target instanceof Element && target.matches(".xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor) {
+        target.replaceWith(new_node)
         return new_node
-    } else if (curr_node.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || curr_node.parentNode.matches(".xo-swap")) {
-        [...new_node.attributes].forEach(attr => curr_node.setAttribute(attr.nodeName, attr.value, { silent: true }));
-        curr_node.replaceChildren(...new_node.childNodes)
-        return curr_node
+    } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
+        [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
+        target.replaceChildren(...new_node.childNodes)
+        return target
     } else {
-        if (curr_node.matches("[xo-source],[xo-stylesheet]")) {
-            curr_node.replaceChildren(new_node)
-            return curr_node
+        if (target.matches("[xo-source],[xo-stylesheet]")) {
+            target.replaceChildren(new_node)
+            return target
         } else {
-            curr_node.append(new_node);
+            target.append(new_node);
             return new_node
         }
     }
@@ -9974,7 +9974,7 @@ xover.modernize = async function (targetWindow) {
                                     ////if (!xml.documentElement) {
                                     ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                     ////}
-                                    let tag = xml.tag || `#${xsl.href}`;
+                                    let tag = xml.tag || `#${xsl.href || ""}`;
                                     xml.tag = tag;
                                     let listeners = xover.listener.matches(xml, 'beforeTransform')
                                     window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: listeners, document: xml, store: xml.store, stylesheet: xsl }, this));
@@ -10345,8 +10345,6 @@ xover.modernize = async function (targetWindow) {
                                 data.target = target;
                                 data.disconnected = false;
                                 target.tag = data.tag;
-                                target.document = this;
-                                target.context = data;
                                 let dom;
                                 if (xsl) {
                                     data.tag = /*'#' + */xsl.href.split(/[\?#]/)[0];
@@ -10362,25 +10360,24 @@ xover.modernize = async function (targetWindow) {
                                 if (!documentElement) {
                                     continue;
                                 }
-                                if (!target) {
-                                    if (xover.debug.enabled) {
-                                        if (stylesheet_target) {
-                                            throw (new Error(`No existe la ubicación "${stylesheet_target}"`));
-                                        }
-                                    }
-                                    let missing_stores = []
-                                    let active_tags = xover.site.activeTags();
-                                    active_tags.filter(_tag => tag != _tag && xover.stores[_tag] && !xover.stores[_tag].isRendered).map(async _tag => {
-                                        let store = xover.stores[_tag];
-                                        if (store) {
-                                            missing_stores.push(store.render(/*true*/));
-                                        }
-                                    });
-                                    await Promise.all(missing_stores);
-                                    self.render();
-                                    //self.isActive = false;
-                                    continue;
-                                }
+                                //if (!target) {
+                                //    if (xover.debug.enabled) {
+                                //        if (stylesheet_target) {
+                                //            throw (new Error(`No existe la ubicación "${stylesheet_target}"`));
+                                //        }
+                                //    }
+                                //    let missing_stores = []
+                                //    let active_tags = xover.site.activeTags();
+                                //    active_tags.filter(_tag => tag != _tag && xover.stores[_tag] && !xover.stores[_tag].isRendered).map(async _tag => {
+                                //        let store = xover.stores[_tag];
+                                //        if (store) {
+                                //            missing_stores.push(store.render());
+                                //        }
+                                //    });
+                                //    await Promise.all(missing_stores);
+                                //    self.render();
+                                //    continue;
+                                //}
                                 if (dom instanceof DocumentFragment) {
                                     let content = target.cloneNode();
                                     dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());
@@ -10400,6 +10397,9 @@ xover.modernize = async function (targetWindow) {
                                 stylesheet_href && documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
 
                                 target = await xover.dom.combine(target, documentElement);
+                                target.document = this;
+                                target.context = data;
+
                                 targets.push(documentElement);
                             }
                             return Promise.resolve(targets);
