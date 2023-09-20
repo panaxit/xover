@@ -4622,10 +4622,6 @@ xover.dom.combine = async function (target, documentElement) {
         //xover.site.restore(target);
     }
 
-    let render_event = new xover.listener.Event('render', { store: target.store, stylesheet: target.stylesheet, target, dom: documentElement, context: target.context, changes }, target);
-    window.top.dispatchEvent(render_event);
-    if (render_event.cancelBubble || render_event.defaultPrevented) return target;
-
     //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target, dom: target }, self));
 
 
@@ -8530,7 +8526,7 @@ xover.modernize = async function (targetWindow) {
                         let source = section && section.getAttribute("xo-source") || null;
                         if (!source) return null;
                         if (source && source.indexOf("{$") != -1) {
-                            source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => (name in xover[prefix] || attr instanceof Text) ? (xover[prefix][name] || '') : match)
+                            source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => (name in xover[prefix]) ? (xover[prefix][name] || '') : match)
                         }
                         let store = source in xover.stores && xover.stores[source] || xover.sources[source];
                         return store;
@@ -10118,7 +10114,7 @@ xover.modernize = async function (targetWindow) {
                         if (do_render) {
                             let source = this.getAttribute("xo-source");
                             if (source && source.indexOf("{$") != -1) {
-                                source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => (name in xover[prefix] || attr instanceof Text) ? (xover[prefix][name] || '') : match)
+                                source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => (name in xover[prefix]) ? (xover[prefix][name] || '') : match)
                             }
 
                             let source_document;
