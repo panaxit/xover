@@ -5805,29 +5805,29 @@ xover.Store = function (xml, ...args) {
             //if (before.cancelBubble || before.defaultPrevented) return;
             await xover.ready;
             let progress;
+            let tag = self.tag;
             _render_manager = _render_manager || xover.delay(1).then(async () => {
-                let tag = self.tag;
                 if (xo.stores.seed === self && !xover.site.sections[tag].length) {
                     progress = xover.sources['loading.xslt'].render({ action: "append" });
                 }
                 if (!__document.firstChild) {
                     await store.fetch();
                 }
+                let renders = [];
                 let sections = xover.site.sections.filter(el => el.store && el.store === self);
                 let stylesheets = [..._store_stylesheets, ...__document.stylesheets].distinct();
                 if (sections.length) {
-                    return sections.map(el => el.render());
-                } else if (stylesheets.length) {
-                    stylesheets = stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)).concat([["document", stylesheet.document], ["store", tag]])));
-                    return __document.render(stylesheets)
-                } else {
-                    return Promise.reject(`Couldn't render store: ${tag}`)
+                    renders = renders.concat(sections.map(el => el.render()));
                 }
-                return null;
-
-            }).then(async (renders) => {
+                if (stylesheets.length) {
+                    stylesheets = stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)).concat([["document", stylesheet.document], ["store", tag]])));
+                    renders = renders.concat(__document.render(stylesheets))
+                }
+                renders = await Promise.all(renders);
+                return renders;
+            }).then((renders) => {
                 window.top.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
-                return Promise.resolve(renders)
+                return renders.flat()
             }).catch((e) => {
                 let tag = self.tag;
                 e = e || {}
