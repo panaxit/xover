@@ -4567,7 +4567,7 @@ xover.dom.combine = async function (target, documentElement) {
         //        target.append(...dom.parentElement.childNodes);
         //    }
     } else {
-        scripts = documentElement.selectNodes('//*[self::html:script][not(@src)][text()]').map(el => {
+        scripts = documentElement.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
             //!el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
             let cloned = el.cloneNode(true);
             el.textContent = ''
@@ -4617,7 +4617,7 @@ xover.dom.combine = async function (target, documentElement) {
         //    lines[l].remove();
         //}
         if (documentElement.selectNodes) {
-            _applyScripts(document, documentElement.selectNodes('//*[self::html:script][text()]'));
+            _applyScripts(document, documentElement.selectNodes('.//*[self::html:script][text()]'));
         }
         //xover.site.restore(target);
     }
@@ -10398,6 +10398,10 @@ xover.modernize = async function (targetWindow) {
                                 target = await xover.dom.combine(target, documentElement);
                                 target.document = this;
                                 target.context = data;
+
+                                let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: documentElement, context: target.context }, documentElement);
+                                window.top.dispatchEvent(render_event);
+                                if (render_event.cancelBubble || render_event.defaultPrevented) return target;
 
                                 targets.push(documentElement);
                             }
