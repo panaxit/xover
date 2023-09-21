@@ -932,87 +932,21 @@ xover.listener.on('keyup', async function (event) {
 })
 
 xover.listener.on('popstate', async function (event) {
-    //if (event.defaultPrevented) return;
-    //if (this.popping) {
-    //    this.popping().cancel();
-    //    //let current_hash = xover.data.hashTagName();
-    //    //history.replaceState({
-    //    //    hash: current_hash
-    //    //    , history: ((history.state || {}).history || [])
-    //    //}, event.target.textContent, current_hash);
-    //    this.popping = undefined;
-    //}
-    //function popstate() {
-    //    let finished = false;
-    //    let cancel = () => finished = true;
     xover.session.store_id = xover.session.store_id;
     xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
-    //const promise = new Promise((resolve, reject) => {
-    //    setTimeout(async () => {
     if (event.state) delete event.state.active;
     let hashtag = (xover.site.seed || '#')
     let store = xover.stores[hashtag];
-    try {
-        if (store) {
-            await store.render()//xover.site.active == xover.site.seed || xover.site.active == store.tag);
-            if (store instanceof xover.Store && !store.isRendered) {
-                xover.stores.active = store;
-            }
-            console.log("Navigated to " + hashtag);
-        } else {
-            // TODO: Revisar esta sección. Puede estar desactualizada.
-            //let current_hash = xover.stores.seed.tag;
-            //history.replaceState({
-            //    hash: current_hash
-            //    , history: ((history.state || {}).history || [])
-            //}, ((event || {}).target || {}).textContent, current_hash);
-        }
-    } catch (e) {
-        console.log(e)
-    }
-    //            resolve();
-    //        }, 500);
-    //        cancel = () => {
-    //            if (finished) {
-    //                return;
-    //            }
-    //            reject();
-    //        };
-
-    //        if (finished) {
-    //            cancel();
-    //        }
-    //    }).then((resolvedValue) => {
-    //        this.popping = undefined;
-    //        finished = true;
-    //        return resolvedValue;
-    //    }).catch((err) => {
-    //        finished = true;
-    //        return err;
-    //    });
-    //    return { promise, cancel }
-    //}
-    //this.popping = popstate;
-    //this.popping();
 })
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xo.ready;
+    document.querySelectorAll(`[role=alertdialog]`).toArray().remove();
     if (event.defaultPrevented) return;
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
-    //xover.site.seed = xover.site.seed || location.hash
     if (xover.session.status == 'authorizing') xover.session.status = null;
     if (history.state) delete history.state.active;
     xover.site.active = location.hash;
-    document.querySelectorAll(`[role=alertdialog]`).toArray().remove();
-    //if (!history.state && !location.hash && positionLastShown || xover.site.position > 1 && (!((location.hash || "#") in xover.stores) || !xover.stores[xover.site.seed])) {
-    //    //history.back();
-    //    event.stopPropagation()
-    //} else if (history.state && positionLastShown > xover.site.position) {
-    //    window.top.dispatchEvent(new CustomEvent('navigatedBack', { bubbles: false }));
-    //} else if (history.state && positionLastShown < xover.site.position) {
-    //    window.top.dispatchEvent(new CustomEvent('navigatedForward', { bubbles: false }));
-    //}
 })
 
 xover.listener.on('navigatedForward', function (event) {
@@ -3449,22 +3383,6 @@ xover.Response = function (response, request) {
     });
     Object.defineProperty(self, 'render', {
         value: function () {
-            //let content = response.json ? JSON.stringify(response.json) : response.document.body.innerHTML;
-            //if (response.ok) {
-            //    if (typeof (to) == 'function') {
-            //        try {
-            //            to.apply(to, [content])
-            //        } catch (e) {
-            //            if (e.message == 'Illegal invocation') {
-            //                to.call(window, content);
-            //            }
-            //        }
-            //    } else if (to) {
-            //        to.innerHTML = content;
-            //    } else {
-            //        xover.dom.createDialog(content);
-            //    }
-            //} else {
             let response = this.json || this.document || this.body || `${this.statusText}: ${file_name}`;
             if (this.status == 404 && decodeURI(file_name).indexOf("{$") != -1) {
                 console.warn(`Couldn't fetch: ${file_name}`)
@@ -3473,7 +3391,6 @@ xover.Response = function (response, request) {
             } else {
                 response.render && response.render();
             }
-            //}
         }
     });
     Object.defineProperty(self, 'processBody', {
@@ -4472,8 +4389,6 @@ xover.dom.combine = async function (target, documentElement) {
             if (script.hasAttribute("defer")) await promise;
         }
     }
-    //let styles = document.head.appendChild(await xover.sources.load("styles.css"));
-
     _applyScripts(document, [...script_wrapper.children]);
     target.disconnected = false;
     let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
@@ -4485,23 +4400,6 @@ xover.dom.combine = async function (target, documentElement) {
         xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
     }
 
-    //const config = { characterData: true, attributes: true, childList: true, subtree: true };
-    //target.observer = target.observer || new MutationObserver((mutationsList) => {
-    //    for (const mutation of mutationsList) {
-    //        let target = mutation.target;
-    //        let target_element = mutation.target.closest('*');
-    //        //await xover.delay(100); /*Added to wait for all changes to apply*/
-    //        let xo_id = target_element.getAttribute("xo-id");
-    //        if (xo_id) {
-    //            for (let synced_node of [...window.document.querySelectorAll(`[xo-id="${xo_id}"]`)].filter(el => el !== target_element)) {
-    //                xover.xml.combine(synced_node, target_element.cloneNode(true))
-    //            }
-    //        }
-    //    }
-    //});
-
-    //target.observer.observe(target, config);
-
     let changes = xover.xml.getDifferences(target, documentElement);
     if (!changes) return target;
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: documentElement.cloneNode(true), element: documentElement, changes }, documentElement);
@@ -4509,7 +4407,6 @@ xover.dom.combine = async function (target, documentElement) {
     if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
     if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
         //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
-        //target = document.body;
         xover.dom.setEncryption(dom, 'UTF-7');
         documentElement.select('//text()[.="�"]').remove();
         let iframe;
@@ -4543,16 +4440,6 @@ xover.dom.combine = async function (target, documentElement) {
             iframe.src = url;
         }
         target = iframe;
-        //xover.site.restore(target);
-        //} else if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
-        //    dom = await dom.transform('error.xslt');
-        //    target = document.querySelector('main') || document.querySelector('body')
-        //    if (stylesheet.action == "replace") {
-        //        target = target.replaceWith(dom);
-        //    } else {
-        //        xover.dom.clear(target);
-        //        target.append(...dom.parentElement.childNodes);
-        //    }
     } else {
         scripts = documentElement.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
             //!el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
@@ -4564,8 +4451,6 @@ xover.dom.combine = async function (target, documentElement) {
             return cloned;
         });
 
-        //let active_element_selector = active_element.buildSelector({ ignore: ['.xo-working'] });
-        //if (stylesheet_href == target.getAttribute('xo-stylesheet')) {
         let coordinates = active_element.scrollPosition;
 
         //target.observer && target.observer.disconnect();
@@ -4580,37 +4465,11 @@ xover.dom.combine = async function (target, documentElement) {
         }
         if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 
-        //} else {
-        //    target.append(documentElement);
-        //    target = documentElement;
-        //}
         xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
-        //if (action == "replace") {
-        //    target = target.replaceWith(dom)//target = [target.replace(dom)];
-        //    //let to_be_replaced = target.querySelector(active_element_selector)
-        //    //to_be_replaced && to_be_replaced.replaceWith(active_element)
-        //    target.document = data;
-        //} else {//if (action == "append") {
-        //    //target.append(dom);
-        //    //} else {
-        //    //    xover.dom.clear(target);
-        //    //target.append(...documentElement.cloneNode(true).childNodes);
-        //    documentElement.childNodes.filter(el => el instanceof Element).forEach(el => el.document = data)
-        //    target.append(...documentElement.parentNode.childNodes);
-        //}
-
-        //let lines = documentElement.querySelectorAll(".leader-line") /*TODO: Mover este código a algún script diferido*/
-        //for (let l = 0; l < lines.length; ++l) {
-        //    lines[l].remove();
-        //}
         if (documentElement.selectNodes) {
             _applyScripts(document, documentElement.selectNodes('.//*[self::html:script][text()]'));
         }
-        //xover.site.restore(target);
     }
-
-    //window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target, dom: target }, self));
-
 
     //if (window.MathJax) {/*TODO: Mover este código a algún script diferido*/
     //    MathJax.typeset && MathJax.typeset();
@@ -5329,110 +5188,6 @@ xover.Store = function (xml, ...args) {
                     event.srcElement.preventChangeEvent = undefined;
                 }
                 let sections_to_render = xover.site.sections.filter(section => section.store === self && !(section.matches(".xo-static")));
-                //let sections_to_render = new Map();
-                //for (let section of xover.site.sections.filter(section => section.store === self && !section.get("xo-static"))) {
-                //    //if (event && event.type == 'input' && section.contains(event.srcElement) && event.srcElement.section == section) {
-                //    //    continue
-                //    //}
-                //    sections_to_render.set(section);
-
-                //    continue; /* let's skip all checkings and render every change*/
-
-                //    if (!section.stylesheet.documentElement || mutationList.find(mutation => mutation.type === 'childList')) {
-                //        section.render()
-                //    }
-                //    //if (!sections_to_render.get(section)) {
-                //    //    if (mutationList.find(mutation => mutation.target instanceof Document)) {
-                //    //        sections_to_render.set(section);
-                //    //    }
-                //    //}
-                //    let listeners = [...section.querySelectorAll('xo-listener')].filter(el => el.store === self && el.closest('[xo-stylesheet]') === section);
-                //    for (listener of listeners) {
-                //        for (let mutation of mutationList) {
-                //            if (!sections_to_render.get(section)) {
-                //                if (listener.getAttribute("node")) {
-                //                    if (mutation.target instanceof Element && mutation.target.matches(listener.getAttribute("node")) || [...mutation.removedNodes, ...mutation.addedNodes].find(el => el.matches(listener.getAttribute("node")))) {
-                //                        sections_to_render.set(section);
-                //                    }
-                //                }
-                //                if (mutation.type === 'attributes') {
-                //                    let attrib = listener.getAttributeNode("attribute");
-                //                    if (attrib) {
-                //                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                //                        if (!attr) {
-                //                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                //                        }
-                //                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
-                //                        if (attrib && !attrib_node) {
-                //                            try {
-                //                                attrib_node = mutation.target.createAttribute(attrib.value, null)
-                //                            } catch (e) {
-                //                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
-                //                                if (prefix && name == '*') {
-                //                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
-                //                                    if (attr.namespaceURI == ns) {
-                //                                        sections_to_render.set(section)
-                //                                    }
-                //                                }
-                //                                continue;
-                //                            }
-                //                        }
-                //                        if (attrib_node.isEqualNode(attr)) {
-                //                            sections_to_render.set(section)
-                //                        }
-                //                    }
-                //                }
-                //            }
-                //        }
-                //    }
-
-                //    let attrs = [...section.select('.//@xo-slot')].filter(el => el.parentNode.store === self && el.parentNode.closest('[xo-stylesheet]') === section);
-                //    for (attrib of attrs) {
-                //        for (mutation of mutationList) {
-                //            if (!sections_to_render.get(section)) {
-                //                if (event && event.type == 'input' && section.contains(event.srcElement)) {
-                //                    continue
-                //                }
-                //                let scoped_element = attrib.parentNode.closest('[xo-scope]');
-                //                if (scoped_element && !(mutation.target instanceof Document) && scoped_element.getAttribute("xo-scope") == mutation.target.getAttribute("xo:id")) {
-                //                    //&& (mutation.type !== 'attributes' || mutation.type === 'attributes' &&
-                //                    let render = false;
-                //                    if (attrib.value.indexOf(':') != -1) {
-                //                        let attr = mutation.target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                //                        if (!attr) {
-                //                            attr = mutation.target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                //                        }
-                //                        let attrib_node = mutation.target.getAttributeNode(attrib.value);
-                //                        if (attrib && !attrib_node) {
-                //                            try {
-                //                                attrib_node = mutation.target.createAttribute(attrib.value, null)
-                //                            } catch (e) {
-                //                                let { prefix, name } = xover.xml.getAttributeParts(attrib.value)
-                //                                if (prefix && name == '*') {
-                //                                    let ns = attr.resolveNS(prefix) || xo.spaces[prefix];
-                //                                    if (attr.namespaceURI == ns) {
-                //                                        render = true;
-                //                                    }
-                //                                }
-                //                                continue;
-                //                            }
-                //                        }
-                //                        if (attrib_node.isEqualNode(attr)) {
-                //                            render = true;
-                //                        } else {
-                //                            render = false;
-                //                        }
-                //                    } else if (mutation.attributeName == attrib.value) {
-                //                        render = true
-                //                    }
-                //                    if (render) {
-                //                        sections_to_render.set(section)
-                //                    }
-                //                }
-                //            }
-                //        }
-                //    }
-                //}
 
                 mutated_targets = new Map();
                 for (let mutation of mutationList) {
@@ -5486,10 +5241,6 @@ xover.Store = function (xml, ...args) {
                     window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes, renderingSections: sections_to_render }, target));
                 }
 
-                //for (let [section] of [...sections_to_render.entries()]) {
-                //    section.render()
-                //}
-
                 for (let section of sections_to_render) {
                     section.render()
                 }
@@ -5498,7 +5249,6 @@ xover.Store = function (xml, ...args) {
                 if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
                     self.render()
                 }
-                //self.save && self.save();
             };
 
             const mutation_observer = new MutationObserver(callback);
@@ -7327,15 +7077,6 @@ xover.modernize = async function (targetWindow) {
                     writable: true, enumerable: false, configurable: false
                 });
             }
-
-            //if (!Object.prototype.hasOwnProperty('alert')) {
-            //    Object.defineProperty(Object.prototype, 'alert', {
-            //        value: function (target) {
-            //            xover.dom.alert(this)
-            //        },
-            //        writable: true, enumerable: false, configurable: false
-            //    });
-            //}
 
             if (!Response.prototype.hasOwnProperty('render')) {
                 Object.defineProperty(Response.prototype, 'render', {
