@@ -5790,9 +5790,9 @@ xover.Store = function (xml, ...args) {
             let progress;
             let tag = self.tag;
             _render_manager = _render_manager || xover.delay(1).then(async () => {
-                if (xo.stores.seed === self && !xover.site.sections[tag].length) {
-                    progress = xover.sources['loading.xslt'].render({ action: "append" });
-                }
+                //if (xo.stores.seed === self && !xover.site.sections[tag].length) {
+                //    progress = xover.sources['loading.xslt'].render({ action: "append" });
+                //}
                 if (!__document.firstChild) {
                     await store.fetch();
                 }
