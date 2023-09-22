@@ -772,9 +772,9 @@ Object.defineProperty(xover.listener, 'matches', {
         event_type = scoped_event;
 
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
-        let tag = context.tag || ((event || {}).detail || {}).tag || '';
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
+            let tag = context.tag || ((event || {}).detail || {}).tag || '';
             let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
             for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && predicate[0].replace(/^#/, '') === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(handler.toString(), handler);
@@ -897,7 +897,7 @@ Object.defineProperty(xover.listener, 'on', {
     writable: true, enumerable: false, configurable: false
 });
 
-xover.listener.on('hashchange', function (new_hash, old_hash) {
+xover.listener.on('hashchange', function () {
     xover.site.active = location.hash;
 });
 
@@ -932,15 +932,16 @@ xover.listener.on('keyup', async function (event) {
 })
 
 xover.listener.on('popstate', async function (event) {
+    await xover.ready;
     xover.session.store_id = xover.session.store_id;
     xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
     if (event.state) delete event.state.active;
-    let hashtag = (xover.site.seed || '#')
-    let store = xover.stores[hashtag];
+    //let hashtag = (xover.site.seed || '#')
+    //let store = xover.stores[hashtag];
 })
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
-    await xo.ready;
+    await xover.ready;
     document.querySelectorAll(`[role=alertdialog]`).toArray().remove();
     if (event.defaultPrevented) return;
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
@@ -1756,15 +1757,9 @@ Object.defineProperty(xover.site, 'active', {
         }
         if (store) {
             this.hash = store.hash;
+            store.render();
         } else {
             return Promise.reject(`${active} no available`)
-        }
-        let sections = this.sections.filter(section => (section.store || {}).source == store.source);
-        for (let section of sections) {
-            section.render()
-        }
-        if (!sections.length) {
-            store && store.render();
         }
     }
     , enumerable: false
@@ -4275,6 +4270,7 @@ xover.xml.combine = function (target, new_node) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
+        [...target.attributes].filter(attr => ![...new_node.attributes].map(NodeName).includes(attr.name)).forEach(attr => attr.remove());
         [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
         target.replaceChildren(...new_node.childNodes)
         return target
@@ -6198,10 +6194,19 @@ xover.listener.keypress = function (e = {}) {
     if (xover.debug["xover.listener.keypress"]) {
         console.log(String.fromCharCode(e.keyCode) + " --> " + e.keyCode)
     }
+    if (event.keyCode == xover.listener.keypress.last_key) {
+        ++xover.listener.keypress.streak_count;
+    } else {
+        xover.listener.keypress.last_key = event.keyCode;
+        xover.listener.keypress.streak_count = 1;
+    }
 }
 
-//xover.listener.keypress.last_key = undefined;
-//xover.listener.keypress.streak_count = 0;
+xover.listener.keypress.last_key = undefined;
+xover.listener.keypress.streak_count = 0;
+
+document.addEventListener('keydown', xover.listener.keypress)
+document.addEventListener('keyup', xover.listener.keypress)
 
 //document.onkeydown = function (event) {
 //    if (![9].includes(event.keyCode)) {
@@ -6852,6 +6857,8 @@ xover.modernize = async function (targetWindow) {
 
             if (typeof (Parent) == 'undefined') Parent = function (node) { return node.parentNode }
 
+            if (typeof (NodeName) == 'undefined') NodeName = function (node) { return node.name }
+
             if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + y }
 
             if (typeof (Find) == 'undefined') Find = function (selector, target = document) { return selector ? target.querySelector(selector) : target.contains(this) && this }
@@ -7195,11 +7202,6 @@ xover.modernize = async function (targetWindow) {
 
                         return function (prefix) {
                             return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix] || "urn:unknown";
-                            let namespace = resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '');
-                            if (namespace == undefined) {
-                                return xover.spaces[prefix] || "urn:unknown";
-                            }
-                            return namespace;
                         };
                     }(context))
 
@@ -7459,7 +7461,7 @@ xover.modernize = async function (targetWindow) {
                                     this.parentNode.setAttributeNode(this);
                                     remove = true;
                                 }
-                                let return_value = !![this, node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().find(el => el && el.selectNodes(key).includes(this));
+                                let return_value = [this, node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().some(el => el && el.selectNodes(key).includes(this));
                                 if (remove) this.remove({ silent: true });
                                 store && store.observer.connect();
                                 reconnect && this.connect();
@@ -8756,14 +8758,13 @@ xover.modernize = async function (targetWindow) {
                     if (this.hasAttribute(attribute)) {
                         return original_getAttributeNode.call(this, attribute)
                     }
-                    let namespace_URI
                     //if ((this.namespaceURI || '').indexOf("http://www.w3.org") !== 0) {
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                    namespace_URI = this.resolveNS(prefix) || xover.spaces[prefix];
-                    if (namespace_URI) {
-                        return original_getAttributeNodeNS.call(this, namespace_URI, attribute_name);
-                    } else {
+                    namespace = prefix && (this.resolveNS(prefix) || xover.spaces[prefix]);
+                    if (!namespace) {
                         return original_getAttributeNode.call(this, attribute);
+                    } else {
+                        return original_getAttributeNodeNS.call(this, namespace, attribute_name);
                     }
 
                     //}
@@ -8787,7 +8788,7 @@ xover.modernize = async function (targetWindow) {
                     let parentNode = this;
                     let new_attribute_node;
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                    let namespace = this.resolveNS(prefix) || xover.spaces[prefix];
+                    let namespace = prefix && (this.resolveNS(prefix) || xover.spaces[prefix]);
                     if (!namespace) {
                         original_setAttribute.call(node, attribute, value);
                     } else {
