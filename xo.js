@@ -776,7 +776,7 @@ Object.defineProperty(xover.listener, 'matches', {
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
             let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
-            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && predicate[0].replace(/^#/, '') === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(handler.toString(), handler);
             }
         }
@@ -10090,24 +10090,6 @@ xover.modernize = async function (targetWindow) {
                                 if (!documentElement) {
                                     continue;
                                 }
-                                //if (!target) {
-                                //    if (xover.debug.enabled) {
-                                //        if (stylesheet_target) {
-                                //            throw (new Error(`No existe la ubicación "${stylesheet_target}"`));
-                                //        }
-                                //    }
-                                //    let missing_stores = []
-                                //    let active_tags = xover.site.activeTags();
-                                //    active_tags.filter(_tag => tag != _tag && xover.stores[_tag] && !xover.stores[_tag].isRendered).map(async _tag => {
-                                //        let store = xover.stores[_tag];
-                                //        if (store) {
-                                //            missing_stores.push(store.render());
-                                //        }
-                                //    });
-                                //    await Promise.all(missing_stores);
-                                //    self.render();
-                                //    continue;
-                                //}
                                 if (dom instanceof DocumentFragment) {
                                     let content = target.cloneNode();
                                     dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());
@@ -10126,11 +10108,12 @@ xover.modernize = async function (targetWindow) {
                                 let stylesheet_href = stylesheet.href;
                                 stylesheet_href && documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
 
+                                let old = target.cloneNode(true);
                                 target = await xover.dom.combine(target, documentElement);
                                 target.document = this;
                                 target.context = data;
 
-                                let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: documentElement, context: target.context }, documentElement);
+                                let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
                                 window.top.dispatchEvent(render_event);
                                 if (render_event.cancelBubble || render_event.defaultPrevented) return target;
 
