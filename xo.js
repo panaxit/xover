@@ -9810,8 +9810,7 @@ xover.modernize = async function (targetWindow) {
                     await xover.ready;
                     xover.manager.render.set(this, xover.manager.render.get(this) || xover.delay(1).then(async () => {
                         let self = this;
-                        let selector = this.ownerDocument.contains(this) && this.selector || undefined;
-                        if (!selector) return;
+                        if (!this.ownerDocument.contains(this)) return;
                         let stylesheet = this.getAttribute("xo-stylesheet") || '';
                         if (stylesheet.indexOf("{$") != -1) {
                             stylesheet = stylesheet.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
