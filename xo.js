@@ -1453,43 +1453,42 @@ Object.defineProperty(xover.site, 'hash', {
     , enumerable: false
 });
 
+class SearchParams {
+    constructor(queryString) {
+        this.params = new URLSearchParams(queryString);
+    }
+
+    set(param, value) {
+        if (value === null) {
+            this.params.delete(param);
+        } else {
+            this.params.set(param, value != undefined ? value : "");
+        }
+        //this.notify(param, value);
+        let searchText = this.params.toString();
+        history.replaceState(Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
+        xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
+    }
+
+    get(param) {
+        return this.params.get(param);
+    }
+
+    entries() {
+        return [...this.params];
+    }
+
+    delete(param) {
+        return this.set(param, null);
+    }
+
+    has(param) {
+        return this.params.has(param);
+    }
+}
+
 Object.defineProperty(xover.site, 'searchParams', {
     get() {
-        let params;
-        class SearchParams {
-            constructor(queryString) {
-                params = new URLSearchParams(queryString);
-            }
-
-            set(param, value) {
-                if (value === null) {
-                    params.delete(param);
-                } else {
-                    params.set(param, value != undefined ? value : "");
-                }
-                //this.notify(param, value);
-                let searchText = params.toString();
-                history.replaceState(Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
-                xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
-            }
-
-            get(param) {
-                return params.get(param);
-            }
-
-            entries() {
-                return [...params];
-            }
-
-            delete(param) {
-                return this.set(param, null);
-            }
-
-            has(param) {
-                return params.has(param);
-            }
-        }
-
         const observableParams = new SearchParams(location.search);
 
         return observableParams
@@ -3119,7 +3118,7 @@ Object.defineProperty(xover.stores, 'find', {
         //    }
         //})
         return_array = [...new Set(return_array)];
-        return new xover.NodeSet(return_array);
+        return new NodeSet(return_array);
     },
     writable: false, enumerable: false, configurable: false
 });
@@ -3192,116 +3191,38 @@ Object.defineProperty(xover.stores, 'seed', {
     }
 });
 
-xover.NodeSet = function (nodeSet = []) {
-    if (!(this instanceof xover.NodeSet)) return new xover.NodeSet(nodeSet);
-    for (let prop of ['set', 'setAttribute', 'setAttributeNS', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value']) {
-        let prop_desc = Object.getPropertyDescriptor(Node.prototype, prop) || Object.getPropertyDescriptor(Element.prototype, prop);
-        if (!prop_desc) {
-            continue
-        }
-        if (prop_desc.value) {
-            if (nodeSet.hasOwnProperty(prop)) continue;
-            Object.defineProperty(nodeSet, prop, {
-                value: prop_desc.value && function (...args) {
-                    results = [];
-                    for (let target of this) {
-                        if (typeof (target[prop]) == 'function') {
-                            results.push(target[prop].apply(target, args))
-                        } else {
-                            results.push()
-                        }
-                    }
-                    return results;
-                },
-                writable: true, enumerable: false, configurable: false
-            });
-        } else {
-            if (nodeSet.hasOwnProperty(prop)) continue;
-            Object.defineProperty(nodeSet, prop, {
-                get: prop_desc.get && function () {
-                    results = [];
-                    for (let target of this) {
-                        if (typeof (target) == 'object' && prop in target) {
-                            results.push(target[prop])
-                        } else {
-                            results.push()
-                        }
-                    }
-                    return results;
-                },
-                set: prop_desc.set && function (value) {
-                    results = [];
-                    for (let target of this) {
-                        if (typeof (target) == 'object' && prop in target) {
-                            results.push(target[prop] = value)
-                        } else {
-                            results.push()
-                        }
-                    }
-                    return results;
-                },
-                enumerable: false, configurable: false
-            });
+class NodeSet extends Array {
+    constructor(...args) {
+        super(...args)
+    }
 
-        }
+    highlight() {
+        this.forEach(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-scope='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
     }
-    if (!nodeSet.hasOwnProperty("highlight")) {
-        Object.defineProperty(nodeSet, 'highlight', {
-            value: function () {
-                nodeSet.forEach(node => { [...document.querySelectorAll(`#${node.getAttributeNS("http://panax.io/xover", "id")},[xo-scope='${node.getAttributeNS("http://panax.io/xover", "id")}']`)].map(target => target.style.outline = '#f00 solid 2px') })
-            },
-            writable: true, enumerable: false, configurable: false
-        });
-    }
-    for (let prop of ['distinct', 'map']) {
-        if (nodeSet.hasOwnProperty(prop)) continue;
-        Object.defineProperty(nodeSet, prop, {
-            value: function (...args) {
-                return new xover.NodeSet(Array.prototype[prop].apply(nodeSet, args))
-            },
-            writable: true, enumerable: false, configurable: false
-        });
-    }
-    if (!nodeSet.hasOwnProperty("showTable")) {
-        Object.defineProperty(nodeSet, 'showTable', {
-            value: function (...args) {
-                let entries = [...this].map(node => [...(node instanceof Attr ? [node] : node.attributes || [])].map(el => [el.name, el]));
-                let show_all = false;
-                let columns = Object.fromEntries(Object.keys(Object.fromEntries(entries.flat())).map(key => [key]));
-                for (let i = args.length - 1; i >= 0; --i) {
-                    if (typeof (args[i]) == 'string') {
-                        if (args[i] == '*') {
-                            show_all = true;
-                        } else {
-                            columns[args[i]] = undefined;
-                        }
-                    }
-                    if (args[i].constructor == {}.constructor) {
-                        for (let key in args[i]) {
-                            columns[key] = args[i][key];
-                            if (args[i][key] === false) delete columns[key]
-                        }
-                    }
-                    args.splice(i, 1)
+
+    showTable(...args) {
+        let entries = [...this].map(node => [...(node instanceof Attr ? [node] : node.attributes || [])].map(el => [el.name, el]));
+        let show_all = false;
+        let columns = Object.fromEntries(Object.keys(Object.fromEntries(entries.flat())).map(key => [key]));
+        for (let i = args.length - 1; i >= 0; --i) {
+            if (typeof (args[i]) == 'string') {
+                if (args[i] == '*') {
+                    show_all = true;
+                } else {
+                    columns[args[i]] = undefined;
                 }
-                let rows = entries.map(entry => Object.fromEntries(entry.filter(([key]) => key in columns).map(([key, el]) => [key, columns[key] ? columns[key](el) : (+el.value == el.value ? +el.value : el.value)])))
-                return console.table(rows, show_all && [] || Object.keys(columns))
             }
-        });
+            if (args[i].constructor == {}.constructor) {
+                for (let key in args[i]) {
+                    columns[key] = args[i][key];
+                    if (args[i][key] === false) delete columns[key]
+                }
+            }
+            args.splice(i, 1)
+        }
+        let rows = entries.map(entry => Object.fromEntries(entry.filter(([key]) => key in columns).map(([key, el]) => [key, columns[key] ? columns[key](el) : (+el.value == el.value ? +el.value : el.value)])))
+        return console.table(rows, show_all && [] || Object.keys(columns))
     }
-    //Object.defineProperty(nodeSet, 'moveTo', {
-    //    value: function () {
-    //        for (let target of nodeSet) {
-    //            if (target instanceof Element || target.nodeType == 1) {
-    //                target.moveTo.apply(target, arguments);
-    //            }
-    //        }
-    //    },
-    //    writable: true, enumerable: false, configurable: false
-    //});
-    Object.setPrototypeOf(nodeSet, xover.NodeSet);
-    Object.setPrototypeOf(nodeSet, Array.prototype);
-    return nodeSet;
 }
 
 xover.xml.createFromActiveX = function () {
@@ -3947,7 +3868,7 @@ xover.fetch = async function (url, ...args) {
         settings["method"] = 'POST';
         let pending = [];
         if (payload instanceof XMLDocument) {
-            payload.$$(".//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
+            payload.select(".//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
         }
         await Promise.all(pending);
     }
@@ -4116,12 +4037,12 @@ xover.fetch.xml = async function (url, ...args) {
         if (return_value instanceof Document && xover.session.debug) {
             for (let el of return_value.select(`//xsl:template[not(contains(@mode,'-attribute') or contains(@mode,':attribute'))]/*[not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy or following-sibling::xsl:apply-templates[contains(@mode,'-attribute') or contains(@mode,':attribute')])]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
                 let ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
-                let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template 
+                let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
 file="${new xover.URL(url).href}"
 >${ancestor.localName == 'template' ? '' : `
 &lt;!- -${ancestor.nodeName} ${[...ancestor.attributes].filter(attr => !['xo:id'].includes(attr.nodeName)).map(attr => `${attr.nodeName}="${attr.value.replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/--/g, '- -')}"`)}- -&gt;`}
-${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
+${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
                 } else if (el.selectSingleNode('self::html:textarea')) {
@@ -4147,7 +4068,7 @@ ${el.$$(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(at
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
-            for (let el of return_value.$$(`//xsl:template[not(@match="/")]//xsl:element`)) {
+            for (let el of return_value.select(`//xsl:template[not(@match="/")]//xsl:element`)) {
                 el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
                 el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
             }
@@ -6859,6 +6780,8 @@ xover.modernize = async function (targetWindow) {
 
             if (typeof (NodeName) == 'undefined') NodeName = function (node) { return node.name }
 
+            if (typeof (Name) == 'undefined') Name = function (node = this) { return node instanceof Element ? (node.getAttributeNode("Name") || node.getAttributeNode("name")) : node.nodeName }
+
             if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + y }
 
             if (typeof (Find) == 'undefined') Find = function (selector, target = document) { return selector ? target.querySelector(selector) : target.contains(this) && this }
@@ -7238,8 +7161,8 @@ xover.modernize = async function (targetWindow) {
                         }
                     }
 
-                    //Object.setPrototypeOf(selection, NodeList.prototype); /*TODO - extend from NodeList*/
-                    return new xover.NodeSet(selection);
+                    Object.setPrototypeOf(selection, NodeSet.prototype)
+                    return selection
                 }
 
                 Object.defineProperty(Document.prototype, 'ready', {
@@ -7357,7 +7280,7 @@ xover.modernize = async function (targetWindow) {
 
                 let xo_handler_Nodes = {
                     get: function () {
-                        return new xover.NodeSet(this);
+                        return new NodeSet(this);
                     }
                 }
                 if (!Array.prototype.hasOwnProperty('Nodes')) Object.defineProperty(Array.prototype, 'Nodes', xo_handler_Nodes);
@@ -8234,7 +8157,7 @@ xover.modernize = async function (targetWindow) {
                                     return this.scopeNode;
                                 }
                             }
-                            //Implementar para Text $0.$$('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.$('self::xo:r')).pop().getAttributeNode($0.scope.value)
+                            //Implementar para Text $0.select('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.selectFirst('self::xo:r')).pop().getAttributeNode($0.scope.value)
                             this.scopeNode = node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
                             return this.scopeNode;
                         }
@@ -9018,7 +8941,7 @@ xover.modernize = async function (targetWindow) {
                                     ////let context = ((event || {}).srcEvent || event || {}).target && event.srcEvent.target.closest('*[xo-stylesheet]') || store;
                                     ////context && context.render();
                                     //let prefixes = Object.entries(xover.spaces).filter(([key, value]) => this.namespaceURI.indexOf(value) == 0).map(([key]) => key);
-                                    //[...top.document.querySelectorAll('[xo-stylesheet]'), ...top.document.querySelectorAll(`[xo-slot="${this.name}"]`)].filter(el => el.store === store).filter(el => el.get('xo-slot') || el.stylesheet.$(`xsl:stylesheet/xsl:param[@name="${this.name}"]${prefixes.map(prefix => `|xsl:stylesheet/xsl:param[@name="${prefix}:dirty"]`).join('')}`)).forEach((el) => el.render())
+                                    //[...top.document.querySelectorAll('[xo-stylesheet]'), ...top.document.querySelectorAll(`[xo-slot="${this.name}"]`)].filter(el => el.store === store).filter(el => el.get('xo-slot') || el.stylesheet.selectFirst(`xsl:stylesheet/xsl:param[@name="${this.name}"]${prefixes.map(prefix => `|xsl:stylesheet/xsl:param[@name="${prefix}:dirty"]`).join('')}`)).forEach((el) => el.render())
                                 }
                             }
                             return return_value;
@@ -9726,7 +9649,7 @@ xover.modernize = async function (targetWindow) {
                                     if (result == null) {
                                         result = xsltProcessor.transformToDocument(xml);
                                     }
-                                    result && [...result.children].map(el => el instanceof HTMLElement && el.$$('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
+                                    result && [...result.children].map(el => el instanceof HTMLElement && el.select('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                     if (!(result && result.documentElement) && !xml.documentElement) {
                                         xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).seed())
                                         return Promise.reject(xml.transform("empty.xslt"));
@@ -10235,6 +10158,59 @@ xover.modernize = async function (targetWindow) {
                     // 8. return undefined
                 };
             }
+
+            for (let prop of ['set', 'setAttribute', 'setAttributeNS', 'get', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value']) {
+                let prop_desc = Object.getOwnPropertyDescriptor(Node.prototype, prop) || Object.getOwnPropertyDescriptor(Element.prototype, prop);
+                if (!prop_desc) {
+                    continue
+                }
+                if (prop_desc.value) {
+                    if (NodeSet.prototype.hasOwnProperty(prop)) continue;
+                    Object.defineProperty(NodeSet.prototype, prop, {
+                        value: prop_desc.value && function (...args) {
+                            results = [];
+                            for (let target of this) {
+                                if (typeof (target[prop]) == 'function') {
+                                    results.push(target[prop].apply(target, args))
+                                } else {
+                                    results.push(null)
+                                }
+                            }
+                            return results;
+                        },
+                        writable: true, enumerable: false, configurable: false
+                    });
+                } else {
+                    if (NodeSet.prototype.hasOwnProperty(prop)) continue;
+                    Object.defineProperty(NodeSet.prototype, prop, {
+                        get: prop_desc.get && function () {
+                            results = [];
+                            for (let target of this) {
+                                if (typeof (target) == 'object' && prop in target) {
+                                    results.push(target[prop])
+                                } else {
+                                    results.push(null)
+                                }
+                            }
+                            return results;
+                        },
+                        set: prop_desc.set && function (value) {
+                            results = [];
+                            for (let target of this) {
+                                if (typeof (target) == 'object' && prop in target) {
+                                    results.push(target[prop] = value)
+                                } else {
+                                    results.push(null)
+                                }
+                            }
+                            return results;
+                        },
+                        enumerable: false, configurable: false
+                    });
+
+                }
+            }
+
             targetWindow.modernized = true;
         }
     }).catch(e => {
