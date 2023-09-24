@@ -9730,7 +9730,7 @@ xover.modernize = async function (targetWindow) {
                 xover.manager.replace = new Map();
                 xover.manager.stoped = new Map();
 
-                let stylesheet_renderer_handler = async function () {
+                let section_renderer_handler = async function () {
                     await xover.ready;
                     xover.manager.render.set(this, xover.manager.render.get(this) || xover.delay(1).then(async () => {
                         let self = this;
@@ -9873,13 +9873,13 @@ xover.modernize = async function (targetWindow) {
 
                 if (!HTMLElement.prototype.hasOwnProperty('render')) {
                     Object.defineProperty(HTMLElement.prototype, 'render', {
-                        value: stylesheet_renderer_handler
+                        value: section_renderer_handler
                     });
                 }
 
                 if (!SVGElement.prototype.hasOwnProperty('render')) {
                     Object.defineProperty(SVGElement.prototype, 'render', {
-                        value: stylesheet_renderer_handler
+                        value: section_renderer_handler
                     });
                 }
 
