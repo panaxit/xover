@@ -4191,7 +4191,7 @@ xover.xml.combine = function (target, new_node) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
-        [...target.attributes].filter(attr => ![...new_node.attributes].map(NodeName).includes(attr.name)).forEach(attr => attr.remove());
+        //[...target.attributes].filter(attr => ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove()); //It's better to keep everything and remove by declaring empty style
         [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
         target.replaceChildren(...new_node.childNodes)
         return target
@@ -7248,6 +7248,7 @@ xover.modernize = async function (targetWindow) {
 
                 let xo_handler_toArray = {
                     value: function () {
+
                         return [...this];
                     }, writable: true, enumerable: false, configurable: false
                 }
