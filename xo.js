@@ -7248,8 +7248,7 @@ xover.modernize = async function (targetWindow) {
 
                 let xo_handler_toArray = {
                     value: function () {
-
-                        return [...this];
+                        return new NodeSet(...this);
                     }, writable: true, enumerable: false, configurable: false
                 }
 
@@ -7261,7 +7260,7 @@ xover.modernize = async function (targetWindow) {
 
                 if (!HTMLFormControlsCollection.prototype.hasOwnProperty('toArray')) Object.defineProperty(HTMLFormControlsCollection.prototype, 'toArray', xo_handler_toArray);
 
-                if (!Array.prototype.hasOwnProperty('toArray')) Object.defineProperty(Array.prototype, 'toArray', xo_handler_toArray);
+                if (!Array.prototype.hasOwnProperty('toArray')) Object.defineProperty(Array.prototype, 'toArray', { value: function () { return this} });
 
                 if (!NodeList.prototype.hasOwnProperty('toArray')) Object.defineProperty(NodeList.prototype, 'toArray', xo_handler_toArray);
 
