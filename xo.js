@@ -1995,7 +1995,7 @@ xover.Source = function (tag) {
             get: function () {
                 _manifest = _manifest || xover.manifest.sources || {};
                 manifest_key = manifest_key || Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && tag.match(new RegExp(manifest_key, "i")) || manifest_key === tag || tag[0] == '#' && manifest_key === '#' + xover.URL(tag.substring(1)).pathname.substring(1)).pop();
-                if (definition !== undefined) return definition;
+                //if (definition !== undefined) return definition;
                 if (manifest_key) {
                     let source = JSON.parse(JSON.stringify(xover.manifest.sources[manifest_key]));
                     source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
@@ -2014,7 +2014,26 @@ xover.Source = function (tag) {
                 } else if (existsFunction(tag)) {
                     definition = eval(tag);
                 } else {
-                    definition = tag;
+                    try {
+                        definition = eval(`(${decodeURI(tag)})`);
+                        if (typeof (definition) == 'function') {
+                            definition = definition()
+                            //delete xover.sources[tag];
+                        }
+                        if (definition instanceof Node) {
+                            definition = definition.cloneNode(true)
+                        } else if (definition == undefined || isNaN(definition)) {
+                            definition = tag
+                        } else {
+                            definition = document.createTextNode(definition)
+                        }
+                    } catch (e) {
+                        if (e instanceof ReferenceError) {
+                            definition = tag;
+                        } else {
+                            return Promise.reject(e)
+                        }
+                    }
                 }
                 return definition;
             }, enumerable: false, configurable: false
@@ -2102,7 +2121,9 @@ xover.Source = function (tag) {
                 let before_event = new xover.listener.Event('beforeFetch', { tag: tag, settings: settings }, this);
                 window.top.dispatchEvent(before_event);
                 if (before_event.cancelBubble || before_event.defaultPrevented) return;
-                if (source && source.constructor === {}.constructor) {
+                if (source instanceof Node) {
+                    response = source
+                } else if (source && source.constructor === {}.constructor) {
                     let promises = [];
                     for (let [endpoint, parameters] of endpoints) {
                         if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
@@ -4192,7 +4213,7 @@ xover.xml.combine = function (target, new_node) {
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
         //[...target.attributes].filter(attr => ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove()); //It's better to keep everything and remove by declaring empty style
-        [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
+        !target.matches(".xo-static-attributes") && [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
         target.replaceChildren(...new_node.childNodes)
         return target
     } else {
@@ -7335,7 +7356,7 @@ xover.modernize = async function (targetWindow) {
                                     try {
                                         return el && el.selectNodes(el instanceof Document && key.replace(/^self::/, '') || key).includes(this)
                                     } catch (e) {
-                                        console.warn(`No a valid xpath was provided: ${key}`)
+                                        console.warn(`Not a valid xpath was provided: ${key}`)
                                     }
                                 });
                                 return return_value;
