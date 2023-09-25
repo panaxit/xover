@@ -931,23 +931,20 @@ xover.listener.on('keyup', async function (event) {
     }
 })
 
-xover.listener.on('popstate', async function (event) {
-    await xover.ready;
-    xover.session.store_id = xover.session.store_id;
-    xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
-    if (event.state) delete event.state.active;
-    //let hashtag = (xover.site.seed || '#')
-    //let store = xover.stores[hashtag];
-})
-
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
-    document.querySelectorAll(`[role=alertdialog]`).toArray().remove();
+    document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (event.defaultPrevented) return;
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
     if (xover.session.status == 'authorizing') xover.session.status = null;
     if (history.state) delete history.state.active;
     xover.site.active = location.hash;
+    xover.session.store_id = xover.session.store_id;
+    let item = document.querySelector(`${(location.hash || '').replace(/^#/, '') && location.hash || ''}:not([xo-source],[xo-stylesheet])`);
+    if (!item) {
+        xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
+    }
+    if (event.state) delete event.state.active;
 })
 
 xover.listener.on('navigatedForward', function (event) {
@@ -1700,7 +1697,9 @@ Object.defineProperty(xover.site, 'next', {
 });
 
 Object.defineProperty(xover.site, 'seed', {
-    get() { return (history.state['seed'] || location.hash || '#') }
+    get() {
+        return ((history.state || {})['seed'] || !document.querySelector(`${(location.hash || '').replace(/^#/, '') && location.hash || ''}:not([xo-source],[xo-stylesheet])`) && location.hash || '#')
+    }
     , set(input) {
         if (!history.state['seed']) {
             history.state['seed'] = input;
@@ -1742,7 +1741,7 @@ Object.defineProperty(xover.site, 'active', {
         if (xover.session.getKey("status") != 'authorized' && 'login' in xover.server) {
             return "#login";
         } else {
-            return history.state.active || this.seed;
+            return (history.state || {}).active || this.seed;
         }
     },
     set: function (input) {
@@ -2017,8 +2016,11 @@ xover.Source = function (tag) {
                     try {
                         definition = eval(`(${decodeURI(tag)})`);
                         if (typeof (definition) == 'function') {
-                            definition = definition()
-                            //delete xover.sources[tag];
+                            try {
+                                definition = definition()
+                            } catch (e) {
+                                return Promise.reject(e)
+                            }
                         }
                         if (definition instanceof Node) {
                             definition = definition.cloneNode(true)
@@ -2028,11 +2030,7 @@ xover.Source = function (tag) {
                             definition = document.createTextNode(definition)
                         }
                     } catch (e) {
-                        if (e instanceof ReferenceError) {
-                            definition = tag;
-                        } else {
-                            return Promise.reject(e)
-                        }
+                        definition = tag;
                     }
                 }
                 return definition;
@@ -4201,6 +4199,7 @@ xover.xml.createNode = function (xml_string, options) {
 }
 
 xover.xml.combine = function (target, new_node) {
+    let classList = target.classList;
     if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
@@ -4208,12 +4207,12 @@ xover.xml.combine = function (target, new_node) {
     }
     if (target.isEqualNode(new_node)) return target;
 
-    if (target instanceof Element && target.matches(".xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor) {
+    if (target instanceof Element && classList.contains("xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
         //[...target.attributes].filter(attr => ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove()); //It's better to keep everything and remove by declaring empty style
-        !target.matches(".xo-static-attributes") && [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
+        !(classList instanceof DOMTokenList && classList.contains("xo-static-*")) && [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
         target.replaceChildren(...new_node.childNodes)
         return target
     } else {
@@ -7281,7 +7280,7 @@ xover.modernize = async function (targetWindow) {
 
                 if (!HTMLFormControlsCollection.prototype.hasOwnProperty('toArray')) Object.defineProperty(HTMLFormControlsCollection.prototype, 'toArray', xo_handler_toArray);
 
-                if (!Array.prototype.hasOwnProperty('toArray')) Object.defineProperty(Array.prototype, 'toArray', { value: function () { return this} });
+                if (!Array.prototype.hasOwnProperty('toArray')) Object.defineProperty(Array.prototype, 'toArray', { value: function () { return this } });
 
                 if (!NodeList.prototype.hasOwnProperty('toArray')) Object.defineProperty(NodeList.prototype, 'toArray', xo_handler_toArray);
 
@@ -7742,7 +7741,7 @@ xover.modernize = async function (targetWindow) {
                                 } else if (target.id) {
                                     path.unshift(`${target.tagName}[id='${target.id}']`);
                                 } else if ((target.classList || []).length && selector_type != 'full_path') {
-                                    let classes = [...target.classList].filter(class_name => !class_name.match("[.]"));
+                                    let classes = [...target.classList].filter(class_name => class_name.match(/^[a-zA-Z_][a-zA-Z0-9_\-]*$/));
                                     path.unshift(target.tagName + (classes.length && '.' + classes.join(".") || ""));
                                 } else if (target.nodeName == '#text') {
                                     path.unshift(buildQuerySelector(target.parentNode, path.flat()));
