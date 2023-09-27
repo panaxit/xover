@@ -943,7 +943,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     let item;
     try {
         item = document.querySelector(`${(location.hash || '').replace(/^#/, '') && location.hash || ''}:not([xo-source],[xo-stylesheet])`);
-    } catch (e) {}
+    } catch (e) { }
     if (!item) {
         xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
     }
@@ -2052,6 +2052,15 @@ xover.Source = function (tag) {
     if (!this.hasOwnProperty("tag")) {
         Object.defineProperty(this, 'tag', {
             value: tag,
+            writable: false, enumerable: false, configurable: false
+        });
+    }
+
+    if (!this.hasOwnProperty("delete")) {
+        Object.defineProperty(this, 'delete', {
+            value: function () {
+                delete xover.sources[tag];
+            },
             writable: false, enumerable: false, configurable: false
         });
     }
@@ -4212,13 +4221,19 @@ xover.xml.combine = function (target, new_node) {
     }
     if (target.isEqualNode(new_node)) return target;
 
-    if (target instanceof Element && classList.contains("xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor) {
+    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && classList.contains("xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
         if (!(classList instanceof DOMTokenList && classList.contains("xo-static-*"))) {
             [...target.attributes].filter(attr => !(classList instanceof DOMTokenList && classList.contains(`xo-static-${attr.name}`)) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove({ silent: true }));
-            [...new_node.attributes].forEach(attr => target.setAttribute(attr.nodeName, attr.value, { silent: true }));
+            for (let attr of new_node.attributes) {
+                if (attr.isEqualNode(target.attributes[attr.name])) continue;
+                if (["value"].includes(attr.name)) {
+                    target[attr.name] = attr.value
+                }
+                target.setAttribute(attr.nodeName, attr.value, { silent: true });
+            }
         }
         target.replaceChildren(...new_node.childNodes)
         return target
@@ -4455,10 +4470,10 @@ xover.xml.clone = function (source) {
     return xover.xml.createDocument(source);
 }
 
-xover.xml.fromHTML = function (document) {
+xover.xml.fromHTML = function (element) {
     let xhtml = document.implementation.createDocument("http://www.w3.org/1999/xhtml", "", null);
     if (element) {
-        xhtml.appendChild(xhtml.importNode(document.documentElement || element, true));
+        xhtml.appendChild(xhtml.importNode(element.documentElement || element, true));
     }
     return xhtml
 }
@@ -4835,15 +4850,13 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(_sources, 'clear', {
         value: function (forced) {
+            for (let [key, source] of Object.entries(this)) {
+                source.replaceContent()
+            }
+            xover.site.sections.filter(section => section.store === xo.stores.active).forEach(section => [(section.stylesheet || {}).source].filter(source => source).pop().delete());
             Object.keys(this).map((key) => {
-                let item = _sources[key]
-                if (item.source && item.documentElement) {
-                    item.documentElement.remove();
-                    if (forced) {
-                        let from_sources = xover.sources[key];
-                        from_sources.documentElement && from_sources.documentElement.remove();
-                    }
-                }
+                xover.sources[key].replaceChildren();
+                _sources[key].select(`comment()[starts-with(.,'ack:Imported')]`).map(comment => comment.textContent.replace(/^ack:Imported from "|" ===>+\s*$/g, '')).map(href => xover.sources[href].replaceContent());
             });
             return _sources;
         },
@@ -4860,7 +4873,7 @@ xover.Store = function (xml, ...args) {
     })
 
     Object.defineProperty(_sources, 'reload', {
-        value: async function (list) {
+        value: async function () {
             _sources.clear(true);
             store.render();
             return _sources;
@@ -7794,18 +7807,18 @@ xover.modernize = async function (targetWindow) {
                     while (imports.length) {
                         imports.map(node => {
                             let href = node.getAttribute("href");
-                            if (xsl.selectSingleNode(`//comment()[contains(.,'=== Imported from "${href}" ===')]`)) {
+                            if (xsl.selectSingleNode(`//comment()[contains(.,'ack:Imported from "${href}" ===')]`)) {
                                 node.remove();
                             } else if (xover.sources[href]) {
                                 //xsltProcessor.importStylesheet(xover.sources[href]);
                                 let fragment = document.createDocumentFragment();
-                                fragment.append(xsl.createComment(` === Imported from "${href}" ===>>>>>>>>>>>>>>> `));
+                                fragment.append(xsl.createComment(`ack:Imported from "${href}" ===>>>>>>>>>>>>>>> `));
                                 let sources = xover.sources[href].cloneNode(true);
                                 Object.entries(xover.json.difference(xover.xml.getNamespaces(sources), xover.xml.getNamespaces(xsl))).map(([prefix, namespace]) => {
                                     xsl.documentElement.setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, namespace)
                                 });
                                 fragment.append(...sources.documentElement.childNodes);
-                                fragment.append(xsl.createComment(` <<<<<<<<<<<<<<<=== Imported from "${href}" === `));
+                                fragment.append(xsl.createComment(` <<<<<<<<<<<<<<<=== ack:Imported from "${href}" === `));
 
                                 replaceChild_original.apply(node.parentNode, [fragment, node]); //node.replace(fragment);
                                 xsl.documentElement.selectNodes(`xsl:import[@href="${href}"]|xsl:include[@href="${href}"]`).remove(); //Si en algún caso hay más de un nodo con el mismo href, quitamos los que quedaron (sino es posible que no se quite)
@@ -7844,7 +7857,7 @@ xover.modernize = async function (targetWindow) {
                         xsl.href = this.href;
                         xsl.url = this.url;
                         imports = xsl.documentElement.selectNodes("xsl:import|xsl:include").filter(node => {
-                            return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'=== Imported from "${node.getAttribute("href")}" ===')]`);
+                            return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:Imported from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
                     return xsl;
@@ -10186,7 +10199,7 @@ xover.modernize = async function (targetWindow) {
                 };
             }
 
-            for (let prop of ['set', 'setAttribute', 'setAttributeNS', 'get', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value']) {
+            for (let prop of ['set', 'setAttribute', 'setAttributeNS', 'get', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value', 'replaceChildren', 'replaceContent']) {
                 let prop_desc = Object.getOwnPropertyDescriptor(Node.prototype, prop) || Object.getOwnPropertyDescriptor(Element.prototype, prop);
                 if (!prop_desc) {
                     continue
