@@ -515,7 +515,7 @@ xover.dom.intervals = new Proxy({}, {
 })
 
 xover.dom.controls = {};
-xover.dom.refreshTitle = function (input) {
+xover.dom.updateTitle = function (input) {
     let document_title = (input || document.title).match(/([^\(]+)(.*)/);
     let [, title, environment] = (document_title || [, "", ""]);
     document.title = title.replace(/\s+$/, '') + (` (${xover.session.store_id && xover.session.store_id != 'main' ? xover.session.store_id : 'v.'} ${xover.session.cache_name && xover.session.cache_name.split('_').pop() || ""})`).replace(/\((v\.)?\s+\)|\s+(?=\))/g, '');
@@ -540,7 +540,7 @@ xover.init = async function () {
 
             await xover.stores.restore();
             xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
-            xover.dom.refreshTitle();
+            xover.dom.updateTitle();
             xover.site.sections.forEach(section => section.render());
             let active = xover.stores.active;
             active && active.render();
@@ -2501,7 +2501,7 @@ Object.defineProperty(xover.session, 'store_id', {
         return (xover.manifest.server && isFunction(xover.manifest.server.store_id) && xover.manifest.server.store_id() || xover.session.getKey("store_id") || xover.manifest.server.store_id)
     }
     , set: async function (input) {
-        xover.dom.refreshTitle();
+        xover.dom.updateTitle();
     }
 });
 
@@ -4353,6 +4353,14 @@ xover.dom.combine = async function (target, documentElement) {
     let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
+    scripts = documentElement.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
+        let cloned = el.cloneNode(true);
+        el.textContent = ''
+        Object.defineProperty(cloned, 'parentNode', {
+            value: el.parentNode
+        });
+        return cloned;
+    });
 
     let changes = xover.xml.getDifferences(target, documentElement);
     if (!changes) return target;
@@ -4395,16 +4403,6 @@ xover.dom.combine = async function (target, documentElement) {
         }
         target = iframe;
     } else {
-        scripts = documentElement.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
-            //!el.getAttribute("id") && el.setAttribute("id", xover.cryptography.generateUUID())
-            let cloned = el.cloneNode(true);
-            el.textContent = ''
-            Object.defineProperty(cloned, 'parentNode', {
-                value: el.parentNode
-            });
-            return cloned;
-        });
-
         //let coordinates = active_element.scrollPosition;
 
         //target.observer && target.observer.disconnect();
