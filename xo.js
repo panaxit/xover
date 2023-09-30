@@ -568,7 +568,7 @@ Object.defineProperty(xover, 'ready', {
 })
 
 xover.init.Observer = function (document = window.document) {
-    const config = { characterData: true, attributeFilter: ["xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop","xo-site", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
+    const config = { characterData: true, attributeFilter: ["xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-stop", "xo-site", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
 
     const intersection_observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
@@ -4221,12 +4221,12 @@ xover.xml.combine = function (target, new_node) {
     }
     if (target.isEqualNode(new_node)) return target;
 
-    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && classList.contains("xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor) {
+    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && classList.contains("xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
         if (!(classList instanceof DOMTokenList && classList.contains("xo-static-*"))) {
-            [...target.attributes].filter(attr => !(classList instanceof DOMTokenList && classList.contains(`xo-static-${attr.name}`)) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop","xo-site", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove({ silent: true }));
+            [...target.attributes].filter(attr => !(classList instanceof DOMTokenList && classList.contains(`xo-static-${attr.name}`)) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove({ silent: true }));
             for (let attr of new_node.attributes) {
                 if (attr.isEqualNode(target.attributes[attr.name])) continue;
                 if (["value"].includes(attr.name)) {
