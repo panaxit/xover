@@ -536,7 +536,7 @@ xover.init = async function () {
             Object.assign(xover.spaces, xover.manifest.spaces);
             this.init.status = 'initialized';
 
-            await Promise.all(xover.manifest.start.map(async href => await xover.sources[href].ready && xover.sources[href])).catch(e => e.render && e.render() || console.error(e));
+            await Promise.all(xover.manifest.start.map(async href => await xover.sources[href].ready && xover.sources[href])).catch(e => e && e.render && e.render() || console.error(e));
 
             await xover.stores.restore();
             xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
@@ -3424,7 +3424,7 @@ xover.Response = function (response, request) {
                         if (html_doc.body.childNodes.length == 1) {
                             body = html_doc.body.firstChild;
                         } else {
-                            body = new DocumentFragment().append(...html_doc.body.childNodes);
+                            body = new DocumentFragment().append(...html_doc.body.childNodes) || new Text("");
                         }
                     } else {
                         body = html_doc
@@ -4215,8 +4215,12 @@ xover.xml.createFragment = function (xml_string) {
 }
 
 xover.xml.createNode = function (xml_string, options) {
-    let result = xover.xml.createDocument(xml_string, options)
-    return result.firstElementChild || result;
+    let result = xover.xml.createDocument(xml_string, options);
+    result = result.firstElementChild || result
+    if (!result.prefix && result.namespaceURI && !result.attributes.xmlns) {
+        result.setAttributeNS(xover.spaces["xmlns"], "xmlns", result.namespaceURI)
+    }
+    return result;
 }
 
 xover.xml.combine = function (target, new_node) {
@@ -7288,7 +7292,7 @@ xover.modernize = async function (targetWindow) {
 
                 Element.prototype.createNode = function (node_description) {
                     let node = xover.xml.createNode(node_description)
-                    this.append(node);
+                    //this.append(node);
                     return node;
                 }
 
@@ -9241,17 +9245,6 @@ xover.modernize = async function (targetWindow) {
                     return this.parentNode.replaceChild(new_node.cloneNode(true), this);
                 }
 
-                var original_replaceWith = Object.getOwnPropertyDescriptor(Element.prototype, 'replaceWith');
-                Object.defineProperty(Element.prototype, 'replaceWith', {
-                    value: function (...args) {
-                        let new_node = args[0];
-                        if (!new_node) return;
-                        original_replaceWith.value.apply(this, [new_node]);
-                        window.top.dispatchEvent(new xover.listener.Event('replaceWith', { new_node, old: this }, new_node));
-                        return new_node;
-                    }
-                })
-
                 XMLDocument.prototype.replaceBy = function (new_document) {
                     if (new_document !== this) {
                         while (this.firstChild) {
@@ -9620,6 +9613,19 @@ xover.modernize = async function (targetWindow) {
                                     //    xsl = xover.xml.consolidate(xsl); //Corregir casos cuando tiene apply-imports
                                     //}
 
+                                    xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'globalization:')]`).map(param => {
+                                        try {
+                                            let param_name = param.getAttribute("name").split(/:/).pop()
+                                            if (param.value != undefined) {
+                                                let source = xover.sources[param.value];
+                                                source.ready;
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="text()[.='${name.value}']|@*[.='${name.value}']"><xsl:text/>${name.parentNode.textContent}<xsl:text/></xsl:template>`));
+                                                param.replaceWith(...templates)
+                                            }
+                                        } catch (e) {
+                                            Promise.reject(e.message);
+                                        }
+                                    });
                                     xsltProcessor.importStylesheet(xsl);
                                     xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:') or not(contains(@name,':'))][text()]`).map(param => {
                                         try {
@@ -9873,7 +9879,7 @@ xover.modernize = async function (targetWindow) {
                                     await source_document.ready
                                 }
                             }
-                            stylesheets = stylesheet && [stylesheet] || source_document && source_document.getStylesheets();
+                            stylesheets = stylesheet && [stylesheet] || source_document && source_document.getStylesheets() || [];
                             if (stylesheets.length) {
                                 stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (target_store || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
