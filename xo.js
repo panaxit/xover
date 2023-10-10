@@ -4224,7 +4224,10 @@ xover.xml.createNode = function (xml_string, options) {
 }
 
 xover.xml.combine = function (target, new_node) {
-    let classList = target.classList;
+    let swap = document.firstElementChild.cloneNode().classList;
+    swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
+    let static = document.firstElementChild.cloneNode().classList;
+    static.value = target instanceof Element && target.getAttribute("xo-static") || "";
     if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
@@ -4232,14 +4235,14 @@ xover.xml.combine = function (target, new_node) {
     }
     if (target.isEqualNode(new_node)) return target;
 
-    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && classList.contains("xo-swap") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
+    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && swap.contains("self") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
-        if (!(classList instanceof DOMTokenList && classList.contains("xo-static-*"))) {
-            [...target.attributes].filter(attr => !(classList instanceof DOMTokenList && classList.contains(`xo-static-${attr.name}`)) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove({ silent: true }));
+        if (!static.contains("@*")) {
+            [...target.attributes].filter(attr => !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule"]).includes(attr.name)).forEach(attr => attr.remove({ silent: true }));
             for (let attr of new_node.attributes) {
-                if (classList instanceof DOMTokenList && classList.contains(`xo-static-${attr.name}`)) continue;
+                if (static.contains(`@${attr.name}`)) continue;
                 if (attr.isEqualNode(target.attributes[attr.name])) continue;
                 if (["value"].includes(attr.name)) {
                     target[attr.name] = attr.value
