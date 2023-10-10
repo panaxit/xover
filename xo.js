@@ -817,8 +817,8 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             //context.eventHistory.delete(handler);
         }
     },
-    writable: false, enumerable: false, configurable: false
-})
+    writable: true, enumerable: false, configurable: false
+});
 
 xover.listener.silenced = new Map();
 Object.defineProperty(xover.listener, 'silence', {
@@ -1327,7 +1327,7 @@ Object.defineProperty(xover.session, 'locale', {
         return this.getKey("locale") || navigator.language
     }
     , set(input) {
-        this.setKey("locale",input)
+        this.setKey("locale", input)
     }
     , enumerable: false
 });
@@ -2270,9 +2270,6 @@ xover.sources = new Proxy({}, {
         if (key.indexOf('{$') != -1) return null;
         xover.sources[key] = new xover.Source(key).document;
         return self[key];
-    },
-    set: function (self, key, input) {
-        self[key] = input;
     },
     set: function (self, key, input) {
         self[key] = input;
@@ -3918,17 +3915,6 @@ xover.fetch = async function (url, ...args) {
     }
     payload = url.body;
     if (payload) {
-        if (url.method === 'POST' || payload instanceof Document) {
-            url.method = 'POST';
-            url.body = payload;
-        } else {
-            for (let [key, value] of [...new URLSearchParams(payload).entries()]) {
-                url.searchParams.append(key, value);
-            }
-        }
-    }
-    payload = url.body;
-    if (payload) {
         settings["method"] = 'POST';
         let pending = [];
         for (let item of payload) {
@@ -4521,10 +4507,10 @@ xover.xml.clone = function (source) {
     return xover.xml.createDocument(source);
 }
 
-xover.xml.fromHTML = function (document) {
+xover.xml.fromHTML = function (element) {
     let xhtml = document.implementation.createDocument("http://www.w3.org/1999/xhtml", "", null);
     if (element) {
-        xhtml.appendChild(xhtml.importNode(document.documentElement || element, true));
+        xhtml.appendChild(xhtml.importNode(element.documentElement || element, true));
     }
     return xhtml
 }
@@ -5523,7 +5509,6 @@ xover.Store = function (xml, ...args) {
                     __document.addStylesheet(stylesheet);
                     console.warn("Initial transformation shouldn't yield a html or any other document from the w3 standard.");
                 }
-                store.save();
             });
             store.seed();
         },
@@ -10395,76 +10380,6 @@ xover.dom.fileManager = async function (files) {
     return file_value;
 }
 
-//xover.listener.on('mouseup::textarea', function () {
-//    let el = event.srcElement;
-//    let scope = el.scope;
-//    if (!scope) return;
-//    if (scope instanceof Attr) {
-//        scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight, { silent: true });
-//        scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth, { silent: true });
-//    } else {
-//        scope.set('state:height', el.offsetHeight, { silent: true });
-//        scope.set('state:width', el.offsetWidth, { silent: true });
-//    }
-//});
-
-xover.listener.on(['change::*[xo-attribute]'], function () {
-    if (this.type === 'date' && this.value != '' && !isValidISODate(this.value) || this.preventChangeEvent) {
-        this.preventChangeEvent = undefined;
-        event.preventDefault();
-        return;
-    }
-    let srcElement = this;
-    let scope = this.scope;
-    if (!scope) return;
-    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : srcElement.value;
-    //if (srcElement.defaultPrevented) {
-
-    //}
-    if (scope instanceof Attr || scope instanceof Text) {
-        scope.set(value);
-    } else if (scope instanceof Node) {
-        _attribute && scope.set(_attribute, value);
-    }
-})
-
-//xover.listener.on(['change::input[type="file"]'], async function () {
-//    let srcElement = this;
-//    if (!(srcElement.files && srcElement.files[0])) return;
-//    let store = await xover.storehouse.files;
-//    let scope = this.scope;
-//    if (!scope) return;
-//    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-//    store.add(srcElement.files).forEach(record => {
-//        [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
-//        if (scope instanceof Text || _attribute === 'text') {
-//            scope.set(record.uid);
-//        } else if (scope instanceof Attr || _attribute) {
-//            let { prefix, name: attribute_name } = xover.xml.getAttributeParts(_attribute);
-//            scope = scope instanceof Attr ? scope.ownerElement : scope;
-//            let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
-//            delete metadata["file"];
-//            scope.set(_attribute, record.uid);
-//            //scope.set(`metadata:${attribute_name}`, metadata);
-//            if (metadata.name) {
-//                scope.set(`text:${attribute_name}`, metadata.name);
-//            }
-//        }
-//    })
-//})
-
-xover.dom.fileManager = async function (files) {
-    if (!(files[0])) return [];
-    let database = await xover.storehouse.files;
-    let cached_files = database.add(files);
-    let file_value = cached_files.map(record => {
-        let metadata = Object.assign({}, xover.string.getFileParts(record.saveAs), record, { name: record.file["name"], type: record.file["type"] });
-        return `${record.uid}?name=${metadata.name}`
-    });
-    return file_value;
-}
-
 xover.listener.on(['change::input[type="file"]'], async function () {
     let srcElement = this;
     let scope = this.scope;
@@ -10527,4 +10442,4 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     } catch (e) {
         console.error(e);
     }
-})();
+});
