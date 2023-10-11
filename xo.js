@@ -2069,6 +2069,16 @@ xover.Source = function (tag) {
         });
     }
 
+    if (!this.hasOwnProperty("clear")) {
+        Object.defineProperty(this, 'clear', {
+            value: function () {
+                this.document.select(`//comment()[starts-with(.,'ack:imported-from')]`).map(comment => comment.textContent.replace(/^ack:imported-from "|" ===>+\s*$/g, '')).forEach(href => xover.sources[href].replaceContent());
+                this.document.replaceContent();
+            },
+            writable: false, enumerable: false, configurable: false
+        });
+    }
+
     if (!this.hasOwnProperty("manifest_key")) {
         Object.defineProperty(this, 'manifest_key', {
             get: function () {
@@ -2238,7 +2248,7 @@ xover.Source = function (tag) {
                     if (!e) {
                         return Promise.reject(e);
                     }
-                    window.top.dispatchEvent(new xover.listener.Event('failure', { tag, response: e }, this));
+                    window.top.dispatchEvent(new xover.listener.Event('failure', { tag, response: e, request: source }, this));
 
                     let document = e.document;
                     let targets = []
@@ -2427,6 +2437,7 @@ xover.dom.alert = async function (message) {
 
 xover.dom.createDialog = function (message) {
     if (!message) { return null }
+    window.top.dispatchEvent(new xover.listener.Event('beforeDialog', { message }, message));
     let original_message = message;
     if (xover.messages.get(original_message)) return;
     let dialog_id = `dialog_${xover.cryptography.generateUUID()}`
@@ -2448,6 +2459,7 @@ xover.dom.createDialog = function (message) {
         iframe.onload = function () {
             iframe.style.height = (iframe.contentDocument.firstElementChild.scrollHeight + 0) + 'px';
             iframe.style.width = (iframe.contentDocument.firstElementChild.scrollWidth + 100) + 'px';
+            window.top.dispatchEvent(new xover.listener.Event('dialog', { message }, iframe));
         }
         message = iframe;
     } else if (message.documentElement instanceof HTMLElement) {
@@ -3853,6 +3865,11 @@ xover.Request = function (request, settings = {}) {
     Object.defineProperty(self, 'settings', {
         value: settings
     })
+    Object.defineProperty(self, 'toString', {
+        get: function () {
+            return url.toString();
+        }
+    })
     Object.defineProperty(self, 'parameters', {
         get: function () {
             return Object.fromEntries(new URL(url).searchParams.entries());
@@ -4021,9 +4038,9 @@ xover.fetch = async function (url, ...args) {
     //window.top.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
     if (response.ok) {
         handlers.forEach(handler => handler(return_value, response, request));
-        window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request, response }, response));
     } else {
-        window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response }, response));
     }
 
     if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
@@ -4162,6 +4179,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 }
                 return_value = return_value.consolidate();
             } catch (e) {
+                window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), response: e, request: url }, this));
                 return Promise.reject(e);
             }
         }
@@ -4887,14 +4905,10 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(_sources, 'clear', {
         value: function (forced) {
-            for (let [key, source] of Object.entries(this)) {
-                source.replaceContent()
+            for (let [, document] of Object.entries(this)) {
+                document.source.clear()
             }
             xover.site.sections.filter(section => section.store === xo.stores.active).forEach(section => [(section.stylesheet || {}).source].filter(source => source).pop().delete());
-            Object.keys(this).map((key) => {
-                xover.sources[key].replaceChildren();
-                _sources[key].select(`comment()[starts-with(.,'ack:imported-from')]`).map(comment => comment.textContent.replace(/^ack:imported-from "|" ===>+\s*$/g, '')).map(href => xover.sources[href].replaceContent());
-            });
             return _sources;
         },
         writable: false, enumerable: false, configurable: false
@@ -6203,6 +6217,37 @@ if (window.addEventListener) {
 //        scope && scope.remove();
 //    }
 //})
+
+xover.listener.on('dialog::iframe', function () {
+    let iframe = this;
+    let style = iframe.contentDocument.querySelector("style");
+    if (style && !iframe.style.minWidth && (iframe.contentDocument.title || '').match(/IIS|Detailed Error/)) {
+        iframe.contentDocument.firstElementChild.classList.add("dialog")
+        style.after(document.createElement("style").set("type", "text/css").set(document.createTextNode(`.content-container:has(fieldset ul), .content-container:has(fieldset p a) {display: none;}`)))
+        iframe.style.minWidth = '80vw'
+        iframe.style.height = (iframe.contentDocument.firstElementChild.offsetHeight + 0) + 'px';
+        iframe.style.width = (iframe.contentDocument.firstElementChild.scrollWidth + 100) + 'px';
+    }
+})
+
+xover.listener.on('importFailure::~.xslt', function ({ response = {}, request = {} }) {
+    let document = response.document;
+    let source = request
+    if (document instanceof Document) {
+        let details = document.querySelector("#details-right");
+        if (details && !document.querySelector("#source")) {
+            let ref = document.querySelector("#details-right").selectFirst("//tr[th='Physical Path']");
+            if (!ref) return;
+            let new_tr = ref.cloneNode(true);
+            new_tr.id = 'source';
+            new_tr.firstElementChild.value = 'Source file';
+            new_tr.firstElementChild.nextElementSibling.innerHTML = `&nbsp;&nbsp;&nbsp;${request}`;
+            ref.after(new_tr)
+        }
+
+    }
+
+})
 
 xover.listener.click = {}
 
@@ -7976,7 +8021,7 @@ xover.modernize = async function (targetWindow) {
                                     let document = e.document || e instanceof Document && e || e;
                                     let targets = []
                                     if (e.status != 404 && document && document.render) {
-                                        window.top.dispatchEvent(new xover.listener.Event(`failure`, { tag: '', document }, document));
+                                        window.top.dispatchEvent(new xover.listener.Event(`failure`, { tag: '', response: document, document }, document));
                                         targets = await document.render();
                                         if (!(targets && targets.length)) {
                                             return reject(e)
