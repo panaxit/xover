@@ -6235,18 +6235,14 @@ xover.listener.on('importFailure::~.xslt', function ({ response = {}, request = 
     let source = request
     if (document instanceof Document) {
         let details = document.querySelector("#details-right");
-        if (details && !document.querySelector("#source")) {
-            let ref = document.querySelector("#details-right").selectFirst("//tr[th='Physical Path']");
-            if (!ref) return;
-            let new_tr = ref.cloneNode(true);
-            new_tr.id = 'source';
-            new_tr.firstElementChild.value = 'Source file';
-            new_tr.firstElementChild.nextElementSibling.innerHTML = `&nbsp;&nbsp;&nbsp;${request}`;
-            ref.after(new_tr)
+        let ref = details && details.selectFirst("//tr/th[.='Physical Path']");
+        if (details && ref) {
+            details.setAttribute("id", "details");
+            new NodeSet(document.querySelector("#details-left")).remove();
+            ref.innerText = 'Source file';
+            ref.nextElementSibling.innerHTML = `&nbsp;&nbsp;&nbsp;${request}`;
         }
-
     }
-
 })
 
 xover.listener.click = {}
