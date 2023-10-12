@@ -550,9 +550,10 @@ xover.init = async function () {
             return Promise.reject(e)
         }
     }).catch(e => {
+        this.init.status = 'error';
         return Promise.reject(e);
     }).finally(() => {
-        this.init.initializing = undefined;
+        this.init.initializing = 'done';
     });
     return this.init.initializing;
 }
@@ -563,7 +564,7 @@ Object.defineProperty(xover, 'ready', {
         if (xover.init.status != 'initialized') {
             await xover.init();
         }
-        return true;
+        return this.init.status == 'initialized';
     }
 })
 
@@ -10461,6 +10462,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
     }
+    event.preventDefault();
     await xover.ready;
     try {
         let reason = event.message || event.reason;
