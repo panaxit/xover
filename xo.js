@@ -4137,11 +4137,11 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
                 el.set("xo-slot", "{name(current()[not(self::*)])}")
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
@@ -4150,49 +4150,53 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
             }
         }
-        return_value.documentElement && return_value.documentElement.selectNodes("xsl:import|xsl:include|//processing-instruction()").map(async node => {
-            let href = node.href || node.getAttribute("href");
-            if (!href.match(/^\//)) {
-                let new_href = new URL(href, response.url || response.href).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
-                if (node instanceof ProcessingInstruction) {
-                    node.href = new_href;
-                } else {
-                    node.setAttributeNS(null, "href", new_href);
-                }
-            }
-        });
-        let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.value); return arr; }, []) || [];
-        if (imports.length) {
-            function assert(condition, message) {
-                if (!condition) {
-                    throw new Error(message);
-                }
-            }
-
-            try {
-                let rejections = []
-                await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
-                if (xover.session.debug) {
-                    return_value.select(`//xsl:*[xsl:param]`).forEach(template => {
-                        let param_names = [...template.select(`xsl:param/@name`).map(param => param.value)];
-                        try {
-                            assert(param_names.length == [...new Set(param_names)].length, `Los nombres de los parámetros deben ser únicos en: ${template.nodeName} ${template.select(`@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}>`)
-                        } catch (e) {
-                            rejections.push(e)
+        if (location.host == url.host) {
+            return_value.documentElement && return_value.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//html:link/@href|//html:script/@src|//processing-instruction()").map(async node => {
+                let href = `${node.href || node}`;
+                if (!href.match(/^[\/#]|^\.\/|{/)) {
+                    let new_href = new URL(href, response.url || response.href).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
+                    if (href != new_href) {
+                        if (node instanceof ProcessingInstruction) {
+                            node.href = new_href;
+                        } else {
+                            node.set(new_href);
                         }
-                    })
+                    }
                 }
-                if (rejections.length) {
-                    return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
+            });
+            let imports = return_value.documentElement && return_value.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.value); return arr; }, []) || [];
+            if (imports.length) {
+                function assert(condition, message) {
+                    if (!condition) {
+                        throw new Error(message);
+                    }
                 }
-                return_value = return_value.consolidate();
-            } catch (e) {
-                window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), response: e, request: url }, this));
-                return Promise.reject(e);
+
+                try {
+                    let rejections = []
+                    await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
+                    if (xover.session.debug) {
+                        return_value.select(`//xsl:*[xsl:param]`).forEach(template => {
+                            let param_names = [...template.select(`xsl:param/@name`).map(param => param.value)];
+                            try {
+                                assert(param_names.length == [...new Set(param_names)].length, `Los nombres de los parámetros deben ser únicos en: ${template.nodeName} ${template.select(`@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}>`)
+                            } catch (e) {
+                                rejections.push(e)
+                            }
+                        })
+                    }
+                    if (rejections.length) {
+                        return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
+                    }
+                    return_value = return_value.consolidate();
+                } catch (e) {
+                    window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), response: e, request: url }, this));
+                    return Promise.reject(e);
+                }
             }
-        }
-        if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
-            return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "))
+            if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
+                return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "))
+            }
         }
         return return_value;
     } catch (e) {
