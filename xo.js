@@ -4367,15 +4367,15 @@ xover.dom.combine = async function (target, documentElement) {
                     [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
                     let on_load = script.textContent;
 
-                    if (new_element.tagName.toLowerCase() == "script") {
+                    if (new_element instanceof HTMLScriptElement) {
                         promise = new Promise(async (resolve, reject) => {
                             new_element.onload = function () {
                                 on_load && (function () { return eval.apply(this, arguments) }(on_load))
                                 resolve()
                             };
                         });
-                        targetDocument.head.appendChild(new_element);
                     }
+                    targetDocument.head.appendChild(new_element);
                 }
             } else if (!script.getAttribute("src") && script.textContent) {
                 script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
