@@ -798,7 +798,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             //    console.warn(`Event ${event.type} recursed`)
             //}
             //context.eventHistory.set(handler, event.type);
-            let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [{ event: event, ...event.detail }, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
+            let returnValue = /*await */handler.apply(context, handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && [{ event: event, ...event.detail }, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 event.returnValue = returnValue;
                 if (event.detail) {
@@ -10472,7 +10472,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
     }
-    event.preventDefault();
+    event.preventDefault && event.preventDefault();
     await xover.ready;
     try {
         let reason = event.message || event.reason;
