@@ -1514,10 +1514,11 @@ Object.defineProperty(xover.site, 'state', {
         return new Proxy(history.state['state'], {
             get: function (self, key) {
                 let return_value;
-                if (key[0] == '#') {
-                    return_value = self[key] || {};
+                if (key in self) {
+                    return_value = self[key]
+                } else if (key in xover.manifest.state) {
+                    return_value = xover.manifest.state[key];
                 }
-                return_value = return_value != undefined ? return_value : xover.manifest.state[key];
                 if (typeof (return_value) == 'string' && return_value.indexOf("${") != -1) {
                     return_value = eval(`\`${return_value}\``);
                 }
@@ -2004,7 +2005,11 @@ xover.Source = function (tag) {
                 manifest_key = manifest_key || Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && tag.match(new RegExp(manifest_key, "i")) || manifest_key === tag || tag[0] == '#' && manifest_key === '#' + xover.URL(tag.substring(1)).pathname.substring(1)).pop();
                 //if (definition !== undefined) return definition;
                 if (manifest_key) {
-                    let source = JSON.parse(JSON.stringify(xover.manifest.sources[manifest_key]));
+                    let source = xover.manifest.sources[manifest_key];
+                    if (typeof (source) == 'function') {
+                        definition = source;
+                        return definition
+                    }
                     source = manifest_key && manifest_key[0] === '^' && [...tag.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
                         if (typeof (source) == 'string') {
                             source = tag.replace(new RegExp(manifest_key, "i"), source)
@@ -2237,12 +2242,13 @@ xover.Source = function (tag) {
                     if (!(response instanceof Node) && xover.json.isValid(response)) {
                         response = xover.xml.fromJSON(response);
                     }
-                    if (!(response instanceof Node)) {
+                    if (response != null && !(response instanceof Node)) {
                         response = __document.createTextNode(response)
                     }
-                    this.settings.stylesheets && this.settings.settings.stylesheets.forEach(stylesheet => response.addStylesheet(stylesheet));
+                    if (response != null) {
+                        this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => response.addStylesheet(stylesheet));
+                    }
                     window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: response, tag, settings: this.settings }, self));
-
                     return Promise.resolve(response);
                 } catch (e) {
                     if (sources.length && e instanceof Response && e.status === 404) continue;
@@ -7321,6 +7327,10 @@ xover.modernize = async function (targetWindow) {
                         }
                     }
                 })
+
+                if (!Document.prototype.hasOwnProperty('settings')) {
+                    Document.prototype.settings = {};
+                }
 
                 Node.prototype.selectSingleNode = function (xpath) {
                     if (!xpath) {
