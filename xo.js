@@ -5729,7 +5729,7 @@ xover.xml.fromCSV = function (csv, settings = {}) {
     return xml
 }
 
-xover.xml.fromJSON = function (json) {
+xover.xml.fromJSON_1 = function (json) {
     if (typeof (json) == "string") {
         json = json.replace(/\r\n/g, "")
     } else if (json.constructor == {}.constructor || json.constructor == [].constructor) {
@@ -5765,6 +5765,27 @@ xover.xml.fromJSON = function (json) {
 
     xson.normalizeNamespaces();
     return xson;
+}
+
+xover.xml.fromJSON = function (json, nodeName) {
+    let node = document.createElement(nodeName || json instanceof Array && "__" || "_");
+    if (json instanceof Array) {
+        for (item of json) {
+            node.appendChild(xover.xml.fromJSON(item))
+        }
+    } else if (json && json.constructor && json.constructor === {}.constructor) {
+        for (attr in json) {
+            let child = xover.xml.fromJSON(json[attr], attr);
+            if (child instanceof Text) {
+                node.setAttribute(attr, child)
+            } else {
+                node.appendChild(child)
+            }
+        }
+    } else {
+        node = new Text(json)
+    }
+    return node;
 }
 
 xover.xml.toJSON = function (xson) {
