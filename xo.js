@@ -5241,25 +5241,25 @@ xover.Store = function (xml, ...args) {
                         }
                     }
                     for (let el of [...mutation.addedNodes]) {
-                        window.top.dispatchEvent(new xover.listener.Event('append', { target, renderingSections: sections_to_render }, el));
+                        xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('append', { target, renderingSections: sections_to_render }, el)))
                         el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.seed());
                     };
                     if (mutation.addedNodes.length) {
-                        window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes, renderingSections: sections_to_render }, target));
+                        xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes, renderingSections: sections_to_render }, target)));
                         if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
                             target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                         }
                     }
                     if (mutation.removedNodes.length) {
-                        window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes, renderingSections: sections_to_render }, target))
+                        xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes, renderingSections: sections_to_render }, target)))
                     }
-                    window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes, renderingSections: sections_to_render }, target));
+                    xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes, renderingSections: sections_to_render }, target)));
                 }
 
                 for (let section of sections_to_render) {
                     section.render()
                 }
-                window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store));
+                xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', { store: store/*, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes*/ }, store)));
 
                 if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
                     self.render()
