@@ -611,15 +611,15 @@ xover.init.Observer = function (document = window.document) {
                 }
             }
             for (node of [...mutation.addedNodes].filter(node => node instanceof Element)) {
-                    const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersection"]');
-                    elementsToObserve.forEach(element => {
-                        intersection_observer.observe(element);
-                    });
-                    dependants = [...node.querySelectorAll('[xo-source],[xo-stylesheet]')];
-                    if (!node.context && node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
-                    dependants.forEach(el => el.render());
-                    //} else if (node instanceof Text) {
-                    //    console.log(node)
+                const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersection"]');
+                elementsToObserve.forEach(element => {
+                    intersection_observer.observe(element);
+                });
+                dependants = [...node.querySelectorAll('[xo-source],[xo-stylesheet]')];
+                if (!node.context && node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
+                dependants.forEach(el => el.render());
+                //} else if (node instanceof Text) {
+                //    console.log(node)
             }
         }
     });
@@ -754,7 +754,8 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         node = node instanceof Document && node.documentElement || node;
     }
     if (context) {
-        _event.detail["tag"] = [_event.detail["tag"], typeof (context) === 'string' && context, context.tag, null].coalesce();
+        let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, context.tag, null].coalesce();
+        if (tag != null) _event.detail["tag"] = tag;
     }
     //if (_event.detail["store"]) {
     //    _event.detail["tag"] = _event.detail["tag"] || _event.detail["store"].tag;
@@ -776,6 +777,7 @@ Object.defineProperty(xover.listener, 'matches', {
             let tag = context.tag || ((event || {}).detail || {}).tag || '';
             let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
             for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && predicate.replace(/^#/, '') === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+                if (handler.conditions && ![...handler.conditions].every(([key, condition]) => event.detail[key] == condition)) continue;
                 fns.set(handler.toString(), handler);
             }
         }
@@ -796,7 +798,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             //    console.warn(`Event ${event.type} recursed`)
             //}
             //context.eventHistory.set(handler, event.type);
-            let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || [event]) || arguments); /*Events shouldn't be called with await, but can return a promise*/
+            let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 event.returnValue = returnValue;
                 if (event.detail) {
@@ -874,6 +876,8 @@ Object.defineProperty(xover.listener, 'on', {
         }
         name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
         for (let event_name of name_or_list) {
+            let conditions;
+            [event_name, conditions] = event_name.split(/\?/);
             let [scoped_event, ...predicate] = event_name.split(/::/);
             predicate = predicate.join("::");
             [base_event, scope] = scoped_event.split(/:/).reverse();
@@ -881,6 +885,7 @@ Object.defineProperty(xover.listener, 'on', {
             window.top.addEventListener(base_event, xover.listener.dispatcher);
 
             handler.scope = scope && eval(scope) || undefined;
+            handler.conditions = conditions && new URLSearchParams("?" + conditions) || undefined;
             let event_array = xover.listener.get(base_event) || new Map();
             let handler_map = event_array.get(handler.toString()) || new Map();
             handler_map.set(predicate, handler);
@@ -1466,6 +1471,7 @@ Object.defineProperty(xover.site, 'hash', {
 class SearchParams {
     constructor(queryString) {
         this.params = new URLSearchParams(queryString);
+        this.handlers = new Map();
     }
 
     set(param, value) {
@@ -1474,9 +1480,9 @@ class SearchParams {
         } else {
             this.params.set(param, value != undefined ? value : "");
         }
-        //this.notify(param, value);
         let searchText = this.params.toString();
         history.replaceState(Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
+        window.top.dispatchEvent(new xover.listener.Event(`searchParams`, { param }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
     }
 
@@ -4283,7 +4289,7 @@ xover.xml.combine = function (target, new_node) {
         new_node.append(text);
     }
     for (item of [...static].filter(item => item[0] = "@")) {
-        new_node.setAttribute(item.substring(1), target.getAttribute(item.substring(1)), {silent: true})
+        new_node.setAttribute(item.substring(1), target.getAttribute(item.substring(1)), { silent: true })
     }
     if (target.isEqualNode(new_node)) return target;
 
@@ -5729,7 +5735,7 @@ xover.xml.fromCSV = function (csv, settings = {}) {
     return xml
 }
 
-xover.xml.fromJSON_1 = function (json) {
+xover.json.toXML = function (json) {
     if (typeof (json) == "string") {
         json = json.replace(/\r\n/g, "")
     } else if (json.constructor == {}.constructor || json.constructor == [].constructor) {
@@ -5767,25 +5773,85 @@ xover.xml.fromJSON_1 = function (json) {
     return xson;
 }
 
-xover.xml.fromJSON = function (json, nodeName) {
-    let node = document.createElement(nodeName || json instanceof Array && "__" || "_");
-    if (json instanceof Array) {
-        for (item of json) {
-            node.appendChild(xover.xml.fromJSON(item))
-        }
-    } else if (json && json.constructor && json.constructor === {}.constructor) {
-        for (attr in json) {
-            let child = xover.xml.fromJSON(json[attr], attr);
-            if (child instanceof Text) {
-                node.setAttribute(attr, child)
+xover.xml.fromJSON = function (json, options = {}) {
+    options = options || {};
+    options = { nodeName: undefined, mode: ["attributes", "attr", "elements", "elem"], typed: ["nulls", "elements", "none"], ...options }
+    let nodeName = options.nodeName;
+    let mode = [options.mode].flat().shift().substring(0, 4);
+    let typed = [options.typed].flat().shift().substring(0, 4);
+
+    let target = this instanceof Node && this || window.document.implementation.createDocument('http://panax.io/xson', '', null);
+    let node;
+    try {
+        node = (target.ownerDocument || target).createElementNS(nodeName ? null : "http://panax.io/xson", nodeName || json instanceof Array && "xson:array" || `xson:${typeof (json)}`);
+        if (nodeName) {
+            if (json instanceof Object) {
+                if (!["attr"].includes(mode) || ['full'].includes(typed)/* && json instanceof Object || json instanceof Array*/ || json instanceof Array && !json.length) {
+                    node.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:type", `xson:${json instanceof Array ? "array" : "object"}`)
+                }
             } else {
-                node.appendChild(child)
+                if (mode == 'attr') {
+                    node = node.createAttribute(nodeName);
+                }
             }
         }
-    } else {
-        node = new Text(json)
+    } catch (e) {
+        if (e instanceof DOMException && (e.message || "").indexOf("'createElementNS'") != -1) {
+            node = (target.ownerDocument || target).createElementNS("http://panax.io/xson", "xson:attr");
+            node.setAttribute("name", nodeName, { silent: true })
+        } else {
+            throw (e)
+        }
     }
-    return node;
+    if (node instanceof Element && json instanceof Array) {
+        let frag = xover.xml.createFragment()
+        nodeName = json.every(item => item instanceof Object) && nodeName || null;
+        for (let item of json) {
+            let child = xover.xml.fromJSON.call(node, item, { ...options, nodeName: nodeName });
+            frag.appendChild(child)
+        }
+        if (frag.childElementCount && !(target instanceof Document)) {
+            node = frag
+            if (nodeName && frag.childElementCount == 1 && !frag.firstElementChild.hasAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "type")) {
+                frag.firstElementChild.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:type", "xson:array")
+            }
+        } else {
+            if (node.nodeName != 'xson:array') {
+                node.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:type", "xson:array")
+            }
+            node.appendChild(frag)
+        }
+    } else if (node instanceof Attr) {
+        node.value = json
+    } else if (node.namespaceURI == "http://panax.io/xson" && node.localName == 'attr') {
+        node.appendChild(xover.xml.fromJSON.call(node, json, options))
+    } else if (node instanceof Element && json && json.constructor && json.constructor === {}.constructor) {
+        if (!Object.keys(json).length) {
+            node.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:type", "xson:object")
+        } else {
+            for (let attr in json) {
+                let child = xover.xml.fromJSON.call(node, json[attr], { ...options, nodeName: attr });
+                if (child instanceof Attr) {
+                    node.setAttributeNode(child.cloneNode(true))
+                } else if (mode == 'attr' && child instanceof Text) {
+                    node.setAttribute(attr, child, { silent: true })
+                } else {
+                    node.appendChild(child)
+                }
+            }
+        }
+    } else if (json == null) {
+        if (['elem', 'null'].includes(typed)) {
+            node.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:nil", true)
+        }
+    } else {
+        if (['elem'].includes(typed) || !['none', 'null'].includes(typed) && !['string'].includes(typeof (json))) node.setAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "xsi:type", `xson:${typeof (json)}`)
+        node.appendChild(new Text(json))
+    }
+    if (target instanceof Document) {
+        target.appendChild(node);
+    }
+    return target instanceof Document ? target : node;
 }
 
 xover.xml.toJSON = function (xson) {
@@ -9061,6 +9127,9 @@ xover.modernize = async function (targetWindow) {
                             return this.nil ? null : original_attr_value.get.call(this);
                         },
                         set: function (value) {
+                            if (!this.ownerDocument.contains(this.parentNode)) {
+                                return original_attr_value.set.call(this, value);
+                            }
                             if (this.frozen) return this;
                             if (event && (event.type || "").split(/::/, 1).shift() == 'beforeChange' && this.name == ((event.detail || {}).target || {}).name) {
                                 event.preventDefault();
@@ -9781,11 +9850,13 @@ xover.modernize = async function (targetWindow) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             let param_value = xover.site.searchParams.get(param_name);
-                                            let default_value = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
-                                            if (typeof (default_value) === 'function') {
-                                                param_value = default_value(param_value)
-                                            } else {
-                                                param_value = default_value !== undefined ? default_value : '';
+                                            if (!xover.site.searchParams.has(param_name)) {
+                                                let default_value = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
+                                                if (typeof (default_value) === 'function') {
+                                                    param_value = default_value(param_value)
+                                                } else {
+                                                    param_value = default_value !== undefined ? default_value : '';
+                                                }
                                             }
                                             if (param_value !== undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
