@@ -2252,10 +2252,13 @@ xover.Source = function (tag) {
                     if (!(response instanceof Node) && xover.json.isValid(response)) {
                         response = xover.xml.fromJSON(response);
                     }
-                    if (response != null && !(response instanceof Node)) {
+                    if (response == null) {
+                        response = __document.createComment("ack:empty");
+                    }
+                    if (!(response instanceof Node)) {
                         response = __document.createTextNode(response)
                     }
-                    if (response != null) {
+                    if (response instanceof Document) {
                         this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => response.addStylesheet(stylesheet));
                     }
                     window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: response, tag, settings: this.settings }, self));
