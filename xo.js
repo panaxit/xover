@@ -9748,7 +9748,7 @@ xover.modernize = async function (targetWindow) {
                                 throw (new Error("Document must be a valid xml document."));
                             };
                             if (this.selectSingleNode('xsl:*') && !(xml_document && xml_document.selectSingleNode('xsl:*'))) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
-                                return (xml_document || xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).seed()).transform(this);
+                                return (xml_document || xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed()).transform(this);
                             }
                             let xsl = xml_document;
                             let xml = this.cloneNode(true);
@@ -9878,7 +9878,7 @@ xover.modernize = async function (targetWindow) {
                                     }
 
                                     ////if (!xml.documentElement) {
-                                    ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).documentElement)
+                                    ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                     ////}
                                     let tag = xml.tag || `#${xsl.href || ""}`;
                                     xml.tag = tag;
@@ -9906,7 +9906,7 @@ xover.modernize = async function (targetWindow) {
                                     }
                                     result && [...result.children].map(el => el instanceof HTMLElement && el.select('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                     if (!(result && result.documentElement) && !xml.documentElement) {
-                                        xml.appendChild(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).seed())
+                                        xml.appendChild(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
                                         return Promise.reject(xml.transform("empty.xslt"));
                                     }
                                     if (result) result.tag = tag;
@@ -10248,7 +10248,7 @@ xover.modernize = async function (targetWindow) {
                                 let target = stylesheet_target;
                                 let data = this.cloneNode(true);
                                 if (!data.firstElementChild) {
-                                    data.append(xover.xml.createNode(`<xo:empty xmlns:xo="http://panax.io/xover"/>`).seed())
+                                    data.append(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
                                 }
 
                                 if (!(data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) && (data.documentElement || data) instanceof Element) {
