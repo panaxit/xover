@@ -1,4 +1,4 @@
-name: default
+name: purge-jsdelivr-cache
 
 on: push
 
