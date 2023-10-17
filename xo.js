@@ -5093,7 +5093,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'hash', {
         get: function () {
-            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), store.tag].coalesce();
+            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), config.tag && store.tag || ''].coalesce();
             /*return '#' + Array.prototype.coalesce(_hash, __document.documentElement && Array.prototype.coalesce(__document.documentElement.getAttributeNS("http://panax.io/xover", "hash"), __document.documentElement.getAttributeNS("http://panax.io/xover", "tag"), __document.documentElement.localName.toLowerCase()), _tag).split(/^#/).pop();*/
         },
         set: function (input) {
