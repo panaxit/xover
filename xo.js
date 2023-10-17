@@ -939,6 +939,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
     document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (event.defaultPrevented) return;
+    (location.search || '').length > 1 && xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
     if (xover.session.status == 'authorizing') xover.session.status = null;
     if (history.state) delete history.state.active;
@@ -1474,14 +1475,14 @@ class SearchParams {
         this.handlers = new Map();
     }
 
-    set(param, value) {
+    set(param, value, action = 'push') {
         if (value === null) {
             this.params.delete(param);
         } else {
             this.params.set(param, value != undefined ? value : "");
         }
         let searchText = this.params.toString();
-        history.replaceState(Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
+        history[`${action}State`](Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
         window.top.dispatchEvent(new xover.listener.Event(`searchParams`, { param }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
     }
