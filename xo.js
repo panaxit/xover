@@ -1711,7 +1711,7 @@ Object.defineProperty(xover.site, 'next', {
 
 Object.defineProperty(xover.site, 'seed', {
     get() {
-        return ((history.state || {})['seed'] || !document.querySelector(`${(location.hash || '').replace(/^#/, '') && `[id='${(location.hash || '').replace(/^#/, '')}']` || ''}:not([xo-source],[xo-stylesheet])`) && location.hash || '#')
+        return ((history.state || {})['seed'] || !document.querySelector(`${(location.hash || '').replace(/^#/, '') && `[id='${(location.hash || '').replace(/^#/, '')}']` || ''}:not([xo-source],[xo-stylesheet])`) && location.hash || '')
     }
     , set(input) {
         if (!history.state['seed']) {
