@@ -1161,7 +1161,7 @@ xover.server = new Proxy({}, {
                 return Promise.resolve(return_value);
             } else {
                 window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.settings.body, request, tag: `#server:${key}` }, response));
-                return Promise.reject(response);
+                return Promise.reject(response);/*response.body*/
             }
         })
 
