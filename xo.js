@@ -7365,7 +7365,7 @@ xover.modernize = async function (targetWindow) {
                         this.append(...children.childNodes)
                         return matches;
                     }
-                    context = context || this instanceof Node && this || this.document;
+                    context = context || this instanceof Node && (this.ownerElement || this) || this.document;
                     //if (!xpath.match(/[^\w\d\-\_]/g)) {
                     //    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
                     //}
