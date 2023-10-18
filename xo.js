@@ -1109,6 +1109,21 @@ xover.server = new Proxy({}, {
         }
         let return_value, request, response;
         let handler = (async function (payload, ...args) {
+            let handlers = [];
+            let headers = [];
+            for (let i = args.length - 1; i >= 0; --i) {
+                if (!args[i]) continue;
+                if (typeof (args[i]) == 'function') {
+                    handlers.push(args[i]);
+                    args.splice(i, 1)
+                } else if (args[i] instanceof Headers) {
+                    headers.push(args[i]);
+                    args.splice(i, 1)
+                } else if (args[i].constructor && [Document, File, Blob, FormData, URLSearchParams].includes(args[i].constructor)) {
+                    payload.push(args[i]);
+                    args.splice(i, 1)
+                }
+            }
             if (!(xover.manifest.server && xover.manifest.server[key])) {
                 return Promise.reject(`Endpoint "${key}" not configured in manifest`);
             }
@@ -1138,6 +1153,9 @@ xover.server = new Proxy({}, {
                 return_value.addStylesheet(stylesheet);
             });
             response.response_value = return_value;
+            for (let handler of handlers) {
+                return_value = handler(return_value, request, response) || return_value
+            }
             if (response.ok) {
                 window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.settings.body, request, tag: `#server:${key}` }, response));
                 return Promise.resolve(return_value);
@@ -3913,9 +3931,9 @@ xover.fetch = async function (url, ...args) {
     }
     args.splice(endIndex + 1);
     let tag = (url.pathname || url || '');
+    let payload = [];
     let handlers = [];
     let headers = [];
-    let payload = [];
     for (let i = args.length - 1; i >= 0; --i) {
         if (!args[i]) continue;
         if (typeof (args[i]) == 'function') {
