@@ -800,14 +800,14 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             //context.eventHistory.set(handler, event.type);
             let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
-                event.returnValue = returnValue;
+                //event.returnValue = returnValue; //deprecated
                 if (event.detail) {
                     event.detail.returnValue = returnValue;
                 }
             }
-            if (event.srcEvent) {
-                event.srcEvent.returnValue = event.returnValue;
-            }
+            //if (event.srcEvent) {
+            //    event.srcEvent.returnValue = event.returnValue;
+            //}
             if (event.srcEvent && event.defaultPrevented) {
                 event.srcEvent.preventDefault();
             }
@@ -4310,12 +4310,12 @@ xover.xml.combine = function (target, new_node) {
         new_node = document.createElement(`code`);
         new_node.append(text);
     }
-    for (item of [...static].filter(item => item[0] = "@")) {
+    for (item of [...static].filter(item => item != "@*" && item[0] == "@")) {
         new_node.setAttribute(item.substring(1), target.getAttribute(item.substring(1)), { silent: true })
     }
     if (target.isEqualNode(new_node)) return target;
 
-    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && swap.contains("self") || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
+    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
