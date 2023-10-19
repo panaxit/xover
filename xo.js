@@ -2249,8 +2249,8 @@ xover.Source = function (tag) {
                                 response = await xover.fetch.apply(this, [source, this["settings"], headers]);
                             }
                         } catch (e) {
-                            if (e instanceof Error) return Promise.reject(e);
-                            if (headers.get("accept").indexOf(e.headers.get("content-type")) != -1) {
+                            if (!e || e instanceof Error) return Promise.reject(e);
+                            if (e.headers && headers.get("accept").indexOf(e.headers.get("content-type")) != -1) {
                                 response = e;
                             } else {
                                 throw (e);
@@ -4960,6 +4960,21 @@ xover.Store = function (xml, ...args) {
         writable: false, enumerable: false, configurable: false
     })
 
+    Object.defineProperty(this, 'ready', {
+        enumerable: false,
+        get: async function () {
+            try {
+                let document = this.document;
+                if (!document.childNodes.length) {
+                    await this.fetch()
+                }
+                return document.hasChildNodes;
+            } catch (e) {
+                return Promise.reject(e)
+            }
+        }
+    })
+
     Object.defineProperty(_sources, 'load', {
         value: async function (list) {
             //store.state.loading = true;
@@ -7542,7 +7557,7 @@ xover.modernize = async function (targetWindow) {
                 Object.defineProperty(NodeList.prototype, 'filter', {
                     value: function (...args) {
                         if (typeof (args[0]) === 'string') {
-                            return [...this].filter(el => el.selectSingleNode(args[0]))
+                            return [...this].filter(el => el.matches(args[0]))
                         } else if (typeof (args[0]) === 'function') {
                             return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
                         }
@@ -10512,7 +10527,7 @@ xover.listener.on(['change::*[xo-slot]:not([onchange])'], function () {
     let scope = this.scope;
     if (!scope) return;
     let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radiogroup'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : (srcElement instanceof HTMLSelectElement ? srcElement.options[srcElement.selectedIndex].getAttribute("value") : srcElement.value);
+    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : (srcElement instanceof HTMLSelectElement ? srcElement.options[srcElement.selectedIndex].getAttribute("value") : srcElement.value);
     //if (srcElement.defaultPrevented) {
 
     //}
