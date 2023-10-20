@@ -3740,7 +3740,7 @@ xover.QUERI = function (href) {
     href = (href instanceof Attr ? href.value : href);
 
     let getParts = function (key) {
-        let pathname = url.pathname.replace(/^\//, '');
+        let pathname = url.pathname.replace(/^\/|\/$/g, '');
         [pathname, mode] = pathname.split(/~/);
         [pathname, identity_value] = pathname.split(/:/);
         [pathname, ref_node] = pathname.split(/@/);
