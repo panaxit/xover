@@ -7374,7 +7374,7 @@ xover.modernize = async function (targetWindow) {
 
                 HTMLTextAreaElement.native = {};
                 HTMLTextAreaElement.native.select = HTMLTextAreaElement.prototype.select;
-                Node.prototype.selectNodes = function (xpath, context) {
+                Node.prototype.selectNodes = function (xpath) {
                     if (this instanceof HTMLTextAreaElement && xpath == undefined) {
                         return HTMLTextAreaElement.native.select.apply(this)
                     }
@@ -7398,7 +7398,8 @@ xover.modernize = async function (targetWindow) {
                         this.append(...children.childNodes)
                         return matches;
                     }
-                    context = context || this instanceof Node && (this.ownerElement || this) || this.document;
+                    let context = xpath.match(/^\(*\/+/) && (this.document || this.ownerDocument) || undefined;
+                    context = context || this instanceof Node && this || this.document;
                     //if (!xpath.match(/[^\w\d\-\_]/g)) {
                     //    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
                     //}
