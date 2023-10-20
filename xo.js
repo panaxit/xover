@@ -5302,6 +5302,9 @@ xover.Store = function (xml, ...args) {
                     if (mutation.removedNodes.length) {
                         xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes, renderingSections: sections_to_render }, target)))
                     }
+                    for (let [attribute, old_value] of [...mutation.attributes || []]) {
+                        window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
+                    }
                     xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes, renderingSections: sections_to_render }, target)));
                 }
 
@@ -9217,7 +9220,7 @@ xover.modernize = async function (targetWindow) {
                             window.top.dispatchEvent(new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value }, this));
                             if (old_value !== value) {
                                 if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
-                                    window.top.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }, this));
+                                    //window.top.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }, this));
                                     if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xover.site.get(this.name) || {}).length) {
                                         xover.site.set(this.name, new Object.push(this.parentNode.getAttribute("xo:id"), value))
                                     }
