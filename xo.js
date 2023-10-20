@@ -632,6 +632,9 @@ xover.init.Observer = function (document = window.document) {
 }
 
 xover.initializeElementListeners = function (document = window.document) {
+    const event_handler = function (event, el) {
+        window.top.dispatchEvent(new xover.listener.Event(event.type, { event: event }, el));
+    };
     const observer = new MutationObserver((mutationsList, observer) => {
         if (event && event.type == 'input') return;
         for (const mutation of mutationsList) {
@@ -651,11 +654,14 @@ xover.initializeElementListeners = function (document = window.document) {
         }
     }));
 
-    document.querySelectorAll('input,textarea').forEach(el => el.addEventListener('focus', function () {
-        if (event && (event.srcEvent || event).type == 'focus') {
-            window.top.dispatchEvent(new xover.listener.Event('focus', { event: event }));
+    document.querySelectorAll('input,textarea').forEach(el => {
+        for (let event_name of ['focus', 'blur']) {
+            if (xo.listener.get(event_name)) {
+                el.removeEventListener(event_name, event_handler)
+                el.addEventListener(event_name, (event) => event_handler(event_name, el))
+            }
         }
-    }));
+    });
 
     document.querySelectorAll('textarea').forEach(el => el.addEventListener('mouseup', function () {
         //let el = event.srcElement;
@@ -4169,7 +4175,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
 
             for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
-                el.set("xo-slot", "{name(current()[not(self::*)])}")
+                el.set("xo-slot", (el.getAttribute("type") == "search" ? "search:{local-" : "{") + "name(current()[not(self::*)])}")
             }
 
             for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
@@ -4346,7 +4352,7 @@ xover.xml.combine = function (target, new_node) {
 xover.dom.combine = async function (target, documentElement) {
     let scripts;
     let script_wrapper = window.document.firstElementChild.cloneNode();
-    script_wrapper.append(...documentElement.selectNodes('//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
+    script_wrapper.append(...documentElement.selectNodes('.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
 
     //documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
     //if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-source])`)) {
@@ -4397,8 +4403,9 @@ xover.dom.combine = async function (target, documentElement) {
             if (script.hasAttribute("async")) await xover.delay(1);
             if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
                 if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
-                    var new_element = targetDocument.createElement(script.tagName);
-                    [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
+                    let new_element = script.cloneNode();
+                    //targetDocument.createElement(script.tagName);
+                    //[...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
                     let on_load = script.textContent;
 
                     if (new_element instanceof HTMLScriptElement) {
@@ -4968,7 +4975,7 @@ xover.Store = function (xml, ...args) {
                 if (!document.childNodes.length) {
                     await this.fetch()
                 }
-                return document.hasChildNodes;
+                return document.hasChildNodes();
             } catch (e) {
                 return Promise.reject(e)
             }
@@ -7401,7 +7408,7 @@ xover.modernize = async function (targetWindow) {
                         this.append(...children.childNodes)
                         return matches;
                     }
-                    let context = xpath.match(/^\(*\/+/) && (this.document || this.ownerDocument) || undefined;
+                    let context = xpath.match(/^\(*\/+/) && (this.document || this instanceof Document && this || this.ownerElement || this.ownerDocument.contains(this) && this.ownerDocument) || this;
                     context = context || this instanceof Node && this || this.document;
                     //if (!xpath.match(/[^\w\d\-\_]/g)) {
                     //    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
