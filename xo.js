@@ -709,7 +709,9 @@ xover.json = {};
 xover.listener = new Map();
 xover.listener.Event = function (event_name, params = {}, context = (event || {}).srcElement) {
     if (!(this instanceof xover.listener.Event)) return new xover.listener.Event(event_name, params, context);
-    let _event = new CustomEvent(event_name, { detail: params, cancelable: true });
+    //let _event = new CustomEvent(event_name, { detail: params, cancelable: true });
+    let args = context instanceof ErrorEvent && { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno } || context instanceof Event && {} || { detail: params, cancelable: true };
+    let _event = eval(`new ${(context instanceof ErrorEvent) && context.constructor.name || 'CustomEvent'}(${context instanceof Event && `'${context.constructor.name}'` || 'event_name'}, {cancelable: true, bubbles: true, ...args})`);
     let _srcEvent = event;
     Object.defineProperty(_event, 'srcEvent', {
         get: function () {
@@ -721,53 +723,50 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             return context;
         }
     })
-    if (context instanceof Node) {
-        _event.detail["node"] = _event.detail["node"] || context;
-        _event.detail["target"] = _event.detail["target"] || context;
-        node = context
+    if (_event.detail) {
+        if (context instanceof Node) {
+            _event.detail["node"] = _event.detail["node"] || context;
+            _event.detail["target"] = _event.detail["target"] || context;
+            node = context
+        }
+        if (context instanceof Attr) {
+            _event.detail["element"] = _event.detail["element"] || context.parentNode;
+            _event.detail["attribute"] = _event.detail["attribute"] || context;
+            _event.detail["value"] = _event.detail.hasOwnProperty("value") ? _event.detail["value"] : context.value;
+            _event.detail["store"] = _event.detail["store"] || context.ownerDocument.store;
+            node = context
+        } else if (context instanceof Element) {
+            _event.detail["element"] = _event.detail["element"] || context;
+            _event.detail["value"] = _event.detail.hasOwnProperty("value") ? _event.detail["value"] : context.textContent;
+            _event.detail["store"] = _event.detail["store"] || context.ownerDocument.store;
+            node = context
+        } else if (context instanceof Document) {
+            _event.detail["document"] = _event.detail["document"] || context;
+            _event.detail["store"] = _event.detail["store"] || context.store;
+            _event.detail["target"] = _event.detail["target"] || context.documentElement;
+        } else if (context instanceof xover.Store) {
+            //_event.detail["tag"] = _event.detail["tag"] || context.tag;
+            _event.detail["store"] = _event.detail["store"] || context;
+            _event.detail["target"] = _event.detail["target"] || context.documentElement;
+        } else if (context instanceof xover.Source) {
+            //_event.detail["tag"] = _event.detail["tag"] || context.tag;
+            _event.detail["source"] = _event.detail["source"] || context;
+            _event.detail["target"] = _event.detail["target"] || context.documentElement;
+        } else if (context instanceof Response) {
+            _event.detail["response"] = _event.detail["response"] || context;
+            _event.detail["request"] = _event.detail["request"] || context.request;
+            _event.detail["target"] = _event.detail["target"] || context.documentElement;
+            _event.detail["document"] = _event.detail["document"] || context.document;
+            _event.detail["body"] = _event.detail["body"] || context.body;
+            //_event.detail["tag"] = _event.detail["tag"] || context.tag;
+            node = _event.detail["return_value"] || context.document;
+            node = node instanceof Document && node.documentElement || node;
+        }
+        if (context) {
+            let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, context.tag, null].coalesce();
+            if (tag != null) _event.detail["tag"] = tag;
+        }
     }
-    if (context instanceof Attr) {
-        _event.detail["element"] = _event.detail["element"] || context.parentNode;
-        _event.detail["attribute"] = _event.detail["attribute"] || context;
-        _event.detail["value"] = _event.detail.hasOwnProperty("value") ? _event.detail["value"] : context.value;
-        _event.detail["store"] = _event.detail["store"] || context.ownerDocument.store;
-        node = context
-    } else if (context instanceof Element) {
-        _event.detail["element"] = _event.detail["element"] || context;
-        _event.detail["value"] = _event.detail.hasOwnProperty("value") ? _event.detail["value"] : context.textContent;
-        _event.detail["store"] = _event.detail["store"] || context.ownerDocument.store;
-        node = context
-    } else if (context instanceof Document) {
-        _event.detail["document"] = _event.detail["document"] || context;
-        _event.detail["store"] = _event.detail["store"] || context.store;
-        _event.detail["target"] = _event.detail["target"] || context.documentElement;
-    } else if (context instanceof xover.Store) {
-        //_event.detail["tag"] = _event.detail["tag"] || context.tag;
-        _event.detail["store"] = _event.detail["store"] || context;
-        _event.detail["target"] = _event.detail["target"] || context.documentElement;
-    } else if (context instanceof xover.Source) {
-        //_event.detail["tag"] = _event.detail["tag"] || context.tag;
-        _event.detail["source"] = _event.detail["source"] || context;
-        _event.detail["target"] = _event.detail["target"] || context.documentElement;
-    } else if (context instanceof Response) {
-        _event.detail["response"] = _event.detail["response"] || context;
-        _event.detail["request"] = _event.detail["request"] || context.request;
-        _event.detail["target"] = _event.detail["target"] || context.documentElement;
-        _event.detail["document"] = _event.detail["document"] || context.document;
-        _event.detail["body"] = _event.detail["body"] || context.body;
-        //_event.detail["tag"] = _event.detail["tag"] || context.tag;
-        node = _event.detail["return_value"] || context.document;
-        node = node instanceof Document && node.documentElement || node;
-    }
-    if (context) {
-        let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, context.tag, null].coalesce();
-        if (tag != null) _event.detail["tag"] = tag;
-    }
-    //if (_event.detail["store"]) {
-    //    _event.detail["tag"] = _event.detail["tag"] || _event.detail["store"].tag;
-    //}
-    ////Object.setPrototypeOf(_event, CustomEvent.prototype);
-    ////Object.setPrototypeOf(_event, xover.listener.Event.prototype);
     return _event;
 }
 xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
@@ -4587,9 +4586,11 @@ xover.xml.fromHTML = function (element) {
 }
 
 xover.data.createMessage = function (message_content, message_type) {
-    var message = xover.xml.createDocument('<xo:message xmlns:xo="http://panax.io/xover" type="' + (message_type || "exception") + '"/>').seed();
+    let message = xover.xml.createDocument('<xo:message xmlns:xo="http://panax.io/xover" type="' + (message_type || "exception") + '"/>').seed();
     if (message_content instanceof HTMLElement) {
         message.documentElement.set(message_content)
+    } else if ({}.constructor === message_content.constructor) {
+        message = xover.xml.fromJSON(message_content, { mode: 'elements' });
     } else {
         message.documentElement.set(message_content.toString());
     }
@@ -4750,6 +4751,7 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
 <xsl:stylesheet version="1.0" 
   xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
   xmlns:xo="http://panax.io/xover"
+  xmlns:xson="http://panax.io/xson"
   xmlns:html="http://www.w3.org/1999/xhtml"
   xmlns="http://www.w3.org/1999/xhtml"
   exclude-result-prefixes="xsl xo"
@@ -4758,11 +4760,12 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
      omit-xml-declaration="yes"
      indent="yes" standalone="no"/>
 
-  <xsl:template match="xo:message">
-    <dialog open="open" style="width: 450px; height: 200px; margin: 0 auto; top: 25vh; padding: 1rem; overflow: auto; position: fixed;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
+  <xsl:template match="/*">
+    <dialog open="open" style="width: fit-content; max-width: 600px; margin: 0 auto; top: 25vh; padding: 1rem; overflow: auto; position: fixed;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
   </xsl:template>
 
   <xsl:template match="html:*"><xsl:copy-of select="."/></xsl:template>
+  <xsl:template match="xson:object/*"><li><strong><xsl:value-of select="name()"/>: </strong> <xsl:apply-templates select="text()"/></li></xsl:template>
 </xsl:stylesheet>`);
 
 xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:xo="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" xo:id="shell" xo:hash=""></shell:shell>');
@@ -5762,9 +5765,7 @@ xover.xml.getAttributeParts = function (attribute = "") {
         prefix = attribute.prefix;
         name = attribute.localName;
     } else {
-        let attribute_name = attribute.split(':', 2);
-        name = attribute_name.pop();
-        prefix = attribute_name.pop();
+        [name, prefix] = attribute.split(':', 2).reverse();
     }
     return { "prefix": prefix, "name": name }
 }
@@ -7408,7 +7409,12 @@ xover.modernize = async function (targetWindow) {
                         this.append(...children.childNodes)
                         return matches;
                     }
-                    let context = xpath.match(/^\(*\/+/) && (this.document || this instanceof Document && this || this.ownerElement || this.ownerDocument.contains(this) && this.ownerDocument) || this;
+                    let remove = false;
+                    if (this instanceof Attr && !this.ownerElement && this.parentNode instanceof Element) {
+                        this.parentNode.setAttributeNode(this);
+                        remove = true;
+                    }
+                    let context = xpath.match(/^\(*\/+/) && (this.document || this instanceof Document && this || this instanceof Attr && this.parentNode || this.ownerDocument.contains(this) && this.ownerDocument) || /*xpath.match(/^\(*(ancestor|parent|\.\.)/) && this instanceof Attr && !this.ownerElement && this.parentNode || */this;
                     context = context || this instanceof Node && this || this.document;
                     //if (!xpath.match(/[^\w\d\-\_]/g)) {
                     //    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
@@ -7445,6 +7451,11 @@ xover.modernize = async function (targetWindow) {
                         } else {
                             //if (xover.session.debug) console.warn(e);
                             aItems = {};
+                        }
+                    } finally {
+                        if (remove && this instanceof Attr) {
+                            //this.parentNode.removeAttributeNS(this.namespaceURI, this.localName)
+                            this.parentNode.removeAttribute(this.name)
                         }
                     }
                     for (let i = 0; i < aItems.snapshotLength; i++) {
@@ -8965,16 +8976,13 @@ xover.modernize = async function (targetWindow) {
 
                 var original_getAttributeNode = Element.prototype.getAttributeNode;
                 var original_getAttributeNodeNS = Element.prototype.getAttributeNodeNS;
-                Element.prototype.getAttributeNode = function (attribute, namespace) { //TODO: Implement namespace parameter
-                    //if (typeof (attribute) == 'string') {
-                    //    attribute = attribute.replace(/^@/, "");
-                    //}
+                Element.prototype.getAttributeNode = function (attribute) {
                     attribute = (attribute instanceof Attr ? attribute.value : attribute);
 
                     if (this.hasAttribute(attribute)) {
                         return original_getAttributeNode.call(this, attribute)
                     }
-                    //if ((this.namespaceURI || '').indexOf("http://www.w3.org") !== 0) {
+                    let namespace;
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
                     namespace = prefix && (this.resolveNS(prefix) || xover.spaces[prefix]);
                     if (!namespace) {
@@ -8982,8 +8990,11 @@ xover.modernize = async function (targetWindow) {
                     } else {
                         return original_getAttributeNodeNS.call(this, namespace, attribute_name);
                     }
+                }
 
-                    //}
+                Element.prototype.getAttributeNodeOrMock = function (...args) {
+                    let attribute_node = this.getAttributeNode.apply(this, args)|| this.createAttribute.apply(this, args);
+                    return attribute_node;
                 }
                 Element.prototype.get = Element.prototype.getAttributeNode;
                 Element.prototype.getNode = function () { alert("getNode method is deprecated") } //TODO: Deprecate this method
@@ -10621,11 +10632,22 @@ xover.listener.on('Response:reject', function ({ response, request }) {
     }
 })
 
+xover.listener.on('ErrorEvent', function () {
+    let args = { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno }
+    console.error(event.message, args)
+    event.preventDefault();
+})
+
 xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
     }
     event.preventDefault && event.preventDefault();
+    if (event.type == 'error') {
+        let error_event = new xover.listener.Event(event.constructor.name, {}, event);
+        window.top.dispatchEvent(error_event);
+        if (error_event.defaultPrevented || error_event.cancelBubble) return;
+    }
     await xover.ready;
     try {
         let reason = event.message || event.reason;
