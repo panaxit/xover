@@ -64,8 +64,8 @@ xover.cryptography.encodeMD5 = function (str) {
         let i;
         nblk = ((str.length + 8) >> 6) + 1;
         blks = new Array(nblk * 16);
-        for (i = 0; i < nblk * 16; i++) blks[i] = 0;
-        for (i = 0; i < str.length; i++)
+        for (let i = 0; i < nblk * 16; i++) blks[i] = 0;
+        for (let i = 0; i < str.length; i++)
             blks[i >> 2] |= str.charCodeAt(i) << ((i % 4) * 8);
         blks[i >> 2] |= 0x80 << ((i % 4) * 8);
         blks[nblk * 16 - 2] = str.length * 8;
@@ -588,7 +588,7 @@ xover.init.Observer = function (document = window.document) {
             if (mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName) || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")) {
                 target.render()
             }
-            for (node of [...mutation.addedNodes].concat(target)) {
+            for (let node of [...mutation.addedNodes].concat(target)) {
                 if (node.closest("[xo-id]")) {
                     let observer_node = node.selectFirst(`ancestor-or-self::*[@xo-id][last()]`);
                     let observer_config = { characterData: true, attributes: true, childList: true, subtree: true }
@@ -610,7 +610,7 @@ xover.init.Observer = function (document = window.document) {
                     observer_node.observer.observe(observer_node, observer_config);
                 }
             }
-            for (node of [...mutation.addedNodes].filter(node => node instanceof Element)) {
+            for (let node of [...mutation.addedNodes].filter(node => node instanceof Element)) {
                 const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersection"]');
                 elementsToObserve.forEach(element => {
                     intersection_observer.observe(element);
@@ -710,6 +710,7 @@ xover.listener = new Map();
 xover.listener.Event = function (event_name, params = {}, context = (event || {}).srcElement) {
     if (!(this instanceof xover.listener.Event)) return new xover.listener.Event(event_name, params, context);
     //let _event = new CustomEvent(event_name, { detail: params, cancelable: true });
+    let node;
     let args = context instanceof ErrorEvent && { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno } || context instanceof Event && {} || { detail: params, cancelable: true };
     let _event = eval(`new ${(context instanceof ErrorEvent) && context.constructor.name || 'CustomEvent'}(${context instanceof Event && `'${context.constructor.name}'` || 'event_name'}, {cancelable: true, bubbles: true, ...args})`);
     let _srcEvent = event;
@@ -1613,7 +1614,7 @@ Object.defineProperty(xover.site, 'set', {
         } else if (typeof (input) === 'string') {
             prop = input
         } else if (input instanceof Array) {
-            for (el of input) {
+            for (let el of input) {
                 this.set(el.name, new Object().push(el.parentNode.getAttribute("xo:id"), el.value))
             }
             return
@@ -2934,7 +2935,7 @@ document.addEventListener("DOMContentLoaded", function (event) {
 });
 
 //xover.listener.on("render", function ({ dom }) {
-//    for (element of xover.site.getScrollableElements(dom)) {
+//    for (let element of xover.site.getScrollableElements(dom)) {
 //        element.addEventListener('scroll', xover.dom.onscroll);
 //    }
 //});
@@ -4315,7 +4316,7 @@ xover.xml.combine = function (target, new_node) {
         new_node = document.createElement(`code`);
         new_node.append(text);
     }
-    for (item of [...static].filter(item => item != "@*" && item[0] == "@")) {
+    for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
         new_node.setAttribute(item.substring(1), target.getAttribute(item.substring(1)), { silent: true })
     }
     if (target.isEqualNode(new_node)) return target;
@@ -6052,7 +6053,7 @@ xover.json.combine = function (...args) { /*experimental*/
                 } else if (response[prop] && object[prop] && typeof (object[prop].concat) != 'undefined') {
                     response[prop] = response[prop].concat(object[prop]);
                 } else if (response[prop] && response[prop].entries instanceof Function && object[prop].entries instanceof Function) {
-                    for ([key, value] of object[prop].entries()) {
+                    for (let [key, value] of object[prop].entries()) {
                         if (typeof (response[prop].append) == 'function') {
                             response[prop].append(key, value)
                         } else if (typeof (response[prop].set) == 'function') {
