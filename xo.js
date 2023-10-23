@@ -800,12 +800,16 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let fns = xover.listener.matches(context, event.type);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         //context.eventHistory = context.eventHistory || new Map();
+        let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
             //if (context.eventHistory.get(handler)) {
             //    console.warn(`Event ${event.type} recursed`)
             //}
             //context.eventHistory.set(handler, event.type);
-            let returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
+            if (returnValue !== undefined && !(returnValue instanceof Promise) && event.detail && event.detail.value) {
+                event.detail.value = returnValue;
+            }
+            returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 //event.returnValue = returnValue; //deprecated
                 if (event.detail) {
@@ -5317,7 +5321,7 @@ xover.Store = function (xml, ...args) {
                         xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes, renderingSections: sections_to_render }, target)))
                     }
                     for (let [attribute, old_value] of [...mutation.attributes || []]) {
-                            window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
+                        window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
                     }
                     xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes, renderingSections: sections_to_render }, target)));
                 }
@@ -7415,7 +7419,7 @@ xover.modernize = async function (targetWindow) {
                     }
                     let remove = false;
                     if (this instanceof Attr && !this.ownerElement && this.parentNode instanceof Element) {
-                        this.parentNode.setAttributeNode(this);
+                        this.parentNode.setAttributeNode(this, { silent: true });
                         remove = true;
                     }
                     let context = xpath.match(/^\(*\/+/) && (this.document || this instanceof Document && this || this instanceof Attr && this.parentNode || this.ownerDocument.contains(this) && this.ownerDocument) || /*xpath.match(/^\(*(ancestor|parent|\.\.)/) && this instanceof Attr && !this.ownerElement && this.parentNode || */this;
