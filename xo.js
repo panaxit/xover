@@ -943,7 +943,7 @@ xover.listener.on('keyup', async function (event) {
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
-    document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
+    event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (event.defaultPrevented) return;
     (location.search || '').length > 1 && xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
     const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
@@ -4335,7 +4335,9 @@ xover.xml.combine = function (target, new_node) {
                 target.setAttribute(attr.nodeName, attr.value, { silent: true });
             }
         }
+        //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
         target.replaceChildren(...new_node.childNodes)
+        //active_element && xo.delay(100).then(() => active_element.focus());
         return target
     } else {
         if (target.matches("[xo-source],[xo-stylesheet]")) {
@@ -8993,7 +8995,7 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Element.prototype.getAttributeNodeOrMock = function (...args) {
-                    let attribute_node = this.getAttributeNode.apply(this, args)|| this.createAttribute.apply(this, args);
+                    let attribute_node = this.getAttributeNode.apply(this, args) || this.createAttribute.call(this, args[0], null, args[2], args[3]);
                     return attribute_node;
                 }
                 Element.prototype.get = Element.prototype.getAttributeNode;
@@ -10634,6 +10636,7 @@ xover.listener.on('Response:reject', function ({ response, request }) {
 
 xover.listener.on('ErrorEvent', function () {
     let args = { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno }
+    xover.dom.alert(args);
     console.error(event.message, args)
     event.preventDefault();
 })
