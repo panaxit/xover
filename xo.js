@@ -582,6 +582,7 @@ xover.init.Observer = function (document = window.document) {
     });
     const observer = new MutationObserver((mutationsList, observer) => {
         for (const mutation of mutationsList) {
+            if (mutation.type == 'childList' && [...mutation.addedNodes].every((node, ix) => node.isEqualNode(mutation.removedNodes[ix]))) continue;
             if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
             let target = mutation.target;
 
@@ -5253,7 +5254,8 @@ xover.Store = function (xml, ...args) {
                 });
             }
 
-            const callback = (mutationList) => {
+            const callback = async (mutationList) => {
+                if (event) await xover.delay(1);
                 mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
                 //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                 if (!mutationList.length) return;
@@ -5315,7 +5317,7 @@ xover.Store = function (xml, ...args) {
                         xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes, renderingSections: sections_to_render }, target)))
                     }
                     for (let [attribute, old_value] of [...mutation.attributes || []]) {
-                        window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
+                            window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
                     }
                     xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', { store: store, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes, renderingSections: sections_to_render }, target)));
                 }
@@ -7457,7 +7459,7 @@ xover.modernize = async function (targetWindow) {
                     } finally {
                         if (remove && this instanceof Attr) {
                             //this.parentNode.removeAttributeNS(this.namespaceURI, this.localName)
-                            this.parentNode.removeAttribute(this.name)
+                            this.parentNode.removeAttribute(this.name, { silent: true })
                         }
                     }
                     for (let i = 0; i < aItems.snapshotLength; i++) {
@@ -9309,8 +9311,13 @@ xover.modernize = async function (targetWindow) {
                 Object.defineProperty(HTMLTextAreaElement.prototype, 'value', value_handler);
                 Object.defineProperty(HTMLSelectElement.prototype, 'value', value_handler);
 
-                Attr.prototype.set = function (value) {
+                Attr.prototype.set = function (value, options = {}) {
+                    let disconnected = this.disconnected;
+                    if (options.silent) {
+                        this.disconnect()
+                    }
                     this.value = value;
+                    if (!disconnected) this.connect()
                     return this;
                 }
 
