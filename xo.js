@@ -5257,103 +5257,107 @@ xover.Store = function (xml, ...args) {
             } else {
                 __document = input;
             }
-            let store = self;
-            const distinctMutations = function (mutations) {
-                return mutations.filter((mutation, index, self) => {
-                    const matchingMutation = self.find((otherMutation) => {
-                        return (
-                            otherMutation.type === mutation.type &&
-                            otherMutation.target === mutation.target &&
-                            otherMutation.attributeName === mutation.attributeName &&
-                            otherMutation.attributeNamespace === mutation.attributeNamespace
-                        );
-                    });
-                    return matchingMutation === mutation;
-                });
-            }
-
-            const callback = async (mutationList) => {
-                if (event) await xover.delay(1);
-                mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
-                //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
-                if (!mutationList.length) return;
-                if (event && event.type == 'input') {
-                    event.srcElement.preventChangeEvent = true;
-                }
-                if (event && event.type == 'change' && event.srcElement.preventChangeEvent) {
-                    event.srcElement.preventChangeEvent = undefined;
-                }
-                let sections_to_render = xover.site.sections.filter(section => section.store === self && !(section.matches(".xo-static")));
-
-                mutated_targets = new Map();
-                for (let mutation of mutationList) {
-                    let inserted_ids = [];
-                    let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
-                    let value = mutated_targets.get(target) || {};
-                    if (mutation.target instanceof Text) {
-                        value.texts = value.texts || new Map();
-                        if (!value.texts.has(mutation.target)) {
-                            value.texts.set(mutation.target, `${mutation.target}`)
-                        }
-                    } else if (mutation.type == "attributes") {
-                        value.attributes = value.attributes || new Map();
-                        let attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                        if (!attr) {
-                            attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                        }
-                        if (attr.value !== mutation.oldValue) {
-                            value.attributes.set(attr, mutation.oldValue)
-                        }
-                    }
-                    value.removedNodes = value.removedNodes || [];
-                    value.removedNodes.push(...mutation.removedNodes);
-                    value.addedNodes = value.addedNodes || [];
-                    value.addedNodes.push(...mutation.addedNodes);
-                    mutated_targets.set(target, value);
-                    [...mutation.addedNodes].forEach((addedNode) => {
-                        inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
-                    })
-                }
-                for (let section of sections_to_render) {
-                    section.render()
-                }
-
-                if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
-                    self.render()
-                }
-            };
-
-            const config = { characterData: true, attributes: true, childList: true, subtree: true, attributeOldValue: true, characterDataOldValue: true };
-            const mutation_observer = new MutationObserver(callback);
-            mutation_observer.observe(__document, config);
             __document.observe();
-            const _observer = {}
-            Object.defineProperty(self, 'observer', {
-                get: function () {
-                    return _observer;
-                }
-            })
-            if (!self.observer.hasOwnProperty('disconnect')) {
-                Object.defineProperty(self.observer, 'disconnect', {
-                    value: function (ms) {
-                        let mutations = mutation_observer.takeRecords()
-                        mutation_observer.disconnect();
-                        xover.delay(ms || 2).then(async () => {
-                            mutation_observer.observe(__document, config);
-                            mutations.length && callback(mutations);
-                        });
-                    },
-                    writable: false, enumerable: false, configurable: false
-                });
-            }
-            if (!self.observer.hasOwnProperty('connect')) {
-                Object.defineProperty(self.observer, 'connect', {
-                    value: function () {
-                        mutation_observer.observe(__document, config);
-                    },
-                    writable: false, enumerable: false, configurable: false
-                });
-            }
+            //let store = self;
+            //const distinctMutations = function (mutations) {
+            //    return mutations.filter((mutation, index, self) => {
+            //        const matchingMutation = self.find((otherMutation) => {
+            //            return (
+            //                otherMutation.type === mutation.type &&
+            //                otherMutation.target === mutation.target &&
+            //                otherMutation.attributeName === mutation.attributeName &&
+            //                otherMutation.attributeNamespace === mutation.attributeNamespace
+            //            );
+            //        });
+            //        return matchingMutation === mutation;
+            //    });
+            //}
+
+            //const callback = async (mutationList) => {
+            //    let observer = __document.observer;
+            //    if (observer && observer.disconnected) return;
+            //    if (event) await xover.delay(1);
+            //    mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
+            //    //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
+            //    if (!mutationList.length) return;
+            //    if (event && event.type == 'input') {
+            //        event.srcElement.preventChangeEvent = true;
+            //    }
+            //    if (event && event.type == 'change' && event.srcElement.preventChangeEvent) {
+            //        event.srcElement.preventChangeEvent = undefined;
+            //    }
+            //    let sections_to_render = xover.site.sections.filter(section => section.store === self && !(section.matches(".xo-static")));
+
+            //    mutated_targets = new Map();
+            //    //for (let mutation of mutationList) {
+            //    //    let inserted_ids = [];
+            //    //    let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
+            //    //    let value = mutated_targets.get(target) || {};
+            //    //    if (mutation.target instanceof Text) {
+            //    //        value.texts = value.texts || new Map();
+            //    //        if (!value.texts.has(mutation.target)) {
+            //    //            value.texts.set(mutation.target, `${mutation.target}`)
+            //    //        }
+            //    //    } else if (mutation.type == "attributes") {
+            //    //        value.attributes = value.attributes || new Map();
+            //    //        let attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+            //    //        if (!attr) {
+            //    //            attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
+            //    //        }
+            //    //        if (attr.value !== mutation.oldValue) {
+            //    //            value.attributes.set(attr, mutation.oldValue)
+            //    //        }
+            //    //    }
+            //    //    value.removedNodes = value.removedNodes || [];
+            //    //    value.removedNodes.push(...mutation.removedNodes);
+            //    //    value.addedNodes = value.addedNodes || [];
+            //    //    value.addedNodes.push(...mutation.addedNodes);
+            //    //    mutated_targets.set(target, value);
+            //    //    [...mutation.addedNodes].forEach((addedNode) => {
+            //    //        inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
+            //    //    })
+            //    //}
+            //    for (let section of sections_to_render) {
+            //        section.render()
+            //    }
+
+            //    if (mutationList.filter(mutation => mutation.target instanceof Document && mutation.type === 'childList' && [...mutation.removedNodes, ...mutation.addedNodes].find(el => el instanceof ProcessingInstruction)).length) {
+            //        self.render()
+            //    }
+            //};
+
+            //const config = { characterData: true, attributes: true, childList: true, subtree: true, attributeOldValue: true, characterDataOldValue: true };
+            //const mutation_observer = new MutationObserver(callback);
+            //mutation_observer.observe(__document, config);
+            //const _observer = {}
+            //Object.defineProperty(self, 'observer', {
+            //    get: function () {
+            //        return _observer;
+            //    }
+            //})
+            //if (!self.observer.hasOwnProperty('disconnect')) {
+            //    Object.defineProperty(self.observer, 'disconnect', {
+            //        value: function (ms = 2) {
+            //            let mutations = mutation_observer.takeRecords()
+            //            mutation_observer.disconnect();
+            //            if (ms || mutations.length) {
+            //                xover.delay(ms || 2).then(async () => {
+            //                    ms && mutation_observer.observe(__document, config);
+            //                    mutations.length && callback(mutations);
+            //                });
+            //            }
+            //        },
+            //        writable: false, enumerable: false, configurable: false
+            //    });
+            //}
+            //if (!self.observer.hasOwnProperty('connect')) {
+            //    Object.defineProperty(self.observer, 'connect', {
+            //        value: function () {
+            //            mutation_observer.observe(__document, config);
+            //        },
+            //        writable: false, enumerable: false, configurable: false
+            //    });
+            //}
         }
     })
 
@@ -7559,6 +7563,9 @@ xover.modernize = async function (targetWindow) {
                                 xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', { target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, target)));
                             }
                             xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', {}, self)));
+                            for (let store of Object.values(xover.stores).filter(store => store.document === self)) {
+                                store.render()
+                            }
                         };
 
                         const config = { characterData: true, attributes: true, childList: true, subtree: true, attributeOldValue: true, characterDataOldValue: true };
@@ -7573,13 +7580,16 @@ xover.modernize = async function (targetWindow) {
                         })
                         if (!self.observer.hasOwnProperty('disconnect')) {
                             Object.defineProperty(self.observer, 'disconnect', {
-                                value: function (ms) {
+                                value: function (ms = 2) {
+                                    _observer.disconnected = true;
                                     let mutations = mutation_observer.takeRecords()
                                     mutation_observer.disconnect();
-                                    xover.delay(ms || 2).then(async () => {
-                                        mutation_observer.observe(self, config);
-                                        mutations.length && callback(mutations);
-                                    });
+                                    if (ms || mutations.length) {
+                                        xover.delay(ms || 2).then(async () => {
+                                            ms && mutation_observer.observe(self, config);
+                                            mutations.length && callback(mutations);
+                                        });
+                                    }
                                 },
                                 writable: false, enumerable: false, configurable: false
                             });
@@ -7587,6 +7597,7 @@ xover.modernize = async function (targetWindow) {
                         if (!self.observer.hasOwnProperty('connect')) {
                             Object.defineProperty(self.observer, 'connect', {
                                 value: function () {
+                                    delete _observer.disconnected;
                                     mutation_observer.observe(self, config);
                                 },
                                 writable: false, enumerable: false, configurable: false
@@ -8929,6 +8940,8 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Node.prototype, 'disconnect', {
                         value: function (reconnect = 1) {
                             this.disconnected = true;
+                            let observer = (this.ownerDocument || this).observer;
+                            observer && observer.disconnect(reconnect);
                             if (reconnect) {
                                 xover.delay(reconnect).then(async () => {
                                     this.connect();
