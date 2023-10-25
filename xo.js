@@ -1116,7 +1116,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                         tag_url.protocol == key_url.protocol
                     ) && (
                         !key_url.pathname[1]
-                        || key[0] === '^' && tag && tag.match(RegExp(key, "i"))
+                        || key[0] === '^' && tag_url.pathname.slice(1).match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
                         || tag_url.pathname == key_url.pathname
                         || key_url.pathname[1] == '~' && (
                             key_url.pathname.slice(-1) == '~' ? tag_url.pathname.indexOf(key_url.pathname.slice(2)) != -1
@@ -3515,7 +3515,8 @@ xover.xml.createNamespaceDeclaration = function () {
 xover.Response = function (response, request) {
     if (!(this instanceof xover.Response)) return new xover.Response(response);
     let _original = response.clone();
-    let file_name = new URL(request.url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
+    let url = request.url;
+    let file_name = new URL(url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
     if (response.status == 404) {
         if (file_name in xover.sources.defaults) {
             response = new Response(xover.sources.defaults[file_name], { headers: { "Content-type": "text/xsl" } })
@@ -3628,7 +3629,9 @@ xover.Response = function (response, request) {
                         if (html_doc.body.childNodes.length == 1) {
                             body = html_doc.body.firstChild;
                         } else {
-                            body = new DocumentFragment().append(...html_doc.body.childNodes) || new Text("");
+                            body = new DocumentFragment();
+                            body.append(...html_doc.body.childNodes);
+                            body = body.hasChildNodes() && body || new Text("")
                         }
                     } else {
                         body = html_doc
@@ -10389,6 +10392,14 @@ xover.modernize = async function (targetWindow) {
 
                 if (!HTMLDocument.prototype.hasOwnProperty('render')) {
                     Object.defineProperty(HTMLDocument.prototype, 'render', {
+                        value: function () {
+                            xover.dom.createDialog(this)
+                        }
+                    });
+                }
+
+                if (!DocumentFragment.prototype.hasOwnProperty('render')) {
+                    Object.defineProperty(DocumentFragment.prototype, 'render', {
                         value: function () {
                             xover.dom.createDialog(this)
                         }
