@@ -1102,7 +1102,39 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
         let tag = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
-        let settings = Object.entries(this.settings).filter(([full_key, value]) => full_key.split(/\|\|/g).some(key => value.constructor === {}.constructor && (tag === key || key[0] === '.' && tag && tag.endsWith(key) || key[0] === '^' && tag && tag.match(RegExp(key, "i")) || key[0] == '~' && tag.endsWith(key.substr(1)) || key.indexOf('~') != -1 && new RegExp(key.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || !['#', '^', '.'].includes(key[0]) && (input instanceof xover.Store || input instanceof Document) && input.selectSingleNode(key)))).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
+        let tag_url = input instanceof URL && input || xover.URL(tag);
+        let settings = Object.entries(this.settings).filter(([full_key, value]) => full_key.split(/\|\|/g).some(key => {
+            if (input instanceof Node) {
+                if (key[0] != '/') return false;
+                return input.selectFirst(key)
+            }
+            else {
+                if (key[0] == '/') return false;
+                let key_url = new xover.URL(!(input instanceof Node) ? key : '');
+                return value.constructor === {}.constructor
+                    && (
+                        tag_url.protocol == key_url.protocol
+                    ) && (
+                        !key_url.pathname[1]
+                        || key[0] === '^' && tag && tag.match(RegExp(key, "i"))
+                        || tag_url.pathname == key_url.pathname
+                        || key_url.pathname[1] == '~' && (
+                            key_url.pathname.slice(-1) == '~' ? tag_url.pathname.indexOf(key_url.pathname.slice(2)) != -1
+                                : tag_url.pathname.endsWith(key_url.pathname.slice(2))
+                        )
+                        || key_url.pathname.slice(-1) == '~' && tag_url.pathname.startsWith(key_url.pathname.slice(2))
+                        //    || key.indexOf('~') != -1 && new RegExp(key.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag)
+                    ) && (
+                        !key_url.hash ||
+                        tag_url.hash == key_url.hash
+                    ) && (
+                        !key_url.searchParams.length ||
+                        [...key_url.searchParams].every(([key, predicate]) => tag_url.searchParams.get(key) == predicate)
+                    )
+            }
+
+        }
+        )).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
         if (config_name) {
             settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => value.constructor === {}.constructor && Object.entries(value) || value);
             settings = settings.flat();
@@ -1144,12 +1176,14 @@ xover.server = new Proxy({}, {
             }
             //let settings = this.settings || {};
             //this.settings = settings.merge(Object.fromEntries(xover.manifest.getSettings(`server:${key}`) || []));
-            let url = new xover.URL(xover.manifest.server[key], undefined, { payload, ...settings.merge(Object.fromEntries(xover.manifest.getSettings(`server:${key}`) || [])) });
-            request = new xover.Request(url);
-            request.tag = `#server:${key}`;
-            window.top.dispatchEvent(new xover.listener.Event(`beforeFetch`, { url, request, href: url.href }, request));
+            let url = new xover.URL(xover.manifest.server[key], undefined, { payload, ...settings });
+            url.hash = `server:${key}`;
+            //settings = xover.json.combine(Object.fromEntries(xover.manifest.getSettings(url) || []), settings);
+            //url.settings = xover.json.combine(url.settings, settings);
+
+            window.top.dispatchEvent(new xover.listener.Event(`beforeFetch`, { url, request, href: url.href }, url));
             try {
-                [return_value, request, response] = await xover.fetch.apply(request, [url, ...args]).then(response => [response.body, response.request, response]);
+                [return_value, request, response] = await xover.fetch.apply(url, [url, ...args]).then(response => [response.body, response.request, response]);
             } catch (e) {
                 [return_value, request, response] = [e.body, e.request, e]
                 if (e instanceof DOMException) {
@@ -1158,7 +1192,6 @@ xover.server = new Proxy({}, {
                     }
                 }
             }
-            response.tag = `#server:${key}`;
             let manifest_settings = xover.manifest.getSettings(response.tag, "stylesheets");
             return_value instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
                 return_value.addStylesheet(stylesheet);
@@ -2170,68 +2203,79 @@ xover.Source = function (tag) {
             if (tag[0] == '#' && xover.manifest.init.status != 'initialized') {
                 await xover.manifest.init();
             }
-            let source = self.definition;
+            let definition = self.definition;
             let sources;
-            if (source instanceof Array) {
-                sources = source
+            if (definition instanceof Array) {
+                sources = definition
+            } else if (definition.constructor === {}.constructor) {
+                sources = Object.keys(definition)
             } else {
-                sources = [source]
+                sources = [definition]
             }
             let response;
             while (!response && sources.length) {
-                source = sources.shift();
+                let source = sources.shift();
+                if (!source) continue;
+                let parameters = {}.constructor === definition.constructor && definition[source] || args;
+                source = ('${') !== -1 ? eval("`" + source + "`") : source;
+                //parameters = parameters.concat(args);
+
+                if (source.replace(/^server:/, '') in xover.server || existsFunction(source)) {
+                    if (parameters.constructor === {}.constructor) {
+                        parameters = Object.entries(parameters) || parameters
+                    }
+                    let current_url = xover.URL(location.hash.replace(/^#/, ''));
+                    if (location.hash && current_url.pathname === xover.URL(tag.replace(/^#/, '')).pathname) {
+                        parameters = parameters.concat([...current_url.searchParams.entries()])
+                    }
+                }
+
+                let url;
+                if (typeof (source) != 'object') url = xover.URL(source);
+                if (tag[0] == '#' && url instanceof URL && !['.', '^', '~', '#'].includes(tag)) url.hash = tag;
+
+                if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
+                    parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+
+                    parameters = [parameters];
+                } else {
+                    parameters = parameters && parameters.map(value => value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value) || parameters;
+                }
+
                 try {
-                    let settings = Object.entries(xover.json.merge({}, Object.fromEntries(xover.manifest.getSettings(source)), self.settings));
-                    let endpoints = Object.keys(source && source.constructor === {}.constructor && source || {}).filter(endpoint => endpoint.replace(/^server:/, '') in xover.server || existsFunction(endpoint)).map((endpoint) => {
-                        let parameters = source[endpoint] || [];
-                        parameters = parameters.constructor === {}.constructor && Object.entries(parameters) || parameters
-                        let url = xover.URL(location.hash.replace(/^#/, ''));
-                        if (location.hash && url.pathname === xover.URL(tag.replace(/^#/, '')).pathname) {
-                            parameters = parameters.concat([...url.searchParams.entries()])
-                        }
-                        settings = settings.concat(xover.manifest.getSettings(endpoint));
-                        return [endpoint, parameters]
-                    });
-                    //let settings = Object.fromEntries(xover.manifest.getSettings(tag).concat(Object.entries(source && source.constructor === {}.constructor && source || []).filter(([key]) => !Object.keys(Object.fromEntries(endpoints)).includes(key))).concat(Object.entries(self.settings || {})).concat(xover.manifest.getSettings(source)));
+                    let settings = Object.entries(xover.json.merge({}, Object.fromEntries(xover.manifest.getSettings(url)), self.settings));
                     this.settings = xover.json.merge(Object.fromEntries(settings), this.settings);
                     let before_event = new xover.listener.Event('beforeFetch', { tag: tag, settings: settings }, this);
                     window.top.dispatchEvent(before_event);
                     if (before_event.cancelBubble || before_event.defaultPrevented) return;
                     if (source instanceof Node) {
                         response = source
-                    } else if (source && source.constructor === {}.constructor) {
+                    } else if (url.protocol == 'server:' || existsFunction(source)) {
                         let promises = [];
-                        for (let [endpoint, parameters] of endpoints) {
-                            if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
-                                parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
+                        let endpoint = source;
 
-                                parameters = [parameters];
-                            } else {
-                                parameters = parameters && parameters.map(value => value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value) || parameters;
-                            }
-
-                            promises.push(new Promise(async (resolve, reject) => {
-                                try {
-                                    if (endpoint.replace(/^server:/, '') in xover.server) {
-                                        response = await xover.server[endpoint.replace(/^server:/, '')].apply(this, parameters);
-                                    } else if (existsFunction(endpoint)) {
-                                        let fn = eval(endpoint);
-                                        response = await fn.apply(this, args.concat(parameters));
-                                    }
-                                } catch (e) {
-                                    if (e instanceof Response && e.document instanceof XMLDocument) {
-                                        if ([412].includes(e.status)) {
-                                            response = e.document;
-                                        } else {
-                                            return reject(e.document)
-                                        }
-                                    } else {
-                                        return reject(e)
-                                    }
+                        promises.push(new Promise(async (resolve, reject) => {
+                            try {
+                                if (endpoint.replace(/^server:/, '') in xover.server) {
+                                    response = await xover.server[endpoint.replace(/^server:/, '')].apply(this, parameters);
+                                } else if (existsFunction(endpoint)) {
+                                    let fn = eval(endpoint);
+                                    response = await fn.apply(this, args.concat(parameters));
                                 }
-                                resolve(response);
-                            }));
-                        }
+                            } catch (e) {
+                                if (e instanceof Response && e.document instanceof XMLDocument) {
+                                    if ([412].includes(e.status)) {
+                                        response = e.document;
+                                    } else {
+                                        return reject(e.document)
+                                    }
+                                } else {
+                                    return reject(e)
+                                }
+                            }
+                            resolve(response);
+                        }));
+
                         let documents;
                         try {
                             documents = await Promise.all(promises).then(document => document);
@@ -2348,6 +2392,74 @@ Object.defineProperty(xover.sources, 'defaults', {
         }
     }),
     writable: false, enumerable: false, configurable: false
+});
+
+var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
+xover.URL = function (url, base, settings = {}) {
+    if (url === null) {
+        return Promise.reject(`${url} is not a valid value for xover.URL`)
+    }
+    if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
+
+    let method;
+    if (!(url instanceof URL)) {
+        url = url || '';
+        [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
+        if (settings["payload"] instanceof Node) {
+            settings["body"] = settings["payload"];
+            delete settings["payload"];
+        }
+        method = settings["method"] || method;
+        url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+        if (!method && settings["body"]) {
+            method = 'POST'
+        }
+    }
+    let query = new URLSearchParams(settings["query"] || settings["payload"] || {});
+    [...query.entries()].forEach(([key, value]) => url.searchParams.append(key, value));
+    delete settings["query"];
+    delete settings["payload"];
+
+    url.settings = url.settings || {};
+    url.settings.method = method || url.settings.method;
+    url.settings = Object.assign(url.settings, settings);
+    url.settings.headers = new Headers(url.settings.headers || {});
+
+    [...new Headers(settings["headers"] || {}).entries()].forEach(([key, value]) => {
+        if (value) {
+            url.settings.headers.set(key, value);
+        }
+    });
+    [...url.searchParams.entries()].filter(([key]) => key[0].indexOf("^") == 0).forEach(([key, value]) => {
+        if (value) {
+            url.settings.headers.set(key, value);
+        }
+        url.searchParams.delete(key)
+    });
+    if (!url.hasOwnProperty('method')) {
+        Object.defineProperty(url, 'method', {
+            get: function () {
+                return method;
+            }, set: function (input) {
+                return method = input;
+            }
+        })
+    }
+    Object.setPrototypeOf(url, URL.prototype);
+    return url;
+}
+
+Object.defineProperty(URL.prototype, 'href', {
+    get: function (...args) {
+        let href = original_href.get.apply(this, args);
+        return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "")//.replace(/^\/+/, '');
+    }
+});
+
+Object.defineProperty(URL.prototype, 'tag', {
+    get: function () {
+        return '#' + xover.URL(this.hash.replace(/^#/, '')).pathname.replace(/^\//, '')
+    }
 });
 
 xover.sources.defaults["#login"] = xover.xml.createDocument(`<?xml-stylesheet type="text/xsl" href="login.xslt" role="login" target="body"?><xo:login xmlns:xo="http://panax.io/xover"/> `);
@@ -3637,68 +3749,6 @@ xover.Response = function (response, request) {
 }
 xover.Response.prototype = Object.create(Response.prototype);
 
-var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
-xover.URL = function (url, base, settings = {}) {
-    if (url === null) {
-        return Promise.reject(`${url} is not a valid value for xover.URL`)
-    }
-    if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
-
-    let method;
-    if (!(url instanceof URL)) {
-        url = url || '';
-        [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
-        if (settings["payload"] instanceof Node) {
-            settings["body"] = settings["payload"];
-            delete settings["payload"];
-        }
-        method = settings["method"] || method;
-        url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
-        if (!method && settings["body"]) {
-            method = 'POST'
-        }
-    }
-    let query = new URLSearchParams(settings["query"] || settings["payload"] || {});
-    [...query.entries()].forEach(([key, value]) => url.searchParams.append(key, value));
-    delete settings["query"];
-    delete settings["payload"];
-
-    url.settings = url.settings || {};
-    url.settings.method = method || url.settings.method;
-    url.settings = Object.assign(url.settings, settings);
-    url.settings.headers = new Headers(url.settings.headers || {});
-
-    [...new Headers(settings["headers"] || {}).entries()].forEach(([key, value]) => {
-        if (value) {
-            url.settings.headers.set(key, value);
-        }
-    });
-    [...url.searchParams.entries()].filter(([key]) => key[0].indexOf("^") == 0).forEach(([key, value]) => {
-        if (value) {
-            url.settings.headers.set(key, value);
-        }
-        url.searchParams.delete(key)
-    });
-    if (!url.hasOwnProperty('method')) {
-        Object.defineProperty(url, 'method', {
-            get: function () {
-                return method;
-            }, set: function (input) {
-                return method = input;
-            }
-        })
-    }
-    Object.setPrototypeOf(url, URL.prototype);
-    return url;
-}
-
-Object.defineProperty(URL.prototype, 'href', {
-    get: function (...args) {
-        let href = original_href.get.apply(this, args);
-        return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "")//.replace(/^\/+/, '');
-    }
-});
-
 xover.QUERI = function (href) {
     function encodeValue(value) {
         if (!value) return value;
@@ -3955,7 +4005,6 @@ xover.fetch = async function (url, ...args) {
         endIndex--;
     }
     args.splice(endIndex + 1);
-    let tag = (url.pathname || url || '');
     let payload = [];
     let handlers = [];
     let headers = [];
@@ -3974,13 +4023,16 @@ xover.fetch = async function (url, ...args) {
     }
 
     let settings = args.pop() || {};
-    url = new xover.URL(url, undefined, Object.fromEntries(xover.manifest.getSettings(tag)));
+    if (!(url instanceof xover.URL)) {
+        url = new xover.URL(url, undefined, {});
+    }
+    settings = xover.json.combine(Object.fromEntries(xover.manifest.getSettings(url) || []), settings);
     for (let header of headers) {
         for (let [key, value] of [...header.entries()]) {
             url.settings.headers.set(key, value);
         }
     }
-    url.settings = xover.json.combine(url.settings, settings, this.settings);
+    url.settings = xover.json.combine(url.settings, settings, this.hasOwnProperty("settings") ? this.settings : {});
 
     payload = payload.concat(args);
     if (payload.length) {
@@ -10357,14 +10409,6 @@ xover.modernize = async function (targetWindow) {
 
                 if (!Location.prototype.hasOwnProperty('tag')) {
                     Object.defineProperty(Location.prototype, 'tag', {
-                        get: function () {
-                            return '#' + xover.URL(this.hash.replace(/^#/, '')).pathname.replace(/^\//, '')
-                        }
-                    });
-                }
-
-                if (!URL.prototype.hasOwnProperty('tag')) {
-                    Object.defineProperty(URL.prototype, 'tag', {
                         get: function () {
                             return '#' + xover.URL(this.hash.replace(/^#/, '')).pathname.replace(/^\//, '')
                         }
