@@ -1101,14 +1101,27 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
 
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
+        let matches = function (tag, key) {
+            return tag == key
+                || key[0] == '^' && (
+                    tag.match(RegExp(key, "i"))
+                    //|| tag.match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
+                )
+                || key[0] == '~' && (
+                    key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
+                        : tag.endsWith(key.slice(1))
+                )
+                || key.slice(-1) == '~' && tag.startsWith(key.slice(1))
+        }
         let tag = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
         let tag_url = input instanceof URL && input || xover.URL(tag);
         let settings = Object.entries(this.settings).filter(([full_key, value]) => full_key.split(/\|\|/g).some(key => {
             if (input instanceof Node) {
                 if (key[0] != '/') return false;
                 return input.selectFirst(key)
-            }
-            else {
+            } else if (key[0] == '^') {
+                return matches(tag_url.href, key)
+            } else {
                 if (key[0] == '/') return false;
                 let key_url = new xover.URL(!(input instanceof Node) ? key : '');
                 return value.constructor === {}.constructor
@@ -1116,20 +1129,16 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                         tag_url.protocol == key_url.protocol
                     ) && (
                         !key_url.pathname[1]
-                        || key[0] === '^' && tag_url.pathname.slice(1).match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
-                        || tag_url.pathname == key_url.pathname
-                        || key_url.pathname[1] == '~' && (
-                            key_url.pathname.slice(-1) == '~' ? tag_url.pathname.indexOf(key_url.pathname.slice(2)) != -1
-                                : tag_url.pathname.endsWith(key_url.pathname.slice(2))
-                        )
-                        || key_url.pathname.slice(-1) == '~' && tag_url.pathname.startsWith(key_url.pathname.slice(2))
-                        //    || key.indexOf('~') != -1 && new RegExp(key.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag)
+                        || matches(tag_url.pathname.slice(1), key_url.pathname.slice(1))
                     ) && (
-                        !key_url.hash ||
-                        tag_url.hash == key_url.hash
+                        !key_url.hash
+                        || tag_url.hash == key_url.hash
+                        || matches(tag_url.hash.slice(1), key_url.hash.slice(1))
                     ) && (
                         !key_url.searchParams.length ||
-                        [...key_url.searchParams].every(([key, predicate]) => tag_url.searchParams.get(key) == predicate)
+                        [...key_url.searchParams].every(([key, predicate]) => {
+                            return !predicate ? tag_url.searchParams.has(key) : tag_url.searchParams.get(key) == predicate
+                        })
                     )
             }
 
@@ -6083,48 +6092,69 @@ xmlns=""
 }
 
 xover.json.merge = function (...args) {
-    let response = args.shift() || {};
+    let result = args.shift() || {};
     for (let object of args) {
         if (object && object.constructor == {}.constructor) {
             for (let key in object) {
                 if (object[key] && object[key].constructor == {}.constructor) {
-                    response[key] = xover.json.merge(response[key], object[key]);
+                    result[key] = xover.json.merge(result[key], object[key]);
                 } else {
-                    response[key] = object[key];
+                    result[key] = object[key];
                 }
             }
         }
     }
-    return response;
+    return result;
 }
 
 xover.json.combine = function (...args) { /*experimental*/
-    let response = (args[0] || {})
+    let result = args.shift()
     for (let object of args) {
         if (object && typeof (object) == 'object') {
             for (let prop in object) {
-                if (object[prop] && object[prop].constructor == {}.constructor) {
-                    response[prop] = Object.prototype.merge.call(response[prop] || {}, object[prop]);
-                } else if (response[prop] && object[prop] && typeof (object[prop].concat) != 'undefined') {
-                    response[prop] = response[prop].concat(object[prop]);
-                } else if (response[prop] && response[prop].entries instanceof Function && object[prop].entries instanceof Function) {
-                    for (let [key, value] of object[prop].entries()) {
-                        if (typeof (response[prop].append) == 'function') {
-                            response[prop].append(key, value)
-                        } else if (typeof (response[prop].set) == 'function') {
-                            response[prop].set(key, value)
+                if (typeof (result[prop]) == 'object' && !(result[prop] instanceof Node) && typeof (object[prop]) == 'object') {
+                    for (let [key, value] of object[prop].entries ? object[prop].entries() : Object.entries(object[prop])) {
+                        /*if (typeof (result[prop].append) == 'function' && typeof (object[prop].append) !== 'function') {
+                            result[prop].append(key, value)
+                        } else */if (typeof (result[prop].set) == 'function') {
+                            result[prop].set(key, value)
+                        } else if (typeof (object[prop].get) == 'function') {
+                            result[prop][key] = object[prop].get(key)
                         } else {
-                            response[prop][key] = object[prop][key]
+                            result[prop][key] = object[prop][key]
                         }
                     }
+                } else if (result[prop] && object[prop] && typeof (object[prop]) != 'string' && typeof (object[prop].concat) != 'undefined') {
+                    result[prop] = result[prop].concat(object[prop]);
+                } else if (object[prop] && object[prop].constructor == {}.constructor) {
+                    result[prop] = xover.json.combine(result[prop] || {}, object[prop]);
                 } else {
                     let new_value = object[prop];
-                    response[prop] = (new_value !== undefined ? new_value : response[prop])
+                    result[prop] = (new_value !== undefined ? new_value : result[prop])
                 }
             }
         }
     }
-    return response;
+    return result;
+}
+
+xover.json.parse = function (...args) { /*experimental*/
+    let result = (args[0] || {})
+    for (let object of args) {
+        if (object && typeof (object) == 'object') {
+            for (let prop in object) {
+                if (object[prop] && typeof (object[prop]) == 'object' && (object[prop].constructor == {}.constructor || object[prop] instanceof Array)) {
+                    result[prop] = xover.json.parse(result[prop] || {}, object[prop]);
+                } else if (object[prop] && typeof (object[prop].entries) == 'function') {
+                    result[prop] = Object.fromEntries(object[prop].entries());
+                } else {
+                    let new_value = object[prop];
+                    result[prop] = (new_value !== undefined ? new_value : result[prop])
+                }
+            }
+        }
+    }
+    return result;
 }
 
 xover.json.difference = function () {
@@ -7546,7 +7576,15 @@ xover.modernize = async function (targetWindow) {
                 })
 
                 if (!Document.prototype.hasOwnProperty('settings')) {
-                    Document.prototype.settings = {};
+                    let settings = new Map()
+                    Object.defineProperty(Document.prototype, 'settings', {
+                        get: function () {
+                            if (!settings.has(this)) {
+                                settings.set(this, {})
+                            }
+                            return settings.get(this);
+                        }
+                    });
                 }
 
                 if (!Document.prototype.hasOwnProperty('observe')) {
