@@ -7600,7 +7600,7 @@ xover.modernize = async function (targetWindow) {
                             //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                             if (!mutationList.length) return;
 
-                            mutated_targets = new Map();
+                            let mutated_targets = new Map();
                             for (let mutation of mutationList) {
                                 let inserted_ids = [];
                                 let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
@@ -7638,24 +7638,29 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 }
                                 for (let el of [...mutation.addedNodes]) {
-                                    xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('append', { target }, el)))
+                                    //xover.delay(1).then(() =>
+                                    window.top.dispatchEvent(new xover.listener.Event('append', { target }, el))//)
                                     el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.seed());
                                 };
                                 if (mutation.addedNodes.length) {
-                                    xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target)));
+                                    //xover.delay(1).then(() =>
+                                    window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target))//);
                                     if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
                                         target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                                     }
                                 }
                                 if (mutation.removedNodes.length) {
-                                    xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target)))
+                                    //xover.delay(1).then(() =>
+                                    window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))//)
                                 }
                                 for (let [attribute, old_value] of [...mutation.attributes || []]) {
                                     window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
                                 }
-                                xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', { target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, target)));
+                                //xover.delay(1).then(() =>
+                                window.top.dispatchEvent(new xover.listener.Event('change', { target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, target))//);
                             }
-                            xover.delay(1).then(() => window.top.dispatchEvent(new xover.listener.Event('change', {}, self)));
+                            //xover.delay(1).then(() =>
+                            window.top.dispatchEvent(new xover.listener.Event('change', {}, self))//);
                             for (let store of Object.values(xover.stores).filter(store => store.document === self)) {
                                 store.render()
                             }
@@ -9033,11 +9038,12 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Node.prototype, 'disconnect', {
                         value: function (reconnect = 1) {
                             this.disconnected = true;
-                            let observer = (this.ownerDocument || this).observer;
-                            observer && observer.disconnect(reconnect);
+                            //let observer = (this.ownerDocument || this).observer;
+                            //observer && observer.disconnect(reconnect); 
                             if (reconnect) {
                                 xover.delay(reconnect).then(async () => {
                                     this.connect();
+                                    //observer.connect();
                                 });
                             }
                         }
@@ -9917,7 +9923,11 @@ xover.modernize = async function (targetWindow) {
                     if (forced) {
                         this.selectNodes('.//@xo:id').remove()
                     }
+                    let observer = this.ownerDocument && this.ownerDocument.observer
+                    let reconnect = !document.disconnected;
+                    observer && observer.disconnect(0)
                     this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => Element.native.setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
+                    reconnect && observer && observer.connect();
                     //} catch (e) {
                     //    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
                     //}
@@ -10530,6 +10540,11 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`) || stylesheet_target;
                                 let target = stylesheet_target;
+                                let active_element = document.activeElement;
+                                if (target.contains(active_element)) {
+                                    await xover.delay(100);
+                                    xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
+                                }
                                 let data = this.cloneNode(true);
                                 if (!data.firstElementChild) {
                                     data.append(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
@@ -10544,11 +10559,6 @@ xover.modernize = async function (targetWindow) {
                                 data.disconnected = false;
                                 target.tag = data.tag;
                                 let dom;
-                                let active_element = document.activeElement;
-                                if (target.contains(active_element)) {
-                                    await xover.delay(100);
-                                    xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
-                                }
                                 if (xsl) {
                                     data.tag = /*'#' + */xsl.href.split(/[\?#]/)[0];
                                     dom = await data.transform(xsl);
