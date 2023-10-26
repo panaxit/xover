@@ -4601,6 +4601,11 @@ xover.dom.combine = async function (target, documentElement) {
             if (!curr_node.ownerDocument.contains(curr_node)) continue;
 
             let result;
+            let active_element = document.activeElement;
+            let selector;
+            if (curr_node.contains(document.activeElement)) {
+                selector = active_element.selector;
+            }
             if (document.startViewTransition && (curr_node instanceof Element && curr_node.querySelector("[style*=view-transition-name]") || new_node instanceof Element && new_node.querySelector("[style*=view-transition-name]"))) {
                 curr_node.querySelectorAll("[style*=view-transition-name][id]").toArray().map(item => [item, new_node.querySelector(`[id=${item.id}]`)]).filter(([, matched]) => matched).forEach(([curr, matched]) => matched.style.viewTransitionName = curr.style.viewTransitionName);
                 let view_transition = document.startViewTransition(() => result = xover.xml.combine(curr_node, new_node));
@@ -4608,6 +4613,9 @@ xover.dom.combine = async function (target, documentElement) {
             } else {
                 result = xover.xml.combine(curr_node, new_node);
             }
+            if (selector && active_element !== document.activeElement) (document.querySelector(selector) || document.createElement("p")).focus()
+            //!(active_element.cloneNode().isEqualNode(document.activeElement.cloneNode())) && new_node.focus();
+
             if (target === curr_node) target = result;
         }
         //if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
@@ -10534,17 +10542,18 @@ xover.modernize = async function (targetWindow) {
                                     await Promise.all(dependency_promises);
                                 }
                                 stylesheet_target = stylesheet_target instanceof HTMLElement && stylesheet_target || document.querySelector(stylesheet_target);
-                                if (!stylesheet_target) {
-                                    console.log(`Couldn't render to ${stylesheet_target}${tag ? `(${tag})` : ''}`);
-                                    continue;
-                                }
-                                stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`) || stylesheet_target;
                                 let target = stylesheet_target;
                                 let active_element = document.activeElement;
                                 if (target.contains(active_element)) {
                                     await xover.delay(100);
                                     xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
                                 }
+                                if (!(target && document.contains(target))) {
+                                    //console.log(`Couldn't render to ${stylesheet_target}${tag ? `(${tag})` : ''}`);
+                                    continue;
+                                }
+                                stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`) || stylesheet_target;
+
                                 let data = this.cloneNode(true);
                                 if (!data.firstElementChild) {
                                     data.append(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
