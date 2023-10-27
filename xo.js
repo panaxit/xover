@@ -1562,7 +1562,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             }
             xover.session.setKey('lastPosition', self.position);
         }
-        return [history.state[key],self[key],xover.session.getKey(key)].coalesce()
+        return [history.state[key], self[key], xover.session.getKey(key)].coalesce()
     },
     set: function (self, key, new_value) {
         try {
@@ -7705,29 +7705,34 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 }
                                 for (let el of [...mutation.addedNodes]) {
-                                    //xover.delay(1).then(() =>
-                                    window.top.dispatchEvent(new xover.listener.Event('append', { target }, el))//)
+                                    xover.delay(1).then(() =>
+                                        window.top.dispatchEvent(new xover.listener.Event('append', { target }, el))
+                                    )
                                     el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.seed());
                                 };
                                 if (mutation.addedNodes.length) {
-                                    //xover.delay(1).then(() =>
-                                    window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target))//);
+                                    xover.delay(1).then(() =>
+                                        window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target))
+                                    );
                                     if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
                                         target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                                     }
                                 }
                                 if (mutation.removedNodes.length) {
-                                    //xover.delay(1).then(() =>
-                                    window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))//)
+                                    xover.delay(1).then(() =>
+                                        window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))
+                                    )
                                 }
                                 for (let [attribute, old_value] of [...mutation.attributes || []]) {
                                     window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
                                 }
-                                //xover.delay(1).then(() =>
-                                window.top.dispatchEvent(new xover.listener.Event('change', { target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, target))//);
+                                xover.delay(1).then(() =>
+                                    window.top.dispatchEvent(new xover.listener.Event('change', { target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, target))
+                                );
                             }
-                            //xover.delay(1).then(() =>
-                            window.top.dispatchEvent(new xover.listener.Event('change', {}, self))//);
+                            xover.delay(1).then(() =>
+                                window.top.dispatchEvent(new xover.listener.Event('change', {}, self))
+                            );
                             for (let store of Object.values(xover.stores).filter(store => store.document === self)) {
                                 store.render()
                             }
