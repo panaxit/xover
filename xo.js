@@ -803,12 +803,48 @@ Object.defineProperty(xover.listener, 'debug', {
                 reference = arg
             } else if (typeof (arg) == 'string') {
                 event = arg
+            } else if (typeof (arg) == 'function') {
+                reference = arg
             }
         }
         if (!xover.listener.debugger.has(reference)) {
             xover.listener.debugger.set(reference, new Map())
         }
-        xover.listener.debugger.get(reference).set(event,true)
+        xover.listener.debugger.get(reference).set(event, true)
+    },
+    writable: false, enumerable: false, configurable: false
+})
+
+Object.defineProperty(xover.listener.debug, 'matches', {
+    value: function (handler, map = xover.listener.debugger) {
+        let context = this;
+        let reference_debugger = map.get(context) || map.get('*') || new Map();
+        if (reference_debugger.get(event.type) || reference_debugger.get('*') || (handler.selectors || []).some(selector => reference_debugger.get(selector)) || [...map].some(([reference]) => reference instanceof Function && context instanceof reference)) {
+            return true
+        }
+        return false;
+    },
+    writable: false, enumerable: false, configurable: false
+})
+
+xover.listener.debuggerExceptions = new Map()
+
+Object.defineProperty(xover.listener, 'debugException', {
+    value: function (...args) {
+        let reference = '*', event = '*';
+        for (let arg of args) {
+            if (arg instanceof HTMLElement) {
+                reference = arg
+            } else if (typeof (arg) == 'string') {
+                event = arg
+            } else if (typeof (arg) == 'function') {
+                reference = arg
+            }
+        }
+        if (!xover.listener.debuggerExceptions.has(reference)) {
+            xover.listener.debuggerExceptions.set(reference, new Map())
+        }
+        xover.listener.debuggerExceptions.get(reference).set(event, true)
     },
     writable: false, enumerable: false, configurable: false
 })
@@ -829,8 +865,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             if (returnValue !== undefined && !(returnValue instanceof Promise) && event.detail && event.detail.value) {
                 event.detail.value = returnValue;
             }
-            let reference_debugger = xover.listener.debugger.get(context) || xover.listener.debugger.get('*') || new Map();
-            if (reference_debugger.get(event.type) || reference_debugger.get('*')) {
+            if (xover.listener.debug.matches.call(context, handler, xover.listener.debugger) && !xover.listener.debug.matches.call(context, handler, xover.listener.debuggerExceptions)) {
                 debugger;
             }
             returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
@@ -910,7 +945,9 @@ Object.defineProperty(xover.listener, 'on', {
             return;
         }
         name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
+        handler.selectors = handler.selectors || [];
         for (let event_name of name_or_list) {
+            handler.selectors.push(event_name);
             let conditions;
             [event_name, conditions] = event_name.split(/\?/);
             let [scoped_event, ...predicate] = event_name.split(/::/);
@@ -932,6 +969,7 @@ Object.defineProperty(xover.listener, 'on', {
                 window.top.addEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
             }
         }
+        handler.selectors = handler.selectors.distinct()
     },
     writable: true, enumerable: false, configurable: false
 });
