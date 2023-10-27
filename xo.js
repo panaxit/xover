@@ -659,7 +659,7 @@ xover.initializeElementListeners = function (document = window.document) {
         for (let event_name of ['focus', 'blur']) {
             if (xo.listener.get(event_name)) {
                 el.removeEventListener(event_name, event_handler)
-                el.addEventListener(event_name, (event) => event_handler(event_name, el))
+                el.addEventListener(event_name, (event) => event_handler(event, el))
             }
         }
     });
@@ -793,6 +793,26 @@ Object.defineProperty(xover.listener, 'matches', {
     writable: false, enumerable: false, configurable: false
 })
 
+xover.listener.debugger = new Map()
+
+Object.defineProperty(xover.listener, 'debug', {
+    value: function (...args) {
+        let reference = '*', event = '*';
+        for (let arg of args) {
+            if (arg instanceof HTMLElement) {
+                reference = arg
+            } else if (typeof (arg) == 'string') {
+                event = arg
+            }
+        }
+        if (!xover.listener.debugger.has(reference)) {
+            xover.listener.debugger.set(reference, new Map())
+        }
+        xover.listener.debugger.get(reference).set(event,true)
+    },
+    writable: false, enumerable: false, configurable: false
+})
+
 Object.defineProperty(xover.listener, 'dispatcher', {
     value: function (event) {
         if (xover.listener.off === true) return;
@@ -808,6 +828,10 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             //context.eventHistory.set(handler, event.type);
             if (returnValue !== undefined && !(returnValue instanceof Promise) && event.detail && event.detail.value) {
                 event.detail.value = returnValue;
+            }
+            let reference_debugger = xover.listener.debugger.get(context) || xover.listener.debugger.get('*') || new Map();
+            if (reference_debugger.get(event.type) || reference_debugger.get('*')) {
+                debugger;
             }
             returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
@@ -1500,13 +1524,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             }
             xover.session.setKey('lastPosition', self.position);
         }
-        if (history.state.hasOwnProperty(key)) {
-            return history.state[key]
-        } else if (self.hasOwnProperty(key)) {
-            return self[key];
-        } /* else {
-            return xover.session.getKey(key);
-        }*/
+        return [history.state[key],self[key],xover.session.getKey(key)].coalesce()
     },
     set: function (self, key, new_value) {
         try {
@@ -3294,7 +3312,7 @@ Object.defineProperty(xover.stores, '#', {
 
 Object.defineProperty(xover.stores, 'active', {
     get: function () {
-        let store = xover.stores[xover.site.active] || xover.stores[xover.site.seed] || xover.stores["#"];// || xover.Store(`<?xml-stylesheet type="text/xsl" href="message.xslt" role="modal" target="body" action="append"?><xo:message xmlns:xo="http://panax.io/xover" xo:id="xhr_message_${Math.random()}"/>`);
+        let store = xover.stores[xover.site.active] || xover.stores["#"];// || xover.Store(`<?xml-stylesheet type="text/xsl" href="message.xslt" role="modal" target="body" action="append"?><xo:message xmlns:xo="http://panax.io/xover" xo:id="xhr_message_${Math.random()}"/>`);
         store = store || new xover.Store(xover.xml.createDocument());
         return store;
     }
@@ -10147,7 +10165,7 @@ xover.modernize = async function (targetWindow) {
                                     xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
-                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`):xover.site[param_name];
+                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`) : xover.site[param_name];
                                             if (param_value != undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
