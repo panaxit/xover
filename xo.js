@@ -7679,11 +7679,13 @@ xover.modernize = async function (targetWindow) {
                         mutation_observer.observe(self, config);
 
                         const _observer = {}
-                        Object.defineProperty(self, 'observer', {
-                            get: function () {
-                                return _observer;
-                            }
-                        })
+                        if (!self.hasOwnProperty('observer')) {
+                            Object.defineProperty(self, 'observer', {
+                                get: function () {
+                                    return _observer;
+                                }
+                            })
+                        }
                         if (!self.observer.hasOwnProperty('disconnect')) {
                             Object.defineProperty(self.observer, 'disconnect', {
                                 value: function (ms = 2) {
