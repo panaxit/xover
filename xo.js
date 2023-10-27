@@ -1500,11 +1500,13 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             }
             xover.session.setKey('lastPosition', self.position);
         }
-        if (self.hasOwnProperty(key)) {
+        if (history.state.hasOwnProperty(key)) {
+            return history.state[key]
+        } else if (self.hasOwnProperty(key)) {
             return self[key];
-        } else {
+        } /* else {
             return xover.session.getKey(key);
-        }
+        }*/
     },
     set: function (self, key, new_value) {
         try {
@@ -1546,13 +1548,14 @@ class SearchParams {
     }
 
     set(param, value, action = 'push') {
+        let current_state = Object.assign({}, history.state, { active: history.state.active, prev: { searchParams: Object.fromEntries([...this.params.entries()]), location: { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) } } });
         if (value === null) {
             this.params.delete(param);
         } else {
             this.params.set(param, value != undefined ? value : "");
         }
         let searchText = this.params.toString();
-        history[`${action}State`](Object.assign({}, history.state), { active: history.state.active }, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
+        history[`${action}State`](current_state, {}, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
         window.top.dispatchEvent(new xover.listener.Event(`searchParams`, { param }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
     }
@@ -10144,7 +10147,7 @@ xover.modernize = async function (targetWindow) {
                                     xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
-                                            let param_value = xover.site[param_name];
+                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`):xover.site[param_name];
                                             if (param_value != undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
