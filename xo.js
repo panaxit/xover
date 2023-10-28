@@ -1272,10 +1272,10 @@ xover.server = new Proxy({}, {
                 return_value = handler(return_value, request, response) || return_value
             }
             if (response.ok) {
-                window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.settings.body, request, tag: `#server:${key}` }, response));
+                window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.settings.body, request, status: response.status, statusText: response.statusText, tag: `#server:${key}` }, response));
                 return Promise.resolve(return_value);
             } else {
-                window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.settings.body, request, tag: `#server:${key}` }, response));
+                window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.settings.body, request, status: response.status, statusText: response.statusText, tag: `#server:${key}` }, response));
                 return Promise.reject(response);/*response.body*/
             }
         })
@@ -4225,9 +4225,9 @@ xover.fetch = async function (url, ...args) {
     //window.top.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
     if (response.ok) {
         handlers.forEach(handler => handler(return_value, response, request));
-        window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request, response }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request, response, status: response.status, statusText: response.statusText }, response));
     } else {
-        window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response }, response));
+        window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response, status: response.status, statusText: response.statusText }, response));
     }
 
     if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
@@ -6175,7 +6175,7 @@ xover.json.merge = function (...args) {
 }
 
 xover.json.combine = function (...args) { /*experimental*/
-    let result = args.shift()
+    let result = {};
     for (let object of args) {
         if (object && typeof (object) == 'object') {
             for (let prop in object) {
