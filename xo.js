@@ -4311,7 +4311,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
         if (return_value.documentElement && return_value.selectFirst('xsl:*')) {
             //if (!return_value.documentElement.resolveNS('')) {
             //    return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns", xover.spaces["xhtml"])
-            //}/*desn't work properly as when declared from origin */
+            //}/*doesn't work properly as when declared from origin */
             if (!return_value.documentElement.resolveNS('xo')) {
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
@@ -4381,7 +4381,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                     return Promise.reject(e);
                 }
             }
-            for (let el of return_value.select(`//xsl:template//html:*/@use-attribute-sets`)) {
+            for (let el of return_value.select(`//xsl:template//@xo:use-attribute-sets`)) {
                 let attribute_sets = el.value.split(/\s+/g);
                 let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [return_value.createComment(`ack:importing-attribute-sets-stars`)]);
                 attributes = attributes.concat(return_value.createComment(`ack:importing-attribute-sets-end`))
