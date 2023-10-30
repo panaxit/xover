@@ -4320,6 +4320,14 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 el.set("xo-slot", (el.getAttribute("type") == "search" ? "search:{local-" : "{") + "name(current()[not(self::*)])}")
             }
 
+            for (let el of return_value.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
+                el.insertFirst(xover.xml.createNode(`<xsl:param name="xo:context" select="."/>`));
+            }
+
+            for (let el of return_value.select(`//xsl:template[xsl:param/@name="xo:context"]//xsl:apply-templates[not(xsl:with-param/@name="xo:context")]|//xsl:template[xsl:param/@name="xo:context"]//xsl:call-template[not(xsl:with-param/@name="xo:context")]`)) {
+                el.insertFirst(xover.xml.createNode(`<xsl:with-param name="xo:context" select="$xo:context"/>`));
+            }
+
             for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
@@ -4372,6 +4380,13 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                     window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), response: e, request: url }, this));
                     return Promise.reject(e);
                 }
+            }
+            for (let el of return_value.select(`//xsl:template//html:*/@use-attribute-sets`)) {
+                let attribute_sets = el.value.split(/\s+/g);
+                let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [return_value.createComment(`ack:importing-attribute-sets-stars`)]);
+                attributes = attributes.concat(return_value.createComment(`ack:importing-attribute-sets-end`))
+                el.parentNode.prepend(...attributes)
+                el.remove();
             }
             if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
                 return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "))
@@ -9627,7 +9642,7 @@ xover.modernize = async function (targetWindow) {
                     }
                 });
 
-                Object.defineProperty(Comment.prototype, 'reference', {
+                Object.defineProperty(Comment.prototype, 'template', {
                     get: function () {
                         let info = xover.xml.createNode(this.data.replace(/- -/g, '--'));
                         let attributes = xover.json.fromAttributes(info.textContent);
