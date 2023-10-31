@@ -7828,6 +7828,23 @@ xover.modernize = async function (targetWindow) {
                     return node;
                 }
 
+                HTMLElement.native.find = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'find');
+                Object.defineProperty(HTMLElement.prototype, 'find', {
+                    value: function (selector = '') {
+                        try {
+                            return this.matches(selector) && this || this.querySelector(selector)
+                        } catch (e) {
+                            if (e.message.indexOf('not a valid selector') != -1) {
+                                try {
+                                    return this.selectFirst(`.//${selector}`)
+                                } catch (e) {
+                                    return null;
+                                }
+                            }
+                        }
+                    }
+                })
+
                 Document.native = {};
                 Document.native.find = Object.getOwnPropertyDescriptor(Document.prototype, 'find');
                 Object.defineProperty(Document.prototype, 'find', {
