@@ -774,14 +774,14 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
 xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
 Object.defineProperty(xover.listener, 'matches', {
-    value: function (context, event_type) {
+    value: function (context, event_type, event_tag) {
         let [scoped_event, predicate] = event_type.split(/::/);
         event_type = scoped_event;
 
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            let tag = context.tag || ((event || {}).detail || {}).tag || '';
+            let tag = event_tag || context.tag || ((event || {}).detail || {}).tag || '';
             let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
             for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && predicate.replace(/^#/, '') === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 if (handler.conditions && ![...handler.conditions].every(([key, condition]) => event.detail[key] == condition)) continue;
@@ -853,7 +853,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
     value: function (event) {
         if (xover.listener.off === true) return;
         let context = event.context || event.target;
-        let fns = xover.listener.matches(context, event.type);
+        let fns = xover.listener.matches(context, event.type, (event.detail || {}).tag);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         //context.eventHistory = context.eventHistory || new Map();
         let returnValue;
@@ -7748,9 +7748,15 @@ xover.modernize = async function (targetWindow) {
                             xover.delay(1).then(() =>
                                 window.top.dispatchEvent(new xover.listener.Event('change', {}, self))
                             );
-                            for (let store of Object.values(xover.stores).filter(store => store.document === self)) {
-                                store.render()
+                            let sections = xover.site.sections.filter(el => el.store && el.store.document === self);
+                            if (sections.length) {
+                                for (let section of sections) {
+                                    section.render()
+                                }
                             }
+                            //for (let store of Object.values(xover.stores).filter(store => store.document === self)) {
+                            //    store.render()
+                            //}
                         };
 
                         const config = { characterData: true, attributes: true, childList: true, subtree: true, attributeOldValue: true, characterDataOldValue: true };
@@ -9144,12 +9150,15 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Node.prototype, 'disconnect', {
                         value: function (reconnect = 1) {
                             this.disconnected = true;
-                            //let observer = (this.ownerDocument || this).observer;
-                            //observer && observer.disconnect(reconnect); 
+                            let observer;
+                            if (this instanceof Document && this.observer) {
+                                observer = (this.ownerDocument || this).observer;
+                            }
+                            observer && observer.disconnect(reconnect);
                             if (reconnect) {
                                 xover.delay(reconnect).then(async () => {
                                     this.connect();
-                                    //observer.connect();
+                                    observer.connect();
                                 });
                             }
                         }
@@ -9159,6 +9168,11 @@ xover.modernize = async function (targetWindow) {
                 if (!Node.prototype.hasOwnProperty('connect')) {
                     Object.defineProperty(Node.prototype, 'connect', {
                         value: function () {
+                            let observer;
+                            if (this instanceof Document && this.observer) {
+                                observer = (this.ownerDocument || this).observer;
+                            }
+                            observer && observer.connect();
                             delete this.disconnected
                         }
                     })
