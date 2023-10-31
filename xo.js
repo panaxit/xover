@@ -4383,7 +4383,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
             for (let el of return_value.select(`//xsl:template//@xo:use-attribute-sets`)) {
                 let attribute_sets = el.value.split(/\s+/g);
-                let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [return_value.createComment(`ack:importing-attribute-sets-stars`)]);
+                let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [return_value.createComment(`ack:importing-attribute-sets-begins`)]);
                 attributes = attributes.concat(return_value.createComment(`ack:importing-attribute-sets-end`))
                 el.parentNode.prepend(...attributes)
                 el.remove();
