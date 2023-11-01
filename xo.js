@@ -9546,6 +9546,11 @@ xover.modernize = async function (targetWindow) {
                             if (typeof value === 'function') {
                                 value = value.call(this, this);
                             }
+                            let old_value = this.value;
+                            let beforeset_event = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
+                            window.top.dispatchEvent(beforeset_event);
+                            if (beforeset_event.defaultPrevented) return;
+                            value = (beforeset_event.detail || {}).hasOwnProperty("returnValue") ? beforeset_event.detail.returnValue : value;
                             if (value instanceof Attr) {
                                 value = value.value
                             } else if (value && value.constructor === {}.constructor) {
@@ -9556,12 +9561,7 @@ xover.modernize = async function (targetWindow) {
                             let attribute_name = this.localName;
                             //let store = /*this.store || */this.ownerDocument.store;
                             //let source = store && store.source || null;
-                            let old_value = this.value;
                             let return_value;
-                            let beforeset_event = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
-                            window.top.dispatchEvent(beforeset_event);
-                            if (beforeset_event.defaultPrevented) return;
-                            value = (beforeset_event.detail || {}).hasOwnProperty("returnValue") ? beforeset_event.detail.returnValue : value;
                             if (value != null) {
                                 value = `${value}`
                             };
