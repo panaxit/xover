@@ -10653,16 +10653,15 @@ xover.modernize = async function (targetWindow) {
                                     let dependency_promises = dependencies.map(parent_tag => parent_tag != tag && xover.stores[parent_tag] || undefined).filter(store => store).map(store => store.render());
                                     await Promise.all(dependency_promises);
                                 }
-                                stylesheet_target = stylesheet_target instanceof HTMLElement && stylesheet_target || document.querySelector(stylesheet_target);
-                                let target = stylesheet_target;
+                                let target = stylesheet_target instanceof HTMLElement && stylesheet_target || document.querySelector(stylesheet_target);
+                                if (!(target && document.contains(target))) {
+                                    //console.log(`Couldn't render to ${stylesheet_target}${tag ? `(${tag})` : ''}`);
+                                    continue;
+                                }
                                 let active_element = document.activeElement;
                                 if (target.contains(active_element)) {
                                     await xover.delay(100);
                                     xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
-                                }
-                                if (!(target && document.contains(target))) {
-                                    //console.log(`Couldn't render to ${stylesheet_target}${tag ? `(${tag})` : ''}`);
-                                    continue;
                                 }
                                 stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`) || stylesheet_target;
 
