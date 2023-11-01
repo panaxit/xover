@@ -10654,7 +10654,8 @@ xover.modernize = async function (targetWindow) {
                                     await Promise.all(dependency_promises);
                                 }
                                 let target = stylesheet_target instanceof HTMLElement && stylesheet_target || document.querySelector(stylesheet_target);
-                                if (!(target && document.contains(target))) {
+                                target = tag && target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`) || target;
+                                if (!(target instanceof Node && document.contains(target))) {
                                     //console.log(`Couldn't render to ${stylesheet_target}${tag ? `(${tag})` : ''}`);
                                     continue;
                                 }
@@ -10663,7 +10664,6 @@ xover.modernize = async function (targetWindow) {
                                     await xover.delay(100);
                                     xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
                                 }
-                                stylesheet_target = tag && stylesheet_target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && stylesheet_target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`) || stylesheet_target;
 
                                 let data = this.cloneNode(true);
                                 if (!data.firstElementChild) {
