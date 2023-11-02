@@ -858,6 +858,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         //context.eventHistory = context.eventHistory || new Map();
         let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
+            if (event.propagationStopped) break;
             //if (context.eventHistory.get(handler)) {
             //    console.warn(`Event ${event.type} recursed`)
             //}
@@ -884,7 +885,6 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             if (event.srcEvent && event.cancelBubble) {
                 event.srcEvent.stopPropagation();
             }
-            if (event.propagationStopped) break;
             //context.eventHistory.delete(handler);
         }
     },
