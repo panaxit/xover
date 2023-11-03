@@ -1582,10 +1582,29 @@ Object.defineProperty(xover.site, 'reference', {
     , enumerable: true
 });
 
+Object.defineProperty(xover.site, 'location', {
+    get() {
+        return { location: { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) } }
+    }
+    , enumerable: true
+});
+
 Object.defineProperty(xover.site, 'history', {
     get() { return (history.state['history'] || []) }
     , set() { throw `State "history" is readonly` }
     , enumerable: true
+});
+
+Object.defineProperty(xover.site, 'navigate', {
+    value: function (url, options = {}) {
+        if (!(url instanceof xover.URL)) {
+            url = new xover.URL(url)
+        }
+        let hashtag = url.hash;
+        xo.site.next = hashtag;
+        xo.site.seed = hashtag;
+        event && event.preventDefault()
+    }, writable: false, configurable: false, enumerable: false
 });
 
 Object.defineProperty(xover.site, 'hash', {
@@ -1604,7 +1623,7 @@ class SearchParams {
     }
 
     set(param, value, action = 'push') {
-        let current_state = Object.assign({}, history.state, { active: history.state.active, prev: { searchParams: Object.fromEntries([...this.params.entries()]), location: { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) } } });
+        let current_state = Object.assign({}, history.state, { active: history.state.active, prev: { searchParams: Object.fromEntries([...this.params.entries()]) } });
         if (value === null) {
             this.params.delete(param);
         } else {
@@ -7244,7 +7263,7 @@ xover.modernize = async function (targetWindow) {
 
             if (typeof (Name) == 'undefined') Name = function (node = this) { return node instanceof Element ? (node.getAttributeNode("Name") || node.getAttributeNode("name")) : node.nodeName }
 
-            if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + y }
+            if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + +y }
 
             if (typeof (Find) == 'undefined') Find = function (selector, target = document) { return selector ? target.querySelector(selector) : target.contains(this) && this }
 
@@ -9741,23 +9760,30 @@ xover.modernize = async function (targetWindow) {
                     return this;
                 }
 
-                Text.prototype.reactive = function (value) {
+                if (!Text.prototype.hasOwnProperty('get')) {
+                    Text.prototype.reactive = function (value) { }
                 }
 
-                Text.prototype.set = function (value) {
-                    value = typeof value === 'function' && value(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
-                    let new_value = this.ownerDocument.createTextNode(value);
-                    if (this.reactive) {
-                        let old_value = this.textContent;
-                        let before_set = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
-                        window.top.dispatchEvent(before_set);
-                        if (before_set.defaultPrevented || event.cancelBubble) return;
-                        if (old_value == new_value) return;
-                        let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
-                        window.top.dispatchEvent(before);
+                if (!Text.prototype.hasOwnProperty('get')) {
+                    Text.prototype.get = function (key) {}
+                }
+
+                if (!Text.prototype.hasOwnProperty('set')) {
+                    Text.prototype.set = function (value) {
+                        value = typeof value === 'function' && value(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
+                        let new_value = this.ownerDocument.createTextNode(value);
+                        if (this.reactive) {
+                            let old_value = this.textContent;
+                            let before_set = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
+                            window.top.dispatchEvent(before_set);
+                            if (before_set.defaultPrevented || event.cancelBubble) return;
+                            if (old_value == new_value) return;
+                            let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
+                            window.top.dispatchEvent(before);
+                        }
+                        this.textContent = new_value;
+                        return this;
                     }
-                    this.textContent = new_value;
-                    return this;
                 }
 
                 if (!Attr.prototype.hasOwnProperty('parentNode')) {
