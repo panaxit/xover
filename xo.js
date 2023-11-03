@@ -4321,7 +4321,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
                 } else if (el.selectSingleNode('self::html:textarea')) {
-                    el.insertFirst(debug_node)
+                    el.prepend(debug_node)
                 } else {
                     el.appendBefore(debug_node)
                 }
@@ -4340,11 +4340,11 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
 
             for (let el of return_value.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
-                el.insertFirst(xover.xml.createNode(`<xsl:param name="xo:context" select="."/>`));
+                el.prepend(xover.xml.createNode(`<xsl:param name="xo:context" select="."/>`));
             }
 
             for (let el of return_value.select(`//xsl:template[xsl:param/@name="xo:context"]//xsl:apply-templates[not(xsl:with-param/@name="xo:context")]|//xsl:template[xsl:param/@name="xo:context"]//xsl:call-template[not(xsl:with-param/@name="xo:context")]`)) {
-                el.insertFirst(xover.xml.createNode(`<xsl:with-param name="xo:context" select="$xo:context"/>`));
+                el.prepend(xover.xml.createNode(`<xsl:with-param name="xo:context" select="$xo:context"/>`));
             }
 
             for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
@@ -4352,8 +4352,8 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
 
             for (let el of return_value.select(`//xsl:template[not(@match="/")]//xsl:element`)) {
-                el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
-                el.insertFirst(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
+                el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
+                el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
             }
         }
         if (location.host == url.host) {
