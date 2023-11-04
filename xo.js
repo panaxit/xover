@@ -9190,7 +9190,7 @@ xover.modernize = async function (targetWindow) {
                             if (reconnect) {
                                 xover.delay(reconnect).then(async () => {
                                     this.connect();
-                                    observer.connect();
+                                    observer && observer.connect();
                                 });
                             }
                         }
@@ -10224,7 +10224,6 @@ xover.modernize = async function (targetWindow) {
                                 throw (new Error("XSL document is empty or invalid"));
                             }
                             if (!xml.selectSingleNode("self::*|*|comment()") && xml.createComment) {
-                                xml = xml.cloneNode(true);
                                 xml.appendChild(xml.createComment("empty"))
                             }
 
@@ -10335,9 +10334,10 @@ xover.modernize = async function (targetWindow) {
                                     ////}
                                     let tag = xml.tag || `#${xsl.href || ""}`;
                                     xml.tag = tag;
-                                    let listeners = xover.listener.matches(xml, 'beforeTransform')
-                                    window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: listeners, document: xml, store: xml.store, stylesheet: xsl }, this));
-                                    xml = this.cloneNode(true);
+                                    let before_listeners = xover.listener.matches(xml, 'beforeTransform')
+                                    let after_listeners = xover.listener.matches(xml, 'transform')
+                                    xml.disconnect();
+                                    window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                     let timer_id = `${xsl.href || "Transform"}-${Date.now()}`;
                                     performance.mark(`${timer_id} - Transform start`);
                                     if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
@@ -10362,7 +10362,6 @@ xover.modernize = async function (targetWindow) {
                                         xml.appendChild(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
                                         return Promise.reject(xml.transform("empty.xslt"));
                                     }
-                                    if (result) result.tag = tag;
                                     if ((xover.session.debug || {})["transform"] || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                         console.timeEnd(timer_id);
                                     }
@@ -10416,7 +10415,7 @@ xover.modernize = async function (targetWindow) {
                             }
                             try {
                                 //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                                window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, tag: result.tag, result, transformed: result }, result));
+                                window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, tag: tag, result, transformed: result, listeners: after_listeners }, result));
                                 //}
                             } catch (e) { }
                             return result
