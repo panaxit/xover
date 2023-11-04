@@ -4482,6 +4482,19 @@ xover.xml.createNode = function (xml_string, options) {
     return result;
 }
 
+xover.xml.encodeValue = function (value) {
+    try {
+        value = eval(`(${value})`)
+    } catch (e) {
+        value = value;
+    }
+    return typeof (value) == 'string' ? `'${value}'` : value
+}
+
+xover.xml.parseValue = function (value) {
+    return eval(`(${value})`)
+}
+
 xover.xml.combine = function (target, new_node) {
     let swap = document.firstElementChild.cloneNode().classList;
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
@@ -8777,7 +8790,7 @@ xover.modernize = async function (targetWindow) {
                         let store = section && section.document;
                         if (!store) {
                             this.scopeNode = null;
-                            return this.scopeNode;
+                            return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                         } else {
                             //let ref = this.parentElement && this.closest && this || this.parentNode || this
                             let ref = this instanceof Element ? this : this.parentNode;
@@ -8786,7 +8799,7 @@ xover.modernize = async function (targetWindow) {
                             let attribute = ref.closest("[xo-slot]");
                             if (!dom_scope) {
                                 this.scopeNode = null;
-                                return this.scopeNode;
+                                return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                             } else if (dom_scope.contains(attribute)) {
                                 attribute = attribute.getAttribute("xo-slot");
                             } else {
@@ -8797,19 +8810,19 @@ xover.modernize = async function (targetWindow) {
                                 if (attribute === 'text()') {
                                     let textNode = [...node.childNodes].filter(el => el instanceof Text).pop() || node.createTextNode(null);
                                     this.scopeNode = textNode;
-                                    return this.scopeNode;
+                                    return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 }
                                 else {
                                     let attribute_node;
                                     attribute_node = node.getAttributeNode(attribute);
                                     attribute_node = attribute_node || node.createAttribute(attribute, null);
                                     this.scopeNode = attribute_node;
-                                    return this.scopeNode;
+                                    return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 }
                             }
                             //Implementar para Text $0.select('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.selectFirst('self::xo:r')).pop().getAttributeNode($0.scope.value)
                             this.scopeNode = node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
-                            return this.scopeNode;
+                            return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                         }
                     }
                 }
@@ -9765,7 +9778,7 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 if (!Text.prototype.hasOwnProperty('get')) {
-                    Text.prototype.get = function (key) {}
+                    Text.prototype.get = function (key) { }
                 }
 
                 if (!Text.prototype.hasOwnProperty('set')) {
