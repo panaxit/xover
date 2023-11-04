@@ -8782,7 +8782,7 @@ xover.modernize = async function (targetWindow) {
                 let original_HTMLTableCellElement = Object.getOwnPropertyDescriptor(HTMLTableCellElement.prototype, 'scope')
                 let scope_handler = { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
                     get: function () {
-                        if (this.scopeNode instanceof Node && this.scopeNode.parentNode && this.scopeNode.name == this.closest('*').getAttribute("xo-slot")) return this.scopeNode;
+                        //if (this.scopeNode instanceof Node && this.scopeNode.parentNode && this.scopeNode.name == this.closest('*').getAttribute("xo-slot")) return this.scopeNode;
                         if (this.ownerDocument instanceof XMLDocument) return null;
                         let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                         let self = this;
