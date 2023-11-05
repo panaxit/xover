@@ -4310,9 +4310,9 @@ xover.fetch.xml = async function (url, ...args) {
             return_value = xover.xml.fromJSON(return_value.body);
         }
         if (return_value instanceof Document && xover.session.debug) {
-            for (let el of return_value.select(`//xsl:template[not(contains(@mode,'-attribute') or contains(@mode,':attribute'))]/*[not(self::xsl:param or self::xsl:text or self::xsl:value-of or self::xsl:choose or self::xsl:if or self::xsl:attribute or self::xsl:variable or ancestor::xsl:element or self::xsl:copy or following-sibling::xsl:apply-templates[contains(@mode,'-attribute') or contains(@mode,':attribute')])]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
+            for (let el of return_value.select(`//xsl:template/*[not(self::xsl:*) or self::xsl:attribute[not(preceding-sibling::xsl:attribute)] or self::xsl:comment[not(preceding-sibling::xsl:comment)]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
                 let ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
-                let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="debug:template">${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")} </xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
+                let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
 file="${new xover.URL(url).href}"
 >${ancestor.localName == 'template' ? '' : `
@@ -10011,24 +10011,24 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Node.prototype.appendAfter = function (new_node) {
-                    this.parentNode.insertBefore((new_node.documentElement || new_node), this.nextElementSibling);
+                    return this.parentNode.insertBefore((new_node.documentElement || new_node), this.nextElementSibling);
                 }
 
                 Node.prototype.appendBefore = function (new_node) {
-                    this.parentNode.insertBefore((new_node.documentElement || new_node), this);
+                    return this.parentNode.insertBefore((new_node.documentElement || new_node), this);
                 }
 
                 Node.prototype.insertFirst = function (new_node) {
-                    let e = this;
-                    e.insertBefore((new_node.documentElement || new_node), e.firstChild);
+                    let node = this;
+                    return node.insertBefore((new_node.documentElement || new_node), node.firstChild);
                 }
 
-                Node.prototype.insertAfter = function (i, p) {
-                    let e = this;
-                    if (e && e.nextElementSibling) {
-                        e.parentNode.insertBefore(i, e.nextElementSibling);
+                Node.prototype.insertAfter = function (new_node, reference_node) {
+                    let node = this;
+                    if (node && node.nextElementSibling) {
+                        return node.parentNode.insertBefore(new_node, node.nextElementSibling);
                     } else {
-                        (p || (e || {}).parentNode).appendChild(i);
+                        return (reference_node || (node || {}).parentNode).appendChild(new_node);
                     }
                 }
 
@@ -10386,8 +10386,21 @@ xover.modernize = async function (targetWindow) {
                                     } else if (!xml.documentElement) {
                                         return xml;
                                     } else {
-                                        throw (new Error(xover.messages.transform_exception || "There must be a problem with the transformation file. A misplaced attribute, maybe?")); //Podría ser un atributo generado en un lugar prohibido. Se puede enviar al servidor y aplicar ahí la transformación //TODO: Hacer una transformación del XSLT para identificar los problemas comúnes.
-                                        result = xml;
+                                        if (xsl.documentElement.selectFirst(`//xsl:template/xsl:attribute[@name="xo-debug"]|//xsl:template//xsl:comment`)) {
+                                            let cleanedup_xsl = xsl.cloneNode(true);
+                                            let removed = cleanedup_xsl.documentElement.selectFirst(`//xsl:template/xsl:attribute[@name="xo-debug"]|//xsl:template//xsl:comment`)
+                                            let template = removed.parentNode.cloneNode(true);
+                                            removed.remove();
+                                            result = xml.transform(cleanedup_xsl)
+                                            if (cleanedup_xsl.documentElement.selectFirst(`//xsl:template/xsl:attribute[@name="xo-debug"][1]`)) {
+                                                debugger
+                                            }
+                                            return result;
+                                        } else {
+                                            debugger
+                                            throw (new Error(xover.messages.transform_exception || "There must be a problem with the transformation file. A misplaced attribute, maybe?")); //Podría ser un atributo generado en un lugar prohibido. Se puede enviar al servidor y aplicar ahí la transformación //TODO: Hacer una transformación del XSLT para identificar los problemas comúnes.
+                                            result = new Text();
+                                        }
                                     }
                                 }
                                 else if (typeof (result.selectSingleNode) == "undefined" && result.documentElement) {
