@@ -4724,12 +4724,13 @@ xover.dom.combine = async function (target, documentElement) {
             }
             if (selector && active_element !== document.activeElement) {
                 active_element = (document.querySelector(selector) || document.createElement("p"));
-                active_element.focus();
                 if (current_value) {
                     active_element.value = current_value;
                 }
                 if (selection) {
                     xover.dom.setCaretPosition(active_element, selection);
+                } else {
+                    active_element.focus();
                 }
             }
             //!(active_element.cloneNode().isEqualNode(document.activeElement.cloneNode())) && new_node.focus();
@@ -7764,34 +7765,34 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 }
                                 for (let el of [...mutation.addedNodes]) {
-                                    xover.delay(5).then(() =>
+                                    //xover.delay(5).then(() =>
                                         window.top.dispatchEvent(new xover.listener.Event('append', { target }, el))
-                                    )
+                                    //)
                                     el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.seed());
                                 };
                                 if (mutation.addedNodes.length) {
-                                    xover.delay(5).then(() =>
+                                    //xover.delay(5).then(() =>
                                         window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target))
-                                    );
+                                    //);
                                     if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
                                         target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                                     }
                                 }
                                 if (mutation.removedNodes.length) {
-                                    xover.delay(5).then(() =>
+                                    //xover.delay(5).then(() =>
                                         window.top.dispatchEvent(new xover.listener.Event('removeFrom', { removedNodes: mutation.removedNodes }, target))
-                                    )
+                                    //)
                                 }
                                 for (let [attribute, old_value] of [...mutation.attributes || []]) {
                                     window.top.dispatchEvent(new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute));
                                 }
-                                xover.delay(5).then(() =>
+                                //xover.delay(5).then(() =>
                                     window.top.dispatchEvent(new xover.listener.Event('change', { target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, target))
-                                );
+                                //);
                             }
-                            xover.delay(5).then(() =>
+                            //xover.delay(5).then(() =>
                                 window.top.dispatchEvent(new xover.listener.Event('change', {}, self))
-                            );
+                            //);
                             let sections = xover.site.sections.filter(el => el.store && el.store.document === self);
                             for (let section of sections) {
                                 section.render()
@@ -7859,11 +7860,12 @@ xover.modernize = async function (targetWindow) {
                 Node.prototype.selectFirst = Node.prototype.selectSingleNode;
                 HTMLTextAreaElement.prototype.select = Node.prototype.selectNodes;
 
-                var original_select = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'select');
+                HTMLInputElement.native = {};
+                HTMLInputElement.native.select = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'select');
                 Object.defineProperty(HTMLInputElement.prototype, 'select', {
                     value: function (...args) {
                         if (!args.length) {
-                            return original_select && original_select.value.apply(this, args);
+                            return HTMLInputElement.native.select && HTMLInputElement.native.select.value.apply(this, args);
                         } else {
                             return Node.prototype.select.apply(this, args)
                         }
@@ -7876,10 +7878,14 @@ xover.modernize = async function (targetWindow) {
                     return node;
                 }
 
-                HTMLElement.native.find = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'find');
-                Object.defineProperty(HTMLElement.prototype, 'find', {
-                    value: function (selector = '') {
+                Node.native.contains = Object.getOwnPropertyDescriptor(Node.prototype, 'contains');
+                Object.defineProperty(Node.prototype, 'contains', {
+                    value: function (...args) {
+                        let selector = args[0];
                         try {
+                            if (Node.native.contains && Node.native.contains.value && (!selector || selector instanceof Node)) {
+                                return Node.native.contains.value.apply(this, args);
+                            }
                             return this.matches(selector) && this || this.querySelector(selector)
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
