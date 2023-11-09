@@ -2011,6 +2011,10 @@ Object.defineProperty(xover.site, 'restore', {
 xover.xml = {};
 
 xover.xml.getDifferences = function (node1, node2) {
+    if (!node2) {
+        return [new Map([[node1, node2]])];
+    }
+    node2 = node2.cloneNode(true)
     node1.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     let static = document.firstElementChild.cloneNode().classList;
@@ -2018,6 +2022,12 @@ xover.xml.getDifferences = function (node1, node2) {
 
     if (node1 instanceof Element && static.contains("self::*")) {
         return null;
+    }
+    if (static.length) {
+        for (let attr of node1.attributes) {
+            if (!(static.contains("@*") || static.contains(`@${attr.name}`))) continue;
+            node2.setAttributeNode(attr.cloneNode(true));
+        }
     }
     if (node1 === top.document.activeElement) {
         return [new Map([[node1, node2]])];
@@ -4727,11 +4737,23 @@ xover.dom.combine = async function (target, documentElement) {
                 if (current_value) {
                     active_element.value = current_value;
                 }
+                let focus_attr = active_element.getAttributeNode("onfocus");
+                focus_attr && focus_attr.remove()
                 if (selection) {
                     xover.dom.setCaretPosition(active_element, selection);
                 } else {
                     active_element.focus();
                 }
+                setTimeout(() => {
+                    active_element.addEventListener('focus', function (event) {
+                        event.stopImmediatePropagation();
+                    }, { once: true });
+
+                    active_element.addEventListener('focusin', function (event) {
+                        event.stopImmediatePropagation();
+                    }, { once: true });
+                }, 0);
+                focus_attr && active_element.setAttributeNode(focus_attr)
             }
             //!(active_element.cloneNode().isEqualNode(document.activeElement.cloneNode())) && new_node.focus();
 
