@@ -2014,7 +2014,6 @@ xover.xml.getDifferences = function (node1, node2) {
     if (!node2) {
         return [new Map([[node1, node2]])];
     }
-    node2 = node2.cloneNode(true)
     node1.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     let static = document.firstElementChild.cloneNode().classList;
@@ -2023,7 +2022,7 @@ xover.xml.getDifferences = function (node1, node2) {
     if (node1 instanceof Element && static.contains("self::*")) {
         return null;
     }
-    if (static.length) {
+    if (static.length && node1.constructor === node2.constructor) {
         for (let attr of node1.attributes) {
             if (!(static.contains("@*") || static.contains(`@${attr.name}`))) continue;
             node2.setAttributeNode(attr.cloneNode(true));
