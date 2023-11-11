@@ -9073,7 +9073,11 @@ xover.modernize = async function (targetWindow) {
                 Object.defineProperty(Node.prototype, 'value',
                     {
                         get: function () {
-                            return this.textContent;
+                            let value = this.textContent;
+                            if (this instanceof Comment && value.indexOf("ack:") == 0) {
+                                value = ''
+                            }
+                            return value;
                         },
                         set: function (value) {
                             this.textContent = value;
