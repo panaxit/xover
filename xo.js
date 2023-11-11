@@ -875,7 +875,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             if (xover.listener.debug.matches.call(context, handler, xover.listener.debugger) && !xover.listener.debug.matches.call(context, handler, xover.listener.debuggerExceptions)) {
                 debugger;
             }
-            returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
+            returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event.srcEvent || event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event.srcEvent || event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
             if (returnValue !== undefined) {
                 //event.returnValue = returnValue; //deprecated
                 if (event.detail) {
@@ -920,19 +920,24 @@ Object.defineProperty(xover.listener, 'skipSelector', {
 });
 
 xover.listener.disabled = new Map();
+Object.defineProperty(xover.listener, 'turnOff', {
+    value: function (name_or_list) {
+        if (!name_or_list) name_or_list = '*';
+        name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
+        for (let name of name_or_list) {
+            xover.listener.disabled.set(name, true)
+        }
+    },
+    enumerable: false, configurable: false
+});
+
 Object.defineProperty(xover.listener, 'off', {
     get: function () {
         if (xover.listener.disabled.get('*')) return true;
         if (event) {
             return !!(xover.listener.disabled.get(event.type))
         } else {
-            return function (name_or_list) {
-                if (!name_or_list) name_or_list = '*';
-                name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
-                for (let name of name_or_list) {
-                    xover.listener.disabled.set(name, true)
-                }
-            }
+            return xover.listener.turnOff;
         }
     },
     enumerable: false, configurable: false
@@ -943,14 +948,14 @@ Object.defineProperty(xover.listener, 'on', {
         if (xover.init.status != 'initialized') {
             xover.init();
         }
+        if (!name_or_list) name_or_list = '*';
+        name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
         if (!handler) {
-            if (!name_or_list) name_or_list = '*';
             for (let name of name_or_list) {
                 xover.listener.disabled.delete(name)
             }
             return;
         }
-        name_or_list = name_or_list instanceof Array && name_or_list || [name_or_list];
         handler.selectors = handler.selectors || [];
         for (let event_name of name_or_list) {
             handler.selectors.push(event_name);
