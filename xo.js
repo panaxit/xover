@@ -634,12 +634,6 @@ xover.init.Observer = function (document = window.document) {
 
 xover.initializeElementListeners = function (document = window.document) {
     const event_handler = function (event, el) {
-        if (el !== document.activeElement) {
-            let value = el.getAttributeNode("value");
-            if (value && value != el.value) {
-                el.value = value
-            }
-        }
         window.top.dispatchEvent(new xover.listener.Event(event.type, { event: event }, el));
     };
     const observer = new MutationObserver((mutationsList, observer) => {
@@ -662,7 +656,7 @@ xover.initializeElementListeners = function (document = window.document) {
     }));
 
     document.querySelectorAll('input,textarea').forEach(el => {
-        for (let event_name of ['focus', 'blur']) {
+        for (let event_name of ['focus', 'focusin', 'blur']) {
             if (xo.listener.get(event_name)) {
                 el.removeEventListener(event_name, event_handler)
                 el.addEventListener(event_name, (event) => event_handler(event, el))
@@ -965,7 +959,7 @@ Object.defineProperty(xover.listener, 'on', {
             predicate = predicate.join("::");
             [base_event, scope] = scoped_event.split(/:/).reverse();
             window.top.removeEventListener(base_event, xover.listener.dispatcher);
-            window.top.addEventListener(base_event, xover.listener.dispatcher);
+            window.top.addEventListener(base_event, xover.listener.dispatcher, options);
 
             handler.scope = scope && eval(scope) || undefined;
             handler.conditions = conditions && new URLSearchParams("?" + conditions) || undefined;
@@ -977,7 +971,7 @@ Object.defineProperty(xover.listener, 'on', {
 
             if (predicate) {
                 window.top.removeEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
-                window.top.addEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
+                window.top.addEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher, options);
             }
         }
         handler.selectors = handler.selectors.distinct()
@@ -1011,6 +1005,13 @@ xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
         event.preventDefault();
     }
 })
+
+xover.listener.on('blur::*', async function () {
+    let value = this.getAttributeNode("value");
+    if (value && value != this.value) {
+        this.value = value
+    }
+}, true)
 
 xover.listener.on('keyup', async function (event) {
     if (event.keyCode == 27) {
