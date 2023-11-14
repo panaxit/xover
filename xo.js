@@ -9899,7 +9899,7 @@ xover.modernize = async function (targetWindow) {
                             window.top.dispatchEvent(beforeset_event);
                             if (beforeset_event.defaultPrevented) return;
                             value = (beforeset_event.detail || {}).hasOwnProperty("returnValue") ? beforeset_event.detail.returnValue : value;
-                            if (value instanceof Attr) {
+                            if (value instanceof Node) {
                                 value = value.value
                             } else if (value && value.constructor === {}.constructor) {
                                 value = JSON.stringify(value)
