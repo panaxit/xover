@@ -1006,10 +1006,10 @@ xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     }
 })
 
-xover.listener.on('blur::*', async function () {
-    let value = this.getAttributeNode("value");
-    if (value && value != this.value) {
-        this.value = value
+xover.listener.on('blur::[xo-scope]', async function () {
+    let value = this.scope.value;
+    if (value && value != this.getAttributeNode("value")) {
+        this.value = value || ''
     }
 }, true)
 
