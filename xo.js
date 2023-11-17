@@ -1006,12 +1006,12 @@ xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     }
 })
 
-xover.listener.on('blur::[xo-scope]', async function () {
-    let value = this.scope.value;
-    if (value && value != this.getAttributeNode("value")) {
-        this.value = value || ''
-    }
-}, true)
+//xover.listener.on('blur::[xo-scope]', async function () {
+//    let value = this.scope.value;
+//    if (value && value != this.getAttributeNode("value")) {
+//        this.value = value || ''
+//    }
+//}, true)
 
 xover.listener.on('keyup', async function (event) {
     if (event.keyCode == 27) {
