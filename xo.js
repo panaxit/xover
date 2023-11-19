@@ -9216,9 +9216,9 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                XMLDocument.prototype.normalizeNamespaces = function () {
+                Node.prototype.normalizeNamespaces = function () {
                     let normalized = xover.xml.normalizeNamespaces(this)
-                    this.replaceBy(normalized)
+                    this.replaceWith(normalized)
                     return this;
                 }
 
@@ -9697,8 +9697,10 @@ xover.modernize = async function (targetWindow) {
                     return attribute_node;
                 }
 
-                Element.prototype.get = Element.prototype.getAttributeNode;
-                Element.prototype.getNode = function () { alert("getNode method is deprecated") } //TODO: Deprecate this method
+                Element.prototype.get = function (...args) {
+                    let node = this.getAttributeNode.apply(this, args) || this.selectFirst.apply(this, args);
+                    return node;
+                }
 
                 Element.prototype.createTextNode = function (value = '') {
                     //let node = (value === null && this.cloneNode() || this)
