@@ -1006,12 +1006,12 @@ xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     }
 })
 
-//xover.listener.on('blur::[xo-scope]', async function () {
-//    let value = this.scope.value;
-//    if (value && value != this.getAttributeNode("value")) {
-//        this.value = value || ''
-//    }
-//}, true)
+xover.listener.on('blur::[xo-scope][type=search]', async function () {
+    let value = this.getAttributeNode("value");
+    if (this.value != value) {
+        this.value = value
+    }
+}, true)
 
 xover.listener.on('keyup', async function (event) {
     if (event.keyCode == 27) {
@@ -4094,7 +4094,7 @@ xover.Response.prototype = Object.create(Response.prototype);
 xover.QUERI = function (href) {
     function encodeValue(value) {
         if (!value) return value;
-        value = value.replace(/%/, '%25');
+        value = value.replace(/%/g, '%25');
         return value
     }
     class Predicate extends URLSearchParams {
@@ -7920,7 +7920,7 @@ xover.modernize = async function (targetWindow) {
                     //let store = this.ownerDocument.store;
                     let observer = (this.ownerDocument || this).observer;
                     if (this instanceof Attr && !this.ownerElement && this.parentNode instanceof Element) {
-                        observer && observer.disconnect();
+                        observer && observer.disconnect(0);
                         Element.native.setAttributeNode.call(this.parentNode, this);
                         remove = true;
                     }
@@ -7957,7 +7957,6 @@ xover.modernize = async function (targetWindow) {
                                 //console.log(xpath)
                             }
                             aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-                            //}
                         } else {
                             //if (xover.session.debug) console.warn(e);
                             aItems = {};
@@ -7991,6 +7990,9 @@ xover.modernize = async function (targetWindow) {
                             }
                             return true;
                         } catch (e) {
+                            if (e instanceof Response && e.status == 499) {
+                                e = ''
+                            }
                             return Promise.reject(e)
                         }
                     }
@@ -8099,7 +8101,7 @@ xover.modernize = async function (targetWindow) {
                                 };
 
                                 for (let [attribute, old_value] of [...mutation.attributes || []]) {
-                                    let node_event = new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value }, attribute);
+                                    let node_event = new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value, ed: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, attribute);
                                     window.top.dispatchEvent(node_event);
                                     if (node_event.defaultPrevented) mutation.attributes.delete(attribute);
                                 }
@@ -8373,7 +8375,7 @@ xover.modernize = async function (targetWindow) {
                                 let observer = (this.ownerDocument || this).observer;
 
                                 if (!this.ownerElement) {
-                                    observer && observer.disconnect();
+                                    observer && observer.disconnect(0);
                                     Element.native.setAttributeNode.call(this.parentNode, this);
                                     remove = true;
                                 }
@@ -11370,8 +11372,8 @@ xover.listener.on('ErrorEvent', function () {
     event.preventDefault();
 })
 
-xover.listener.on('Response:failure?status=499', async function ({ statusText }) {
-    return Promise.reject('')
+xover.listener.on('Response:failure?status=499', function ({ statusText }) {
+    event.preventDefault()
 })
 
 xover.listener.on(['unhandledrejection', 'error'], async (event) => {
