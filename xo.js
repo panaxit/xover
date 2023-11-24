@@ -611,16 +611,14 @@ xover.init.Observer = function (document = window.document) {
                     observer_node.observer.observe(observer_node, observer_config);
                 }
             }
-            for (let node of [...mutation.addedNodes].filter(node => node instanceof Element)) {
+            for (let node of [...mutation.addedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {
                 const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersection"]');
                 elementsToObserve.forEach(element => {
                     intersection_observer.observe(element);
                 });
-                dependants = [...node.querySelectorAll('[xo-source],[xo-stylesheet]')];
-                if (!node.context && node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
-                dependants.forEach(el => el.render());
-                //} else if (node instanceof Text) {
-                //    console.log(node)
+                //dependants = [...node.querySelectorAll('[xo-source],[xo-stylesheet]')];
+                //if (!node.context && node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
+                //dependants.forEach(el => el.render());
             }
         }
     });
@@ -5063,15 +5061,14 @@ xover.dom.combine = async function (target, documentElement) {
 
     _applyScripts(document, scripts);
     xover.initializeElementListeners(target);
+    dependants = [...target.querySelectorAll('[xo-source],[xo-stylesheet]')];
+    dependants.forEach(el => el.render());
     return target;
 
     ///*TODO: Mover este código a algún script diferido*/
     //target.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (tooltipTriggerEl) {
     //    return new bootstrap.Tooltip(tooltipTriggerEl)
     //})
-    //dependants = [...target.querySelectorAll('[xo-source],[xo-stylesheet]')];
-    ////window.top.dispatchEvent(new xover.listener.Event('render', { store: store, stylesheet: stylesheet, target: target }, store));
-    //dependants.forEach(el => el.render());
 }
 
 xover.xml.createElement = function (tagName) {
@@ -8200,7 +8197,28 @@ xover.modernize = async function (targetWindow) {
                             if (Node.native.contains && Node.native.contains.value && (!selector || selector instanceof Node)) {
                                 return Node.native.contains.value.apply(this, args);
                             }
-                            return this.matches(selector) && this || this.querySelector(selector)
+                            return this.matches(selector) || !!this.querySelector(selector) || null
+                        } catch (e) {
+                            if (e.message.indexOf('not a valid selector') != -1) {
+                                try {
+                                    return !!this.selectFirst(`.//${selector}`)
+                                } catch (e) {
+                                    return null;
+                                }
+                            }
+                        }
+                    }
+                })
+
+                Node.native.find = Object.getOwnPropertyDescriptor(Node.prototype, 'find');
+                Object.defineProperty(Node.prototype, 'find', {
+                    value: function (...args) {
+                        let selector = args[0];
+                        try {
+                            if (Node.native.find && Node.native.find.value) {
+                                return Node.native.find.value.apply(this, args);
+                            }
+                            return this.matches(selector) && this || this.querySelector(selector) || null
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 try {
@@ -8213,16 +8231,19 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                Document.native = {};
-                Document.native.find = Object.getOwnPropertyDescriptor(Document.prototype, 'find');
-                Object.defineProperty(Document.prototype, 'find', {
-                    value: function (selector) {
+                Node.native.findAll = Object.getOwnPropertyDescriptor(Node.prototype, 'findAll');
+                Object.defineProperty(Node.prototype, 'findAll', {
+                    value: function (...args) {
+                        let selector = args[0];
                         try {
-                            return this.querySelector(selector)
+                            if (Node.native.findAll && Node.native.findAll.value) {
+                                return Node.native.findAll.value.apply(this, args);
+                            }
+                            return new NodeSet(...(this.matches(selector) && [this] || [])).concat(...this.querySelectorAll(selector)) || []
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 try {
-                                    return this.selectFirst(`//${selector}`)
+                                    return new NodeSet(...(this.matches(selector) && [this] || [])).concat(this.selectAll(`.//${selector}`))
                                 } catch (e) {
                                     return null;
                                 }
