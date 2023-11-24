@@ -9899,10 +9899,11 @@ xover.modernize = async function (targetWindow) {
                                 value = value.call(this, this);
                             }
                             let old_value = this.value;
-                            let beforeset_event = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
-                            window.top.dispatchEvent(beforeset_event);
-                            if (beforeset_event.defaultPrevented) return;
-                            value = (beforeset_event.detail || {}).hasOwnProperty("returnValue") ? beforeset_event.detail.returnValue : value;
+                            let set_event = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
+                            window.top.dispatchEvent(set_event);
+                            if (set_event.defaultPrevented) return;
+                            value = (set_event.detail || {}).hasOwnProperty("returnValue") ? set_event.detail.returnValue : value;
+
                             if (value instanceof Node) {
                                 value = value.value
                             } else if (value && value.constructor === {}.constructor) {
@@ -9937,7 +9938,6 @@ xover.modernize = async function (targetWindow) {
                                 this.nil = false;
                                 Attr.native.value.set.call(this, value);
                             }
-                            window.top.dispatchEvent(new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value }, this));
                             if (old_value !== value) {
                                 if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
                                     //window.top.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }, this));
@@ -10108,7 +10108,7 @@ xover.modernize = async function (targetWindow) {
                         let new_value = this.ownerDocument.createTextNode(value);
                         if (this.reactive) {
                             let old_value = this.textContent;
-                            let before_set = new xover.listener.Event('beforeSet', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
+                            let before_set = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
                             window.top.dispatchEvent(before_set);
                             if (before_set.defaultPrevented || event.cancelBubble) return;
                             if (old_value == new_value) return;
