@@ -239,6 +239,7 @@ xover.custom = {};
 xover.data = {};
 xover.stores = new Proxy({}, {
     get: function (self, key) {
+        key = key || "#";
         if (key in self) {
             return self[key];
         } else if (key[0] == '$') {
@@ -285,7 +286,7 @@ xover.stores = new Proxy({}, {
         }
         return exists && !(key in self)
     }, has: function (self, key) {
-        return key in self || key.toLowerCase() in self || key in xover.sources || key in (xover.manifest.server || {});
+        return key != '#' && (key in self || key.toLowerCase() in self || key in xover.sources) || key in (xover.manifest.server || {});
     }
 });
 
@@ -999,7 +1000,7 @@ xover.listener.on('pushstate', function ({ state }) {
 
 xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     new_hash = (new_hash || window.location.hash);
-    if (new_hash === '#' || document.getElementById(new_hash.substr(1)) || !(new_hash in xover.sources)) {
+    if (new_hash !== '#' && (document.getElementById(new_hash.substr(1)) || (new_hash in xover.stores))) {
         event.preventDefault();
     }
 })
@@ -1919,14 +1920,14 @@ Object.defineProperty(xover.site, 'active', {
             return (history.state || {}).active || this.seed;
         }
     },
-    set: function (input) {
-        input = input || "#";
-        xover.state.active = input;//Revisar si no lo tiene que guardar, porque en el caso del login, sobreescribiría el estado y lo perderíamos. Este truco se va a tener que hacer directo con history.state.active
+    set: function (tag) {
+        tag = tag || "#";
+        xover.state.active = tag;//Revisar si no lo tiene que guardar, porque en el caso del login, sobreescribiría el estado y lo perderíamos. Este truco se va a tener que hacer directo con history.state.active
         let active = this.active;
         let store = xover.stores[active];
         if (!store) {
-            let source = xover.sources[active];
-            store = new xover.Store(source, { tag: source.tag });
+            let document = xover.sources[active];
+            store = new xover.Store(document);
         }
         if (store) {
             this.hash = store.hash;
@@ -2478,6 +2479,7 @@ xover.Source = function (tag) {
 
 xover.sources = new Proxy(new Map(), {
     get: function (self, key) {
+        key = key || "#";
         if (typeof self[key] === 'function') {
             let fn = self[key].bind(self);
             return key !== 'get' ? fn : function (...args) {
@@ -3611,16 +3613,16 @@ Object.defineProperty(xover.sources, 'xover/databind.xslt', {
     }
 })
 
-Object.defineProperty(xover.stores, '#', {
-    get: function () {
-        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] })); //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
-    }
-});
+//Object.defineProperty(xover.stores, '#', {
+//    get: function () {
+//        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] })); //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
+//    }
+//});
 
 Object.defineProperty(xover.stores, 'active', {
     get: function () {
         let store = xover.stores[xover.site.active] || xover.stores["#"];// || xover.Store(`<?xml-stylesheet type="text/xsl" href="message.xslt" role="modal" target="body" action="append"?><xo:message xmlns:xo="http://panax.io/xover" xo:id="xhr_message_${Math.random()}"/>`);
-        store = store || new xover.Store(xover.xml.createDocument());
+        //store = store || new xover.Store(xover.xml.createDocument());
         return store;
     }
     , set: async function (input) {
@@ -4778,6 +4780,15 @@ xover.xml.staticMerge = function (node1, node2) {
 }
 
 xover.xml.combine = function (target, new_node) {
+    if (new_node instanceof Element && new_node.namespaceURI == 'http://panax.io/xson') {
+        for (let slot of target.querySelectorAll("slot")) {
+            let name = slot.name;
+            let new_content = new_node.get(name);
+            if (!(name && new_content)) continue
+            slot.replaceChildren(...[new_content.value].flat())
+        }
+        return target;
+    }
     let swap = document.firstElementChild.cloneNode().classList;
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
     let static = document.firstElementChild.cloneNode().classList;
@@ -4810,7 +4821,10 @@ xover.xml.combine = function (target, new_node) {
         //active_element && xo.delay(100).then(() => active_element.focus());
         return target
     } else {
-        if (target.matches("[xo-source],[xo-stylesheet]")) {
+        if (new_node instanceof Comment && new_node.data == 'ack:empty' && target.classList instanceof DOMTokenList) {
+            target.classList.add("no-source")
+            return target
+        } if (target.matches("[xo-source],[xo-stylesheet]")) {
             target.replaceChildren(new_node)
             return target
         } else {
@@ -4820,15 +4834,15 @@ xover.xml.combine = function (target, new_node) {
     }
 }
 
-xover.dom.combine = async function (target, documentElement) {
+xover.dom.combine = async function (target, new_node) {
     let scripts;
     let script_wrapper = window.document.firstElementChild.cloneNode();
-    script_wrapper.append(...documentElement.selectNodes('.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
+    script_wrapper.append(...new_node.selectNodes('.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
 
-    //documentElement.setAttributeNS(null, "xo-scope", documentElement.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
-    //if (documentElement.hasAttribute("id") && documentElement.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-source])`)) {
+    //documentElement.setAttributeNS(null, "xo-scope", new_node.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
+    //if (new_node.hasAttribute("id") && new_node.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-source])`)) {
     //    action = 'replace';
-    //} else if (target.constructor == documentElement.constructor && target.getAttribute("xo-source") == documentElement.getAttribute("xo-source") && target.getAttribute("xo-stylesheet") == documentElement.getAttribute("xo-stylesheet")) {
+    //} else if (target.constructor == new_node.constructor && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) {
     //    action = 'replace';
     //} else if (!action && xsl && target.matches(`[xo-source="${tag}"]:not([xo-stylesheet])`)) {
     //    action = 'append';
@@ -4839,12 +4853,12 @@ xover.dom.combine = async function (target, documentElement) {
     //}
 
     //if (action === 'replace') {
-    //    if (target.constructor !== documentElement.constructor) {
-    //        let new_node = documentElement.cloneNode();
+    //    if (target.constructor !== new_node.constructor) {
+    //        let new_node = new_node.cloneNode();
     //        target = target.replaceWith(new_node);
     //    } else {
-    //        target.attributes.toArray().filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !documentElement.hasAttribute(attr.name)).forEach(attr => documentElement.setAttribute(attr.name, attr.value));
-    //        //target.classList.forEach(class_name => documentElement.classList.add(class_name));
+    //        target.attributes.toArray().filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !new_node.hasAttribute(attr.name)).forEach(attr => new_node.setAttribute(attr.name, attr.value));
+    //        //target.classList.forEach(class_name => new_node.classList.add(class_name));
     //    }
     //}
 
@@ -4923,10 +4937,10 @@ xover.dom.combine = async function (target, documentElement) {
     }
     _applyScripts(document, [...script_wrapper.children]);
     target.disconnected = false;
-    let post_render_scripts = documentElement.selectNodes('//*[self::html:script][@src]');
+    let post_render_scripts = new_node.selectNodes('//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
-    scripts = documentElement.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
+    scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
         let cloned = el.cloneNode(true);
         el.textContent = ''
         Object.defineProperty(cloned, 'parentNode', {
@@ -4934,28 +4948,28 @@ xover.dom.combine = async function (target, documentElement) {
         });
         return cloned;
     });
-    xover.xml.staticMerge(target, documentElement);
-    let changes = xover.xml.getDifferences(target, documentElement);
+    xover.xml.staticMerge(target, new_node);
+    let changes = xover.xml.getDifferences(target, new_node);
     if (!changes) return target;
-    let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: documentElement.cloneNode(true), element: documentElement, changes }, documentElement);
+    let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node, changes }, new_node);
     window.top.dispatchEvent(before_dom);
     if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
-    if (documentElement && (documentElement.tagName || '').toLowerCase() == "html") {
+    if (new_node && (new_node.tagName || '').toLowerCase() == "html") {
         //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
         xover.dom.setEncryption(dom, 'UTF-7');
-        documentElement.select('//text()[.="�"]').remove();
+        new_node.select('//text()[.="�"]').remove();
         let iframe;
         if (document.activeElement.tagName.toLowerCase() == 'iframe') {
             iframe = document.activeElement;
             target = (document.activeElement || {}).contentDocument.querySelector('main,table,div,span');
-            target.parentElement.replaceChild(documentElement.querySelector(target.tagName.toLowerCase()), target);
+            target.parentElement.replaceChild(new_node.querySelector(target.tagName.toLowerCase()), target);
         } else {
             target.replaceChildren();
             if (target.tagName.toLowerCase() == "iframe") {
                 iframe = target;
             } else {
                 iframe = document.createElement('iframe');
-                documentElement.select(`.//@src|.//@href`).forEach(attr => attr.value = xover.URL(attr.value).toString());
+                new_node.select(`.//@src|.//@href`).forEach(attr => attr.value = xover.URL(attr.value).toString());
                 //iframe.width = "100%"
                 //iframe.height = "1000"
                 iframe.setAttributeNS(null, "xo-source", tag);
@@ -4967,8 +4981,8 @@ xover.dom.combine = async function (target, documentElement) {
                 //iframe.addEventListener('change', xover.listeners.dom.onchange);
             }
             let url = xover.dom.getGeneratedPageURL({
-                html: xover.string.htmlDecode(documentElement.toString()),
-                css: (documentElement.querySelector('style') || {}).innerHTML,
+                html: xover.string.htmlDecode(new_node.toString()),
+                css: (new_node.querySelector('style') || {}).innerHTML,
                 js: `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; let iframe=parent.document.querySelector('iframe'); iframe.height=document.querySelector('body').scrollHeight+10; iframe.width=document.querySelector('body').scrollWidth+10; xover.modernize(iframe.contentWindow); document.querySelector('body').setAttributeNS(null, "xo-source", '${tag}');` //+ js//((dom.querySelector('script') || {}).innerHTML || "")
                 //window.top.document.querySelector('body').setAttributeNS(null, "xo-source", window.top.location.hash)
             });
@@ -5032,8 +5046,8 @@ xover.dom.combine = async function (target, documentElement) {
         //if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 
         xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
-        if (documentElement.selectNodes) {
-            _applyScripts(document, documentElement.selectNodes('.//*[self::html:script][text()]'));
+        if (new_node.selectNodes) {
+            _applyScripts(document, new_node.selectNodes('.//*[self::html:script][text()]'));
         }
     }
 
@@ -5399,7 +5413,7 @@ xover.Store = function (xml, ...args) {
     }
     let _undo = [];
     let _redo = [];
-    let config = args[0] && args[0].constructor === {}.constructor && args[0];
+    let config = args[0] && args[0].constructor === {}.constructor && args[0] || {};
     let _tag;
     let _hash = config && config['hash'] || undefined;
     let _initiator = config && config["initiator"] || undefined;
@@ -6164,7 +6178,8 @@ xover.Store = function (xml, ...args) {
 
     }
     this.document = __document;
-    _tag = config && config['tag'] || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
+    let source = __document.source;
+    _tag = config['tag'] || source && source.tag || this.generateTag.call(this, __document) || xover.cryptography.generateUUID();
     _tag = _tag.split(/\?/)[0];
     //this.seed();
     xover.manifest.getSettings(this, 'stylesheets').flat().forEach(stylesheet => store.addStylesheet(stylesheet, false));
@@ -7982,6 +7997,7 @@ xover.modernize = async function (targetWindow) {
                         try {
                             if (!this.childNodes.length) {
                                 if (this.source) {
+                                    this.observe();
                                     await this.fetch();
                                 }
                             }
@@ -8104,7 +8120,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                             }
                             if (![...mutated_targets].some(([target, mutation]) => [...mutation.attributes || []].length || mutation.addedNodes.length || mutation.removedNodes.length)) return;
-                            let sections = xover.site.sections.filter(el => el.store && el.store.document === self);
+                            let sections = xover.site.sections.filter(el => (el.source || el.source && el.source.document) === self);
                             for (let section of sections) {
                                 section.render()
                             }
@@ -9122,20 +9138,20 @@ xover.modernize = async function (targetWindow) {
                         let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                         let self = this;
                         let section = this.section;
-                        let store = section && section.document;
-                        if (!store) {
+                        let source = section && section.source;
+                        if (!source) {
                             this.scopeNode = null;
                             return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                         } else {
                             //let ref = this.parentElement && this.closest && this || this.parentNode || this
                             let ref = this instanceof Element ? this : this.parentNode;
-                            let node_by_id = !ref.hasAttribute("xo-scope") && store.selectFirst(`//*[@xo:id="${ref.id}"]`);
-                            let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("[xo-scope]")].filter(el => el).map(el => [el, store.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`)]).pop() || [];
-                            let attribute = ref.closest("[xo-slot]");
+                            let node_by_id = !ref.hasAttribute("xo-scope") && source.selectFirst(`//*[@xo:id="${ref.id}"]`);
+                            let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("slot,[xo-scope]")].filter(el => el).map(el => [el, el.hasAttribute("xo-scope") ? source.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`) : source.documentElement && source.documentElement.get(el.name)]).pop() || [];
+                            let attribute = ref.closest("slot,[xo-slot]");
                             if (!dom_scope) {
                                 this.scopeNode = null;
                                 return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                            } else if (dom_scope.contains(attribute)) {
+                            } else if (!(node instanceof Attr) && dom_scope.contains(attribute)) {
                                 attribute = attribute.getAttribute("xo-slot");
                             } else {
                                 attribute = null;
