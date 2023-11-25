@@ -8120,7 +8120,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                             }
                             if (![...mutated_targets].some(([target, mutation]) => [...mutation.attributes || []].length || mutation.addedNodes.length || mutation.removedNodes.length)) return;
-                            let sections = xover.site.sections.filter(el => (el.source || el.source && el.source.document) === self);
+                            let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self);
                             for (let section of sections) {
                                 section.render()
                             }
@@ -8392,7 +8392,7 @@ xover.modernize = async function (targetWindow) {
                         //let node = this.documentElement;
                         //return node.matches(predicate);
 
-                        return [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches(predicate));
+                        return !["appendTo"].includes((event || {}).type) && [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches(predicate));
                     }
                 })
 
@@ -10119,7 +10119,7 @@ xover.modernize = async function (targetWindow) {
                 Attr.prototype.toggle = function (value, else_value) {
                     value = typeof value === 'function' && value.call(this, this.value) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
                     //if (this.value != value) {
-                    this.parentNode.store && this.parentNode.store.render();
+                    //this.parentNode.store && this.parentNode.store.render();
                     //}
                     if (this.value == value) {
                         this.value = else_value
