@@ -1475,7 +1475,7 @@ Object.defineProperty(xover.session, 'login', {
 
 Object.defineProperty(xover.session, 'locale', {
     get() {
-        return this.getKey("locale") || navigator.language
+        return xover.site.searchParams.get("lang") || this.getKey("locale") || navigator.language
     }
     , set(input) {
         this.setKey("locale", input)
@@ -4781,7 +4781,7 @@ xover.xml.staticMerge = function (node1, node2) {
 
 xover.xml.combine = function (target, new_node) {
     if (new_node instanceof Element && new_node.namespaceURI == 'http://panax.io/xson') {
-        for (let slot of target.querySelectorAll("slot")) {
+        for (let slot of target.querySelectorAll("slot[name]")) {
             let name = slot.name;
             let new_content = new_node.get(name);
             if (!(name && new_content)) continue
@@ -4814,7 +4814,7 @@ xover.xml.combine = function (target, new_node) {
             if (["value"].includes(attr.name)) {
                 target[attr.name] = attr.value
             }
-            target.setAttribute(attr.nodeName, attr.value, { silent: true });
+            target.setAttribute(attr, attr.value, { silent: true });
         }
         //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
         target.replaceChildren(...new_node.childNodes)
@@ -8098,7 +8098,7 @@ xover.modernize = async function (targetWindow) {
                                     let node_event = new xover.listener.Event('append', { target }, el);
                                     window.top.dispatchEvent(node_event);
                                     if (node_event.defaultPrevented) mutation.addedNodes.splice(index, 1);
-                                    el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.seed());
+                                    el.selectNodes("descendant-or-self::*[not(contains(namespace-uri(),'www.w3.org'))][not(@xo:id)]").forEach(el => el.seed());
                                 };
 
                                 if (mutation.removedNodes.length) {
@@ -8110,7 +8110,7 @@ xover.modernize = async function (targetWindow) {
                                     let node_event = new xover.listener.Event('remove', { target }, el);
                                     window.top.dispatchEvent(node_event);
                                     if (node_event.defaultPrevented) mutation.removedNodes.splice(index, 1);
-                                    el.selectNodes("descendant-or-self::*[not(@xo:id)]").forEach(el => el.seed());
+                                    el.selectNodes("descendant-or-self::*[not(contains(namespace-uri(),'www.w3.org'))][not(@xo:id)]").forEach(el => el.seed());
                                 };
 
                                 for (let [attribute, old_value] of [...mutation.attributes || []]) {
@@ -9607,20 +9607,22 @@ xover.modernize = async function (targetWindow) {
 
                 Element.prototype.setAttribute = function (attribute, value, options = {}) {
                     if (!attribute) return Promise.reject("No attribute set");
+                    let namespace;
                     if (attribute instanceof Attr) {
                         value = [value, attribute.value].coalesce();
+                        namespace = attribute.namespaceURI;
                         attribute = attribute.name;
                     }
                     let target = this;
                     if (attribute.indexOf(':') != -1) {
                         let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
-                        namespace = this.resolveNS(prefix) || xover.spaces[prefix];
+                        namespace = namespace || this.resolveNS(prefix) || xover.spaces[prefix];
                         target.setAttributeNS(namespace, attribute, value, options);
                     } else {
                         if (!this.reactive || options.silent) {
                             Element.native.setAttribute.call(this, attribute, value);
                         } else {
-                            target.setAttributeNS("", attribute, value, options);
+                            target.setAttributeNS(namespace || "", attribute, value, options);
                         }
                     }
                     return this;
