@@ -1653,6 +1653,16 @@ class SearchParams {
         return this.params.get(param);
     }
 
+    toggle(param, value, else_value) {
+        if (this.get(param) != value) {
+            this.set(param, value)
+        } else if (!else_value) {
+            this.set(param, null)
+        } else {
+            this.set(param, else_value)
+        }
+    }
+
     entries() {
         return [...this.params];
     }
