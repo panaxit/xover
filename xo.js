@@ -7158,14 +7158,22 @@ xover.listener.on('input', function (event) {
     }
 })
 
-xover.listener.on('click', function (event) {
+xover.listener.on('click::a[href="#"]', function (event) {
+    if (event.defaultPrevented) return;
+    if (!this.closest("menu,ul")) {
+        window.scrollTo({ top: 0 });
+    }
+    event.preventDefault();
+})
+
+xover.listener.on('click::a, a *', function (event) {
     if (event.defaultPrevented) return;
     xover.listener.click.target = event.target;
     xover.delay(250).then(() => xover.listener.click.target = undefined)
     let srcElement = event.target.closest("[href]");
     let hashtag = (srcElement ? srcElement.getAttribute("href") : "");
 
-    if (!hashtag.match(/^#/)) {
+    if (!hashtag.match(/^#./)) {
         return;
     }
     custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash])
