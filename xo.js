@@ -2365,7 +2365,7 @@ xover.Source = function (tag) {
 
                     parameters = [parameters];
                 } else {
-                    parameters = parameters && parameters.map(value => value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value) || parameters;
+                    parameters = Array.isArray(parameters) && parameters.map(value => value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value) || parameters;
                 }
 
                 try {
