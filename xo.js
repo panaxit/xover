@@ -725,11 +725,6 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         }
     })
     if (_event.detail) {
-        if (context instanceof Node) {
-            _event.detail["node"] = _event.detail["node"] || context;
-            _event.detail["target"] = _event.detail["target"] || context;
-            node = context
-        }
         if (context instanceof Attr) {
             _event.detail["element"] = _event.detail["element"] || context.parentNode;
             _event.detail["attribute"] = _event.detail["attribute"] || context;
@@ -762,6 +757,12 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             //_event.detail["tag"] = _event.detail["tag"] || context.tag;
             node = _event.detail["return_value"] || context.document;
             node = node instanceof Document && node.documentElement || node;
+        }
+        if (context instanceof Node) {
+            _event.detail["node"] = _event.detail["node"] || context;
+            _event.detail["target"] = _event.detail["target"] || context;
+            _event.detail["document"] = _event.detail["document"] || context.ownerDocument;
+            node = context
         }
         if (context) {
             let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, context.tag, null].coalesce();
@@ -11071,6 +11072,8 @@ xover.modernize = async function (targetWindow) {
                             }
                             stylesheets = stylesheets.length && stylesheets || this.stylesheets;
                             let data = this.cloneNode(true);
+                            let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
+                            stylesheets = self_stylesheets.concat(stylesheets);
                             for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                                 if (stylesheet.assert && !this.selectFirst(stylesheet.assert)) {
                                     continue;
@@ -11090,7 +11093,12 @@ xover.modernize = async function (targetWindow) {
                                     let dependencies = typeof (stylesheet_target) == 'string' && [...stylesheet_target.matchAll(new RegExp(`\\[xo-source=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []).filter(source => !(source == tag || document.querySelector(`[xo-source="${source}"]`)));
                                     if (!(dependencies || []).length) {
                                         if (stylesheet_target == 'self') {
-                                            data = data.transform(xsl)
+                                            let result, i = 0;
+                                            while (i<20 && (!result || (xover.xml.getDifferences(result, data) || [new Map()])[0].size)) {
+                                                result = data.transform(xsl);
+                                                data = result;
+                                                ++i;
+                                            }
                                             continue;
                                         } else {
                                             continue;
