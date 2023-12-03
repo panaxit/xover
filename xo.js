@@ -2342,10 +2342,10 @@ xover.Source = function (tag) {
                 let source = sources.shift();
                 if (!source) continue;
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
-                source = ('${') !== -1 ? eval("`" + source + "`") : source;
+                source = typeof (source) == 'string' && source.indexOf('${') !== -1 ? eval("`" + source + "`") : source;
                 //parameters = parameters.concat(args);
 
-                if (source.replace(/^server:/, '') in xover.server || existsFunction(source)) {
+                if (typeof (source) == 'string' && source.replace(/^server:/, '') in xover.server || existsFunction(source)) {
                     if (parameters.constructor === {}.constructor) {
                         parameters = Object.entries(parameters) || parameters
                     }
