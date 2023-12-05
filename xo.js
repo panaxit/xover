@@ -684,21 +684,68 @@ xover.initializeElementListeners = function (document = window.document) {
     }))
 }
 
-xover.evaluateReferences = async function (context = window.document) {
-    await xover.ready;
-    context.references = context.references || new Map();
+class Structure {
+    constructor(properties = {}) {
+        let map = new Map();
+        Object.defineProperties(map, properties);
+        return new Proxy(map, {
+            get: function (self, key) {
+                if (typeof self[key] === 'function') {
+                    if (self.hasOwnProperty(key)) return self[key];
+                    let fn = self[key].bind(self);
+                    return key !== 'get' ? fn : function (...args) {
+                        let result = fn.apply(self, args);
+                        if (!result) {
+                            self.set.bind(self)(args[0], new xover.Source(args[0]).document);
+                            result = fn.apply(self, args);
+                        }
+                        return result
+                    }
+                }
+                if (!(key in self)) {
+                    self[key] = new Structure(properties);
+                }
+                return self[key];
+            },
+            set: function (self, key, value) {
+                self[key] = value;
+                return true;
+            }
+        });
+    }
+}
 
-    context.select(`.//@*[contains(.,'{$state:')]|.//text()[contains(.,'{$state:')]|.//@*[contains(.,'{$session:')]|.//text()[contains(.,'{$session:')]`).forEach(attr => context.references.set(attr, attr.value));
-    for (let [ref, formula] of context.references.entries()) {
-        if (!context.contains(ref.ownerElement || ref)) {
-            context.references.delete(ref);
-            continue;
+xover.subscribers = new Structure({
+    evaluate: {
+        value: function () {
+            for (let [subscriber, formula] of this) {
+                if (subscriber.hasOwnProperty("evaluate")) {
+                    subscriber.evaluate()
+                } else {
+                    let new_value = formula.replace(/\{\$(site|state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match);
+                    if (subscriber.name == 'style') {
+                        if (subscriber.ownerElement) subscriber.ownerElement.style.cssText = new_value;
+                    } else {
+                        subscriber.set(new_value);
+                    }
+                }
+            }
         }
-        let new_value = formula.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match);
-        if (ref.name == 'style') {
-            if (ref.ownerElement) ref.ownerElement.style.cssText = new_value;
-        } else {
-            ref.set(new_value);
+    }
+});
+
+xover.subscribeReferencers = async function (context = window.document) {
+    await xover.ready;
+    let references = new Map();
+
+    context.select(`.//@*[contains(.,'{$state:')]|.//text()[contains(.,'{$state:')]|.//@*[contains(.,'{$session:')]|.//text()[contains(.,'{$session:')]`).forEach(attr => references.set(attr, attr.value));
+    for (let [ref, formula] of references.entries()) {
+        for (let match of formula.match(/\{\$(state|session):([^\}]*)\}/g)) {
+            match = match.slice(2, -1);
+            let [scope, variable] = match.split(":");
+            let subscriber = xover.subscribers[scope][variable];
+            subscriber.set(ref, formula);
+            subscriber.evaluate()
         }
     }
     context.select(`//*[@xo-site]//@src|//*[@xo-site]//@href`).map(src => src.set(xo.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
@@ -1001,7 +1048,7 @@ xover.listener.on('pushstate', function ({ state }) {
 
 xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
     new_hash = (new_hash || window.location.hash);
-    if (new_hash !== '#' && (document.getElementById(new_hash.substr(1)) || (new_hash in xover.stores))) {
+    if (new_hash !== '#' && (document.getElementById(new_hash.substr(1))/* || (new_hash in xover.stores)*/)) {
         event.preventDefault();
     }
 })
@@ -1022,6 +1069,7 @@ xover.listener.on('keyup', async function (event) {
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
+    xover.site.seed = event.target.location.hash || '#'
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (event.defaultPrevented) return;
     (location.search || '').length > 1 && xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
@@ -1030,13 +1078,13 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     if (history.state) delete history.state.active;
     xover.site.active = location.hash;
     xover.session.store_id = xover.session.store_id;
-    let item;
-    try {
-        item = document.querySelector(`${(location.hash || '').replace(/^#/, '') && location.hash || ''}:not([xo-source],[xo-stylesheet])`);
-    } catch (e) { }
-    if (!item) {
-        xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
-    }
+    //let item;
+    //try {
+    //    item = document.querySelector(`${(location.hash || '').replace(/^#/, '') && location.hash || ''}:not([xo-source],[xo-stylesheet])`);
+    //} catch (e) { }
+    //if (!item) {
+    //    xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
+    //}
     if (event.state) delete event.state.active;
 })
 
@@ -1334,6 +1382,9 @@ xover.session = new Proxy({}, {
         let return_value;
         if (key in self) {
             return_value = self[key];
+            if (!(self[key] instanceof Function) && history.state.context instanceof Array) {
+                history.state.context.push(["session", self, key])
+            }
         } else {
             return_value = xover.session.getKey(key);
         }
@@ -1362,7 +1413,9 @@ xover.session = new Proxy({}, {
         xover.session.setKey(key, new_value);
         window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
-        xover.evaluateReferences();
+        for (let [subscriber] of xover.subscribers.session[key]) {
+            subscriber.evaluate()
+        }
 
         ["status"].includes(key) && await xover.stores.active.render();
 
@@ -1569,7 +1622,6 @@ Object.defineProperty(xover.session, 'clearCache', {
 
 xover.site = new Proxy(Object.assign({}, history.state), {
     get: function (self, key) {
-        let proxy = self;
         if (!history.state) {
             with ((window.top || window)) {
                 //history.replaceState({}, {}, location.pathname + location.search + (location.hash || ''));
@@ -1577,14 +1629,22 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             }
             xover.session.setKey('lastPosition', self.position);
         }
-        return [history.state[key], self[key], xover.session.getKey(key)].coalesce()
+        if (!(self[key] instanceof Function)&& history.state.context instanceof Array) {
+            history.state.context.push(["site", self, key])
+        }
+        return [/*history.state[key], won't work properly*/self[key], xover.session.getKey(key)].coalesce()
     },
     set: function (self, key, new_value) {
         try {
+            xover.site[key];
             self[key] = new_value;
-            if (key === 'seed') xover.site['active'] = new_value
+            history.state[key] = new_value;
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
             history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
+            if (key === 'seed') self['active'] = new_value
+            for (let [subscriber] of xover.subscribers.site[key]) {
+                subscriber.evaluate()
+            }
         } catch (e) {
             console.error(e);
         }
@@ -1694,11 +1754,20 @@ Object.defineProperty(xover.site, 'state', {
                 let return_value;
                 if (key in self) {
                     return_value = self[key]
+                    if (!(self[key] instanceof Function) && history.state.context instanceof Array) {
+                        history.state.context.push(["state", self, key])
+                    }
                 } else if (key in xover.manifest.state) {
                     return_value = xover.manifest.state[key];
                 }
                 if (typeof (return_value) == 'string' && return_value.indexOf("${") != -1) {
+                    let formula = return_value;
+                    history.state.context = history.state.context || [];
                     return_value = eval(`\`${return_value}\``);
+                    for (let [scope, context, scope_key] of history.state.context) {
+                        xover.subscribers[scope][scope_key].set(xover.subscribers.state[key], formula);
+                    }
+                    delete history.state.context;
                 }
                 return return_value
             }
@@ -1708,7 +1777,9 @@ Object.defineProperty(xover.site, 'state', {
                 if (old_value != input && key[0] != '#') {
                     window.top.dispatchEvent(new xover.listener.Event(`change::state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
                     xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
-                    xover.evaluateReferences()
+                    for (let [subscriber] of xover.subscribers.state[key]) {
+                        subscriber.evaluate()
+                    }
                 }
             }
         });
@@ -1885,12 +1956,11 @@ Object.defineProperty(xover.site, 'next', {
 
 Object.defineProperty(xover.site, 'seed', {
     get() {
-        return ((history.state || {})['seed'] || !document.querySelector(`${(location.hash || '').replace(/^#/, '') && `[id='${(location.hash || '').replace(/^#/, '')}']` || ''}:not([xo-source],[xo-stylesheet])`) && location.hash || '')
+        return (history.state || {})['seed'] || '#';//((history.state || {})['seed'] || !document.querySelector(`${(location.hash || '').replace(/^#/, '') && `[id='${(location.hash || '').replace(/^#/, '')}']` || ''}:not([xo-source],[xo-stylesheet])`) && location.hash || '')
     }
     , set(input) {
         if (!history.state['seed']) {
-            history.state['seed'] = input;
-            //xover.site.active = input;
+            history.state['seed'] = input; //Initializes seed. Typically when clicked an anchor
         } else if (new xover.URL(history.state['seed']).hash != new xover.URL(input).hash) {
             xover.site.next = input;
             let reference = event && event.srcElement || {};
@@ -1899,7 +1969,7 @@ Object.defineProperty(xover.site, 'seed', {
             prev.unshift({
                 store: (reference.store || {}).tag || null
                 , reference: {
-                    id: (ref_node && ref_node.ownerElement || ref_node || document.createElement('p')).getAttribute("xo:id") || null
+                    id: (ref_node && ref_node.ownerElement || ref_node instanceof Element && ref_node || document.createElement('p')).getAttribute("xo:id") || null
                     , attribute: ref_node instanceof Attr && ref_node.name || null
                 }
             });
@@ -1932,19 +2002,16 @@ Object.defineProperty(xover.site, 'active', {
         }
     },
     set: function (tag) {
-        tag = tag || "#";
-        xover.state.active = tag;//Revisar si no lo tiene que guardar, porque en el caso del login, sobreescribiría el estado y lo perderíamos. Este truco se va a tener que hacer directo con history.state.active
-        let active = this.active;
-        let store = xover.stores[active];
+        let store = xover.stores[tag];
         if (!store) {
-            let document = xover.sources[active];
+            let document = xover.sources[tag];
             store = new xover.Store(document);
         }
         if (store) {
-            this.hash = store.hash;
+            //this.hash = store.hash;
             store.render();
         } else {
-            return Promise.reject(`${active} no available`)
+            return Promise.reject(`${tag || "store"} not available`)
         }
     }
     , enumerable: false
@@ -3397,7 +3464,7 @@ document.addEventListener("DOMContentLoaded", function (event) {
     //    }
     //}
     //customElements.define("xo-value", xo_value);
-    xover.evaluateReferences()
+    xover.subscribeReferencers()
 });
 
 //xover.listener.on("render", function ({ dom }) {
@@ -4791,6 +4858,7 @@ xover.xml.staticMerge = function (node1, node2) {
 }
 
 xover.xml.combine = function (target, new_node) {
+    target.staticAttributes = target.staticAttributes || [...target.attributes].map(attr => `@${attr.name}`);
     if (new_node instanceof Element && new_node.namespaceURI == 'http://panax.io/xson') {
         for (let slot of target.querySelectorAll("slot[name]")) {
             let name = slot.name;
@@ -4804,6 +4872,7 @@ xover.xml.combine = function (target, new_node) {
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
     let static = document.firstElementChild.cloneNode().classList;
     static.value = target instanceof Element && target.getAttribute("xo-static") || "";
+    static.add(...target.staticAttributes);
     if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
@@ -4818,7 +4887,8 @@ xover.xml.combine = function (target, new_node) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
-        [...target.attributes].filter(attr => !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name)).forEach(attr => attr.remove({ silent: true }));
+        let remove_attributes = [...target.attributes].filter(attr => !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name));
+        remove_attributes.forEach(attr => attr.remove({ silent: true }));
         for (let attr of new_node.attributes) {
             if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
             if (attr.isEqualNode(target.attributes[attr.name])) continue;
@@ -4896,12 +4966,11 @@ xover.dom.combine = async function (target, new_node) {
     let _applyScripts = async function (targetDocument, scripts = []) {
         for (let script of scripts) {
             let promise;
-            if (script.hasAttribute("async")) await xover.delay(1);
+            if (script.hasAttribute("defer")) await xover.delay(1);
             if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
                 if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.isEqualNode(script.cloneNode())).length) {
-                    let new_element = script.cloneNode();
-                    //targetDocument.createElement(script.tagName);
-                    //[...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
+                    let new_element = targetDocument.createElement(script.tagName); /*script.cloneNode(); won't work properly*/
+                    [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
                     let on_load = script.textContent;
 
                     if (new_element instanceof HTMLScriptElement) {
@@ -4929,8 +4998,10 @@ xover.dom.combine = async function (target, new_node) {
                         //}
                         //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
                         let result = (function () {
-                            xover.context = script;
-                            return eval.apply(this, arguments)
+                            xover.context = script.original || script;
+                            if (window.document.contains(xover.context)) {
+                                return eval.apply(this, arguments)
+                            }
                         }(`/*${target.getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
                         if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                             let target = document.getElementById(script.id);
@@ -4948,11 +5019,12 @@ xover.dom.combine = async function (target, new_node) {
     }
     _applyScripts(document, [...script_wrapper.children]);
     target.disconnected = false;
-    let post_render_scripts = new_node.selectNodes('//*[self::html:script][@src]');
+    let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
     scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
         let cloned = el.cloneNode(true);
+        cloned.original = el;
         el.textContent = ''
         Object.defineProperty(cloned, 'parentNode', {
             value: el.parentNode
@@ -5057,9 +5129,9 @@ xover.dom.combine = async function (target, new_node) {
         //if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 
         xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
-        if (new_node.selectNodes) {
-            _applyScripts(document, new_node.selectNodes('.//*[self::html:script][text()]'));
-        }
+        //if (other_scripts.length) {
+        //    _applyScripts(document, other_scripts);
+        //}
     }
 
     //if (window.MathJax) {/*TODO: Mover este código a algún script diferido*/
@@ -7030,13 +7102,7 @@ document.onkeyup = function (e) {
 
 // TODO: Modificar listeners para que funcion con el método de XOVER
 xover.dom.beforeunload = function (e) {
-    history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + (location.hash || ''));
-    //let stores = await xover.storehouse.sources;
-    //for (let hashtag in xover.stores) {
-    //    console.log("Saving " + hashtag)
-    //    stores.put((xover.stores[hashtag].initiator || xover.stores[hashtag]), hashtag)
-    //    //xover.session.setKey(hashtag, (xover.stores[hashtag].initiator || xover.stores[hashtag]));
-    //}
+    /*Might cause the state to be deleted --> */ //history.replaceState({ ...history.state }, {}, location.pathname + location.search + (location.hash || ''));
     ////history.replaceState(history.state || {}, {}, (window.top || window).location.hash || '/');
     //event.returnValue = `Are you sure you want to leave?`;
 
@@ -9160,7 +9226,7 @@ xover.modernize = async function (targetWindow) {
                         let source = section && section.source;
                         if (!source) {
                             this.scopeNode = null;
-                            return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
+                            return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
                         } else {
                             //let ref = this.parentElement && this.closest && this || this.parentNode || this
                             let ref = this instanceof Element ? this : this.parentNode;
@@ -11094,7 +11160,7 @@ xover.modernize = async function (targetWindow) {
                                     if (!(dependencies || []).length) {
                                         if (stylesheet_target == 'self') {
                                             let result, i = 0;
-                                            while (i<20 && (!result || (xover.xml.getDifferences(result, data) || [new Map()])[0].size)) {
+                                            while (i < 20 && (!result || (xover.xml.getDifferences(result, data) || [new Map()])[0].size)) {
                                                 result = data.transform(xsl);
                                                 data = result;
                                                 ++i;
@@ -11175,7 +11241,7 @@ xover.modernize = async function (targetWindow) {
                                     let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
                                     window.top.dispatchEvent(render_event);
                                     if (render_event.cancelBubble || render_event.defaultPrevented) return target;
-                                    xover.evaluateReferences(target)
+                                    xover.subscribeReferencers(target)
                                 })
                                 targets.push(documentElement);
                             }
