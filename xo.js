@@ -1629,7 +1629,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             }
             xover.session.setKey('lastPosition', self.position);
         }
-        if (!(self[key] instanceof Function)&& history.state.context instanceof Array) {
+        if (!(self[key] instanceof Function) && history.state.context instanceof Array) {
             history.state.context.push(["site", self, key])
         }
         return [/*history.state[key], won't work properly*/self[key], xover.session.getKey(key)].coalesce()
@@ -4874,15 +4874,6 @@ xover.xml.staticMerge = function (node1, node2) {
 
 xover.xml.combine = function (target, new_node) {
     target.staticAttributes = target.staticAttributes || [...target.attributes || []].map(attr => `@${attr.name}`);
-    if (new_node instanceof Element && new_node.namespaceURI == 'http://panax.io/xson') {
-        for (let slot of target.querySelectorAll("slot[name]")) {
-            let name = slot.name;
-            let new_content = new_node.get(name);
-            if (!(name && new_content)) continue
-            slot.replaceChildren(...[new_content.value].flat())
-        }
-        return target;
-    }
     let swap = document.firstElementChild.cloneNode().classList;
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
     let static = document.firstElementChild.cloneNode().classList;
@@ -4898,7 +4889,7 @@ xover.xml.combine = function (target, new_node) {
     }
     if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
 
-    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
+    if (target.constructor !== new_node.constructor && (target.id && target.id === new_node.id && target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
@@ -4931,6 +4922,21 @@ xover.xml.combine = function (target, new_node) {
 }
 
 xover.dom.combine = async function (target, new_node) {
+    if (target instanceof HTMLElement && new_node instanceof Document) {
+        if (target.tagName === 'CODE') {
+            target.textContent = new_node.toString();
+            return target;
+        } else if (!(new_node.firstElementChild instanceof HTMLElement)) {
+            for (let slot of target.querySelectorAll("slot[name]")) {
+                let name = slot.name;
+                let new_content = new_node.documentElement.get(name);
+                if (!(name && new_content)) continue
+                slot.replaceChildren(...[new_content.value].flat())
+            }
+            return target;
+        }
+        new_node = new_node.firstElementChild
+    }
     let scripts;
     let script_wrapper = window.document.firstElementChild.cloneNode();
     script_wrapper.append(...new_node.selectNodes('.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
@@ -11012,7 +11018,7 @@ xover.modernize = async function (targetWindow) {
                                     document.render({ target: self });
                                 }
                             } else {
-                                let body = source_document.firstChild.cloneNode(true);
+                                let body = source_document.cloneNode(true);
                                 let result = await xover.dom.combine(self, body);
                                 result.stop = self.stop;
                             }
