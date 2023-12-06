@@ -1985,6 +1985,21 @@ Object.defineProperty(xover.site, 'seed', {
         }
     }
     , enumerable: true
+
+});
+
+Object.defineProperty(xover.site, 'pushState', {
+    value: function (state = {}, hash = location.hash) {
+        history.pushState(Object.merge.call(history.state, { position: history.length - 1 }, state), {}, hash);
+    }
+    , enumerable: true, writable: false, configurable: false
+});
+
+Object.defineProperty(xover.site, 'replaceState', {
+    value: function (state = {}, hash = location.hash) {
+        history.replaceState(Object.merge.call(history.state, state), {}, hash);
+    }
+    , enumerable: true, writable: false, configurable: false
 });
 
 Object.defineProperty(xover.site, 'position', {
@@ -2106,7 +2121,7 @@ xover.xml.getDifferences = function (node1, node2) {
     if (!node1 || !node2 || node1.constructor !== node2.constructor) {
         return [new Map([[node1, node2]])];
     }
-    if (node1.isEqualNode(node2)) return null;
+    if (node1.isEqualNode(node2)) return [];
     if (node1 === top.document.activeElement || [HTMLSelectElement].includes(node1.constructor)) {
         return [new Map([[node1, node2]])];
     }
@@ -4858,7 +4873,7 @@ xover.xml.staticMerge = function (node1, node2) {
 }
 
 xover.xml.combine = function (target, new_node) {
-    target.staticAttributes = target.staticAttributes || [...target.attributes].map(attr => `@${attr.name}`);
+    target.staticAttributes = target.staticAttributes || [...target.attributes || []].map(attr => `@${attr.name}`);
     if (new_node instanceof Element && new_node.namespaceURI == 'http://panax.io/xson') {
         for (let slot of target.querySelectorAll("slot[name]")) {
             let name = slot.name;
@@ -4872,7 +4887,7 @@ xover.xml.combine = function (target, new_node) {
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
     let static = document.firstElementChild.cloneNode().classList;
     static.value = target instanceof Element && target.getAttribute("xo-static") || "";
-    static.add(...target.staticAttributes);
+    target.constructor === new_node.constructor && static.add(...target.staticAttributes);
     if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
@@ -4881,9 +4896,9 @@ xover.xml.combine = function (target, new_node) {
     for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
         new_node.setAttribute(item.substring(1), target.getAttribute(item.substring(1)), { silent: true })
     }
-    if (target.isEqualNode(new_node)) return target;
+    if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
 
-    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
+    if (target.id && target.id === new_node.id && target.constructor !== new_node.constructor || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
@@ -5022,6 +5037,9 @@ xover.dom.combine = async function (target, new_node) {
     let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
+    xover.xml.staticMerge(target, new_node);
+    let changes = xover.xml.getDifferences(target, new_node);
+    if (!changes.length) return target;
     scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
         let cloned = el.cloneNode(true);
         cloned.original = el;
@@ -5031,9 +5049,6 @@ xover.dom.combine = async function (target, new_node) {
         });
         return cloned;
     });
-    xover.xml.staticMerge(target, new_node);
-    let changes = xover.xml.getDifferences(target, new_node);
-    if (!changes) return target;
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node, changes }, new_node);
     window.top.dispatchEvent(before_dom);
     if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
@@ -7225,15 +7240,15 @@ xover.listener.on('input', function (event) {
     }
 })
 
-xover.listener.on('click::a[href="#"]', function (event) {
+xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
     if (event.defaultPrevented) return;
-    if (!this.closest("menu,ul")) {
+    if (!this.closest("menu,.autoscroll-disabled")) {
         window.scrollTo({ top: 0 });
     }
     event.preventDefault();
 })
 
-xover.listener.on('click::a, a *', function (event) {
+xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     if (event.defaultPrevented) return;
     xover.listener.click.target = event.target;
     xover.delay(250).then(() => xover.listener.click.target = undefined)
@@ -7820,7 +7835,7 @@ xover.modernize = async function (targetWindow) {
 
             Date.prototype.addDays = function (days = 0) {
                 let date = new Date(this.valueOf());
-                date.setDate(date.getDate() + days);
+                date.setDate(date.getDate() + +days);
                 return date;
             }
 
@@ -8662,7 +8677,7 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                XMLDocument.prototype.compareTo = function (document) {
+                XMLDocument.prototype.getDifferences = function (document) {
                     return xover.xml.getDifferences(this, document);
                 }
 
@@ -10312,6 +10327,13 @@ xover.modernize = async function (targetWindow) {
                     };
                 }
 
+                Element.native.clear = Element.prototype.clear;
+                Element.prototype.clear = function () {
+                    this.replaceChildren()
+                }
+
+                Document.prototype.clear = Element.prototype.clear;
+
                 Node.prototype.replaceBy = function (new_node) {
                     let parent_node = this.parentNode;
                     if (!parent_node) {
@@ -10974,7 +10996,7 @@ xover.modernize = async function (targetWindow) {
                                     await source_document.ready
                                 }
                             }
-                            stylesheets = stylesheet && [stylesheet] || source_document && source_document.getStylesheets() || [];
+                            stylesheets = stylesheet && [stylesheet] || [];//source_document && source_document.getStylesheets() || [];
                             if (stylesheets.length) {
                                 stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (target_store || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
@@ -11141,12 +11163,12 @@ xover.modernize = async function (targetWindow) {
                             let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
                             stylesheets = self_stylesheets.concat(stylesheets);
                             for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
-                                if (stylesheet.assert && !this.selectFirst(stylesheet.assert)) {
+                                if (stylesheet.assert && !data.selectFirst(stylesheet.assert)) {
                                     continue;
                                 }
                                 let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet.document || xover.sources[stylesheet.href];
                                 let store = stylesheet.store;
-                                let tag = (store || {}).tag || typeof (store) == 'string' && store || stylesheet.href || '';
+                                let tag = (store || {}).tag || typeof (store) == 'string' && store || '';
                                 store = xover.stores[tag];
                                 if (xsl) {
                                     await xsl.ready;
@@ -11156,15 +11178,16 @@ xover.modernize = async function (targetWindow) {
                                 let stylesheet_target = stylesheet.target instanceof HTMLElement && stylesheet.target || (stylesheet.target || '').indexOf("@#") != -1 && stylesheet.target.replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-source="$1"]`) || stylesheet.target || 'body';
                                 stylesheet_target = typeof (stylesheet_target) == 'string' && document.querySelector(stylesheet_target) || stylesheet_target;
                                 if (!(stylesheet_target instanceof HTMLElement)) {
-                                    let dependencies = typeof (stylesheet_target) == 'string' && [...stylesheet_target.matchAll(new RegExp(`\\[xo-source=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []).filter(source => !(source == tag || document.querySelector(`[xo-source="${source}"]`)));
+                                    let dependencies = typeof (stylesheet_target) == 'string' && [...stylesheet_target.matchAll(new RegExp(`\\[xo-source=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []).filter(source => !(source == tag || document.querySelector(`[xo-source="${tag}"]`)));
                                     if (!(dependencies || []).length) {
                                         if (stylesheet_target == 'self') {
                                             let result, i = 0;
-                                            while (i < 20 && (!result || (xover.xml.getDifferences(result, data) || [new Map()])[0].size)) {
+                                            while (i < 20 && (!result || stylesheet.assert && data.selectFirst(stylesheet.assert) && xover.xml.getDifferences(result, data).length)) {
+                                                data = result || data;
                                                 result = data.transform(xsl);
-                                                data = result;
                                                 ++i;
                                             }
+                                            data = result || data;
                                             continue;
                                         } else {
                                             continue;
@@ -11225,7 +11248,7 @@ xover.modernize = async function (targetWindow) {
 
                                 let current_scope = target.getAttribute("xo-scope");
                                 current_scope && documentElement.setAttributeNS(null, "xo-scope", current_scope);
-                                let store_tag = documentElement.getAttribute("xo-source") || target.getAttribute("xo-source") || tag;
+                                let store_tag = documentElement.getAttribute("xo-source") || target.getAttribute("xo-source") || tag || '';
                                 store_tag && documentElement.setAttributeNS(null, "xo-source", store_tag);
                                 let stylesheet_href = stylesheet.href;
                                 stylesheet_href && documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
