@@ -685,8 +685,7 @@ xover.initializeElementListeners = function (document = window.document) {
 }
 
 class Structure {
-    constructor(properties = {}) {
-        let map = new Map();
+    constructor(map = new Map(), properties = {}) {
         Object.defineProperties(map, properties);
         return new Proxy(map, {
             get: function (self, key) {
@@ -703,7 +702,7 @@ class Structure {
                     }
                 }
                 if (!(key in self)) {
-                    self[key] = new Structure(properties);
+                    self[key] = new Structure(map instanceof Map ? new Map() : {},  properties);
                 }
                 return self[key];
             },
@@ -715,7 +714,7 @@ class Structure {
     }
 }
 
-xover.subscribers = new Structure({
+xover.subscribers = new Structure(new Map(), {
     evaluate: {
         value: function () {
             for (let [subscriber, formula] of this) {
@@ -1413,7 +1412,7 @@ xover.session = new Proxy({}, {
         xover.session.setKey(key, new_value);
         window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
-        for (let [subscriber] of xover.subscribers.session[key]) {
+        for (let subscriber of Object.keys(xover.subscribers.session[key])) {
             subscriber.evaluate()
         }
 
@@ -1642,7 +1641,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], ''].coalesce();
             history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
             if (key === 'seed') self['active'] = new_value
-            for (let [subscriber] of xover.subscribers.site[key]) {
+            for (let subscriber of Object.keys(xover.subscribers.site[key])) {
                 subscriber.evaluate()
             }
         } catch (e) {
@@ -1777,7 +1776,7 @@ Object.defineProperty(xover.site, 'state', {
                 if (old_value != input && key[0] != '#') {
                     window.top.dispatchEvent(new xover.listener.Event(`change::state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
                     xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
-                    for (let [subscriber] of xover.subscribers.state[key]) {
+                    for (let subscriber of Object.keys(xover.subscribers.state[key])) {
                         subscriber.evaluate()
                     }
                 }
@@ -11003,7 +11002,7 @@ xover.modernize = async function (targetWindow) {
                                     await source_document.ready
                                 }
                             }
-                            stylesheets = stylesheet && [stylesheet] || [];//source_document && source_document.getStylesheets() || [];
+                            stylesheets = stylesheet && [stylesheet] || source_document && source_document.getStylesheets() || [];
                             if (stylesheets.length) {
                                 stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (target_store || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
