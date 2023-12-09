@@ -9758,6 +9758,8 @@ xover.modernize = async function (targetWindow) {
                     } else if (typeof (args[0]) === 'function') {
                         args[0].apply(this, [this]);
                     } else if (typeof (args[0]) === 'string') {
+                        let is_attribute = !!args[0].match(/^@/, '');
+                        args[0] = args[0].replace(/^@/, '')
                         if (typeof (args[2]) === 'string') {
                             this.setAttributeNS(args[2], args[0], args[1])
                         } else if (args[1] === undefined) {
@@ -10442,9 +10444,9 @@ xover.modernize = async function (targetWindow) {
                                 (store.documentElement || document.createElement("p")).setAttribute(attribute.getAttribute("name"), attribute.textContent.replace(/[\s]+$/, ''));
                             });
                         }
-                        if (this.ownerDocument.store) {
-                            this.ownerDocument.store.render();
-                        }
+                        //if (this.ownerDocument.store) {
+                        //    this.ownerDocument.store.render();
+                        //}
                         window.top.dispatchEvent(new xover.listener.Event('change', { node: this }, this));
                         window.top.dispatchEvent(new xover.listener.Event('insert', { node: this }, this));
                     } else {
@@ -10529,12 +10531,11 @@ xover.modernize = async function (targetWindow) {
                     }
                 }
 
-                Node.prototype.duplicate = function (seed = true) {
+                Node.prototype.duplicate = function (options = { seed: true }) {
                     let new_node = this.cloneNode(true);
                     this.appendAfter(new_node);
-                    if (seed) {
-                        new_node.selectNodes('.//@xo:id').remove();
-                        new_node = new_node.seed();
+                    if (options instanceof Object && options.seed && new_node.hasAttributeNS("http://panax.io/xover", "id")) {
+                        new_node = new_node.seed(true);
                     }
                     return new_node;
                 }
@@ -10554,12 +10555,12 @@ xover.modernize = async function (targetWindow) {
                     return cloned_element;
                 }
 
-                Element.prototype.seed = function (forced) {
+                Element.prototype.seed = function (reseed) {
                     //if (navigator.userAgent.indexOf("Safari") == -1) {
                     //    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                     //}
                     //try {
-                    if (forced) {
+                    if (reseed) {
                         this.selectNodes('.//@xo:id').remove()
                     }
                     let observer = this.ownerDocument && this.ownerDocument.observer
