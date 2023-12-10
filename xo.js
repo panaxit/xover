@@ -702,7 +702,7 @@ class Structure {
                     }
                 }
                 if (!(key in self)) {
-                    self[key] = new Structure(map instanceof Map ? new Map() : {},  properties);
+                    self[key] = new Structure(map instanceof Map ? new Map() : {}, properties);
                 }
                 return self[key];
             },
@@ -4868,6 +4868,8 @@ xover.xml.staticMerge = function (node1, node2) {
         for (let [child1, child2] of pairs) {
             xover.xml.staticMerge(child1, child2)
         }
+    } else if (node1.cloneNode().isEqualNode(node2.cloneNode())) {
+        /*TODO: Detect changes in children*/
     }
 }
 
@@ -4888,7 +4890,7 @@ xover.xml.combine = function (target, new_node) {
     }
     if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
 
-    if (target.constructor !== new_node.constructor && (target.id && target.id === new_node.id && target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
+    if (target.constructor !== new_node.constructor && (target.id && target.id === new_node.id || target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
@@ -8943,17 +8945,28 @@ xover.modernize = async function (targetWindow) {
                     return xsl;
                 }
 
-                XMLDocument.prototype.toClipboard = function () {
+                XMLDocument.prototype.toClipboard = async function () {
                     let source = this;
-                    let dummyContent = source.toString();
-                    let dummy = (document.createElement('input'));
-                    dummy.style.textTransform = 'unset'
-                    dummy.value = dummyContent;
-                    document.body.appendChild(dummy);
-                    dummy.select();
-                    document.execCommand('copy');
-                    dummy.remove();
-                    return;
+                    let sourceContent = source.toString();
+                    if (navigator.clipboard) {
+                        try {
+                            return Promise.resolve(await navigator.clipboard.writeText(sourceContent));
+                        } catch (e) {
+                            return Promise.reject(e)
+                        }
+                    } else {
+                        await xo.delay(200);
+                        let textarea = (document.createElement('textarea'));
+                        textarea.setAttribute("readonly", "");
+                        textarea.style.position = "absolute";
+                        textarea.style.left = "-9999px";
+                        textarea.value = sourceContent;
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        await xo.delay(5000);
+                        textarea.remove();
+                    }
                 }
 
                 XMLDocument.prototype.findById = function (xo_id) {
@@ -11165,7 +11178,7 @@ xover.modernize = async function (targetWindow) {
                                 return Promise.resolve(targets.flat());
                             }
                             stylesheets = stylesheets.length && stylesheets || this.stylesheets;
-                            let data = this.cloneNode(true);
+                            let data;
                             let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
                             stylesheets = self_stylesheets.concat(stylesheets);
                             for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
@@ -11180,6 +11193,7 @@ xover.modernize = async function (targetWindow) {
                                     await xsl.ready;
                                     xsl.href = xsl.href || ""
                                 }
+                                data = data || this.cloneNode(true);
                                 let action = stylesheet.action;// || !stylesheet.target && "append";
                                 let stylesheet_target = stylesheet.target instanceof HTMLElement && stylesheet.target || (stylesheet.target || '').indexOf("@#") != -1 && stylesheet.target.replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-source="$1"]`) || stylesheet.target || 'body';
                                 stylesheet_target = typeof (stylesheet_target) == 'string' && document.querySelector(stylesheet_target) || stylesheet_target;
