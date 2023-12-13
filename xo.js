@@ -4874,12 +4874,14 @@ xover.xml.staticMerge = function (node1, node2) {
 }
 
 xover.xml.combine = function (target, new_node) {
-    target.staticAttributes = target.staticAttributes || [...target.attributes || []].map(attr => `@${attr.name}`);
+    if (target instanceof Element && (target.hasAttribute("xo-source") || target.hasAttribute("xo-stylesheet"))) {
+        target.staticAttributes = target.staticAttributes || [...target.attributes || []].map(attr => `@${attr.name}`);
+    }
     let swap = document.firstElementChild.cloneNode().classList;
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
     let static = document.firstElementChild.cloneNode().classList;
     static.value = target instanceof Element && target.getAttribute("xo-static") || "";
-    target.constructor === new_node.constructor && static.add(...target.staticAttributes);
+    target.constructor === new_node.constructor && static.add(...target.staticAttributes || []);
     if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
@@ -6222,6 +6224,9 @@ xover.Store = function (xml, ...args) {
                 //if (xover.stores.seed === self && !xover.site.sections[tag].length) {
                 //    progress = xover.sources['loading.xslt'].render({ action: "append" });
                 //}
+                if (tag == xover.site.seed) {
+                    xover.site.hash = self.hash;
+                }
                 if (!__document.firstChild) {
                     await store.fetch();
                 }
@@ -8154,15 +8159,11 @@ xover.modernize = async function (targetWindow) {
                                         value.texts.set(mutation.target, `${mutation.target}`)
                                     }
                                 } else if (mutation.type == "attributes") {
-                                    value.attributes = value.attributes || new Map();
-                                    let attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                                    if (!attr) {
-                                        if (mutation.oldValue == 'null') continue;
-                                        attr = target.createAttributeNS(mutation.attributeNamespace, mutation.attributeName, null);
-                                    }
-                                    if (attr.value !== mutation.oldValue) {
-                                        value.attributes.set(attr, mutation.oldValue)
-                                    }
+                                    let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
+                                    if (String(attribute.value) == String(mutation.oldValue)) continue;
+                                    value.attributes = value.attributes || {};
+                                    value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace || ''] || {};
+                                    value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = [attribute, mutation.oldValue];
                                 }
                                 value.removedNodes = value.removedNodes || [];
                                 value.removedNodes.push(...mutation.removedNodes);
@@ -8220,13 +8221,17 @@ xover.modernize = async function (targetWindow) {
                                     el.selectNodes("descendant-or-self::*[not(contains(namespace-uri(),'www.w3.org'))][not(@xo:id)]").forEach(el => el.seed());
                                 };
 
-                                for (let [attribute, old_value] of [...mutation.attributes || []]) {
-                                    let node_event = new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value, ed: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, attribute);
-                                    window.top.dispatchEvent(node_event);
-                                    if (node_event.defaultPrevented) mutation.attributes.delete(attribute);
+                                for (let [namespace, attributes] of Object.entries(mutation.attributes || {})) {
+                                    for (let [attribute_name, [attribute, old_value]] of Object.entries(attributes)) {
+                                        if (String(attribute.value) === String(old_value)) continue;
+                                        let node_event = new xover.listener.Event('change', { element: target, attribute, value: attribute.value, old: old_value, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, attribute);
+                                        window.top.dispatchEvent(node_event);
+                                        if (node_event.defaultPrevented) delete (mutation.attributes[attribute.namespaceURI] || {})[attribute.localName];
+                                        if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) delete mutation.attributes[attribute.namespaceURI];
+                                    }
                                 }
                             }
-                            if (![...mutated_targets].some(([target, mutation]) => [...mutation.attributes || []].length || mutation.addedNodes.length || mutation.removedNodes.length)) return;
+                            if (![...mutated_targets].some(([target, mutation]) => Object.keys(mutation.attributes || {}).length || mutation.addedNodes.length || mutation.removedNodes.length)) return;
                             let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self);
                             for (let section of sections) {
                                 section.render()
@@ -10181,6 +10186,7 @@ xover.modernize = async function (targetWindow) {
                     }
                     this.value = value;
                     if (!disconnected) this.connect()
+                    //if (!disconnected) xo.delay(100).then(() => this.connect())
                     return this;
                 }
 
@@ -10255,8 +10261,8 @@ xover.modernize = async function (targetWindow) {
                     } else {
                         this.value = value
                     }
-                    let source = this.ownerDocument.source;
-                    source && source.save();
+                    //let source = this.ownerDocument.source;
+                    //source && source.save();
                     return this;
                 }
 
