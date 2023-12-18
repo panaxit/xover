@@ -4871,7 +4871,7 @@ xover.xml.staticMerge = function (node1, node2) {
 }
 
 xover.xml.combine = function (target, new_node) {
-    if (target instanceof Element && (target.hasAttribute("xo-source") || target.hasAttribute("xo-stylesheet"))) {
+    if (target instanceof Element && (target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-source"))) {
         target.staticAttributes = target.staticAttributes || [...target.attributes || []].map(attr => `@${attr.name}`);
     }
     let swap = document.firstElementChild.cloneNode().classList;
@@ -8234,8 +8234,8 @@ xover.modernize = async function (targetWindow) {
                                 let active_element = document.activeElement;
                                 if (section.contains(active_element)) {
                                     await xover.delay(100);
-                                    section.render().then(() => active_element.classList && active_element.classList.remove("xo-working"))
                                 }
+                                section.render().then(() => active_element.classList && active_element.classList.remove("xo-working"))
                             }
                             //for (let store of Object.values(xover.stores).filter(store => store.document === self)) {
                             //    store.render()
