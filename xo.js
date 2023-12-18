@@ -1068,14 +1068,12 @@ xover.listener.on('keyup', async function (event) {
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
-    xover.site.seed = event.target.location.hash || '#'
+    if (history.state) delete history.state.active;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
+    xover.site.seed = history.state.seed || event.target.location.hash || '#';
     if (event.defaultPrevented) return;
     (location.search || '').length > 1 && xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
-    const positionLastShown = Number(sessionStorage.getItem('lastPosition'));
     if (xover.session.status == 'authorizing') xover.session.status = null;
-    if (history.state) delete history.state.active;
-    xover.site.active = location.hash;
     xover.session.store_id = xover.session.store_id;
     //let item;
     //try {
@@ -1084,7 +1082,6 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     //if (!item) {
     //    xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
     //}
-    if (event.state) delete event.state.active;
 })
 
 xover.listener.on('navigatedForward', function (event) {
@@ -4830,11 +4827,11 @@ xover.xml.createNode = function (xml_string, options) {
 
 xover.xml.encodeValue = function (value) {
     try {
-        value = eval(`(${value})`)
+        value = value === "null" && String(value) || value !== undefined && (isFinite(value) && eval(`(${value})`) || `'${value || ''}'`) || '';
     } catch (e) {
         value = value;
     }
-    return typeof (value) == 'string' ? `'${value}'` : value
+    return value
 }
 
 xover.xml.parseValue = function (value) {
@@ -6244,7 +6241,7 @@ xover.Store = function (xml, ...args) {
                 return renders;
             }).then((renders) => {
                 window.top.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
-                return renders.flat()
+                return renders.flat().filter(el => el)
             }).catch((e) => {
                 let tag = self.tag;
                 e = e || {}
@@ -8234,7 +8231,11 @@ xover.modernize = async function (targetWindow) {
                             if (![...mutated_targets].some(([target, mutation]) => Object.keys(mutation.attributes || {}).length || mutation.addedNodes.length || mutation.removedNodes.length)) return;
                             let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self);
                             for (let section of sections) {
-                                section.render()
+                                let active_element = document.activeElement;
+                                if (section.contains(active_element)) {
+                                    await xover.delay(100);
+                                    section.render().then(() => active_element.classList && active_element.classList.remove("xo-working"))
+                                }
                             }
                             //for (let store of Object.values(xover.stores).filter(store => store.document === self)) {
                             //    store.render()
@@ -11228,11 +11229,11 @@ xover.modernize = async function (targetWindow) {
                                     //console.log(`Couldn't render to ${stylesheet_target}${tag ? `(${tag})` : ''}`);
                                     continue;
                                 }
-                                let active_element = document.activeElement;
-                                if (target.contains(active_element)) {
-                                    await xover.delay(100);
-                                    xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
-                                }
+                                //let active_element = document.activeElement;
+                                //if (target.contains(active_element)) {
+                                //    await xover.delay(100);
+                                //    xover.delay(250).then(() => active_element.classList && active_element.classList.remove("xo-working"))
+                                //}
 
                                 if (!data.firstElementChild) {
                                     data.append(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
