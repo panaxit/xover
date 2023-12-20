@@ -6221,7 +6221,7 @@ xover.Store = function (xml, ...args) {
                 //if (xover.stores.seed === self && !xover.site.sections[tag].length) {
                 //    progress = xover.sources['loading.xslt'].render({ action: "append" });
                 //}
-                if (tag == xover.site.seed) {
+                if (tag == xover.site.active) {
                     xover.site.hash = self.hash;
                 }
                 if (!__document.firstChild) {
