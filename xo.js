@@ -3052,6 +3052,7 @@ xover.dom.createDialog = function (message) {
         iframe.onload = function () {
             iframe.style.height = (iframe.contentDocument.firstElementChild.scrollHeight + 0) + 'px';
             iframe.style.width = (iframe.contentDocument.firstElementChild.scrollWidth + 100) + 'px';
+            dialog.focus();
             window.top.dispatchEvent(new xover.listener.Event('dialog', { message }, iframe));
         }
         message = iframe;
@@ -4746,12 +4747,14 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                     return Promise.reject(e);
                 }
             }
-            for (let el of return_value.select(`//xsl:template//@xo:use-attribute-sets`)) {
-                let attribute_sets = el.value.split(/\s+/g);
-                let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [return_value.createComment(`ack:importing-attribute-sets-begins`)]);
-                attributes = attributes.concat(return_value.createComment(`ack:importing-attribute-sets-end`))
-                el.parentNode.prepend(...attributes)
-                el.remove();
+            if (return_value instanceof Node) {
+                for (let el of return_value.select(`//xsl:template//@xo:use-attribute-sets`)) {
+                    let attribute_sets = el.value.split(/\s+/g);
+                    let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [return_value.createComment(`ack:importing-attribute-sets-begins`)]);
+                    attributes = attributes.concat(return_value.createComment(`ack:importing-attribute-sets-end`))
+                    el.parentNode.prepend(...attributes)
+                    el.remove();
+                }
             }
             if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
                 return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "))
@@ -10890,8 +10893,15 @@ xover.modernize = async function (targetWindow) {
                                     } else if (!xml.documentElement) {
                                         return xml;
                                     } else {
-                                        if (xsl.documentElement.selectFirst(`//xsl:template/xsl:attribute[@name="xo-debug"]|//xsl:template//xsl:comment`)) {
+                                        if (!xsl.selectFirst(`*[@debug:tested="true"]`) && xsl.documentElement.selectFirst(`//xsl:template/xsl:attribute[@name="xo-debug"]|//xsl:template//xsl:comment`)) {
                                             let cleanedup_xsl = xsl.cloneNode(true);
+                                            if (xsl.documentElement.selectFirst('//xsl:template/xsl:attribute[@name="xo-debug"]|//xsl:template//xsl:comment')) {
+                                                let test_xsl = xsl.cloneNode(true);
+                                                test_xsl.select('//xsl:template/xsl:attribute[@name="xo-debug"]|//xsl:template//xsl:comment').remove()
+                                                if (xml.transform(test_xsl)) {
+                                                    cleanedup_xsl.documentElement.setAttribute("debug:tested", true);
+                                                }
+                                            }
                                             let removed = cleanedup_xsl.documentElement.selectFirst(`//xsl:template/xsl:attribute[@name="xo-debug"]|//xsl:template//xsl:comment`)
                                             let template = removed.parentNode.cloneNode(true);
                                             removed.remove();
