@@ -536,6 +536,9 @@ xover.init = async function () {
             await xover.manifest.init()
             Object.assign(xover.spaces, xover.manifest.spaces);
             this.init.status = 'initialized';
+            if (xover.session.status == 'authorized' && 'session' in xover.server) {
+                await xover.session.checkStatus();
+            }
 
             await Promise.all(xover.manifest.start.map(async href => await xover.sources[href].ready && xover.sources[href])).catch(e => e && e.render && e.render() || console.error(e));
 
@@ -545,7 +548,6 @@ xover.init = async function () {
             xover.site.sections.forEach(section => section.render());
             let active = xover.stores.active;
             active && active.render();
-            xover.session.checkStatus();
             return Promise.resolve();
         } catch (e) {
             return Promise.reject(e)
@@ -1490,14 +1492,14 @@ Object.defineProperty(xover.session, 'getCurrentStatus', {
 
 Object.defineProperty(xover.session, 'checkStatus', {
     value: async function (settings) {
-        if (!(navigator.onLine || 'status' in xover.server)) return xover.session.status;
+        if (!(navigator.onLine || 'session' in xover.server)) return xover.session.status;
         let server_status = {};
         //if (!((xover.manifest.server || {}).session)) {
         //    return Promise.reject(new Error("Session endpoint not configured."));
         //}
-        if ('status' in xover.server) {
+        if ('session' in xover.server) {
             try {
-                server_status = await xover.server.status();
+                server_status = await xover.server.session();
             } catch (e) {
                 server_status = { "status": "unauthorized" }
             }
