@@ -528,6 +528,7 @@ xover.delay = function (ms) {
 
 
 xover.init = async function () {
+    let progress;
     this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
         try {
             await xover.modernize();
@@ -536,6 +537,7 @@ xover.init = async function () {
             await xover.manifest.init()
             Object.assign(xover.spaces, xover.manifest.spaces);
             this.init.status = 'initialized';
+            progress = xover.sources['loading.xslt'].render({ action: "append" });
             if (xover.session.status == 'authorized' && 'session' in xover.server) {
                 await xover.session.checkStatus();
             }
@@ -555,8 +557,10 @@ xover.init = async function () {
     }).catch(e => {
         this.init.status = 'error';
         return Promise.reject(e);
-    }).finally(() => {
+    }).finally(async () => {
         this.init.initializing = 'done';
+        progress = await progress || [];
+        progress.forEach(item => item.remove());
     });
     return this.init.initializing;
 }
