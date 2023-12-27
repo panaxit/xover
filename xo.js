@@ -583,7 +583,7 @@ xover.init.Observer = function (target_node = window.document) {
     });
     const observer = new MutationObserver((mutationsList, observer) => {
         for (const mutation of mutationsList) {
-            if (mutation.type == 'childList' && [...mutation.addedNodes].every((node, ix) => node.isEqualNode(mutation.removedNodes[ix]))) continue;
+            if (mutation.type == 'childList' && mutation.addedNodes.length && [...mutation.addedNodes].every((node, ix) => node.isEqualNode(mutation.removedNodes[ix]))) continue;
             if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
             let target = mutation.target;
 
@@ -614,6 +614,9 @@ xover.init.Observer = function (target_node = window.document) {
                     });
                     observer_node.observer.observe(observer_node, observer_config);
                 }
+            }
+            for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor) && target.contains(node))) {/*nodes that were actually reallocated*/
+                window.top.dispatchEvent(new xover.listener.Event('reallocate', { target, nextSibling: mutation.nextSibling }, node));
             }
             for (let node of [...mutation.addedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {
                 window.top.dispatchEvent(new xover.listener.Event('append', { target }, node));
