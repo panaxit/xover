@@ -10756,21 +10756,21 @@ xover.modernize = async function (targetWindow) {
                                     //    xsl = xover.xml.consolidate(xsl); //Corregir casos cuando tiene apply-imports
                                     //}
 
-                                    xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'globalization:')]`).map(param => {
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'globalization:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             if (param.value != undefined) {
                                                 let source = xover.sources[param.value];
                                                 source.ready;
-                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="text()[.='${name.value}']|@*[.='${name.value}']"><xsl:text/>${name.parentNode.textContent}<xsl:text/></xsl:template>`));
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="text()[.='${name.value}']|@*[.='${name.value}']"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
                                             }
                                         } catch (e) {
                                             Promise.reject(e.message);
                                         }
-                                    });
+                                    };
                                     xsltProcessor.importStylesheet(xsl);
-                                    xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:') or not(contains(@name,':'))][text()]`).map(param => {
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:') or not(contains(@name,':'))][text()]`)) {
                                         try {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), eval(param.textContent))
                                         } catch (e) {
@@ -10778,8 +10778,8 @@ xover.modernize = async function (targetWindow) {
                                             Promise.reject(e.message);
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                         }
-                                    });
-                                    xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:')]`).map(param => {
+                                    };
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(":").pop();
                                             //if (!(param_name in xover.session)) xover.session[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
@@ -10791,8 +10791,8 @@ xover.modernize = async function (targetWindow) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                             Promise.reject(e.message);
                                         }
-                                    });
-                                    xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`).map(param => {
+                                    };
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop();
                                             //if (!(param_name in xover.state)) xover.state[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
@@ -10804,8 +10804,8 @@ xover.modernize = async function (targetWindow) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                             Promise.reject(e.message);
                                         }
-                                    });
-                                    xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`).map(param => {
+                                    };
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`) : xover.site[param_name];
@@ -10816,8 +10816,8 @@ xover.modernize = async function (targetWindow) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                             Promise.reject(e.message);
                                         }
-                                    });
-                                    xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`).map(param => {
+                                    };
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             let param_value = xover.site.searchParams.get(param_name);
@@ -10836,7 +10836,7 @@ xover.modernize = async function (targetWindow) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                             Promise.reject(e.message);
                                         }
-                                    });
+                                    };
                                     for (let param_name of xsl.selectNodes(`//xsl:stylesheet/xsl:param/@name`).filter(name => this.target && this.target.getAttribute(name.value))) {
                                         let param = param_name.parentNode;
                                         let prefix = param_name.prefix || '';
