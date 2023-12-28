@@ -4938,7 +4938,10 @@ xover.xml.combine = function (target, new_node) {
 }
 
 xover.dom.combine = async function (target, new_node) {
-    if (target instanceof HTMLElement && new_node instanceof Document) {
+    let scripts;
+    let script_wrapper = window.document.firstElementChild.cloneNode();
+    script_wrapper.append(...new_node.selectNodes('.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
+    if (target instanceof HTMLElement && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
         if (target.tagName === 'CODE') {
             target.textContent = new_node.toString();
             return target;
@@ -4951,12 +4954,14 @@ xover.dom.combine = async function (target, new_node) {
             }
             return target;
         }
-        new_node = new_node.firstElementChild
+        if (new_node.childElementCount > 1) {
+            let target_clone = target.cloneNode();
+            target_clone.append(...new_node)
+            new_node = target_clone;
+        } else {
+            new_node = new_node.firstElementChild
+        }
     }
-    let scripts;
-    let script_wrapper = window.document.firstElementChild.cloneNode();
-    script_wrapper.append(...new_node.selectNodes('.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
-
     //documentElement.setAttributeNS(null, "xo-scope", new_node.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
     //if (new_node.hasAttribute("id") && new_node.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-source])`)) {
     //    action = 'replace';
@@ -11246,7 +11251,7 @@ xover.modernize = async function (targetWindow) {
                                     await Promise.all(dependency_promises);
                                 }
                                 let target = stylesheet_target instanceof HTMLElement && stylesheet_target || document.querySelector(stylesheet_target);
-                                target = tag && target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`) || target;
+                                target = target instanceof HTMLElement && (tag && target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`)) || target;
                                 if (!(target instanceof Node && document.contains(target))) {
                                     //console.log(`Couldn't render to ${stylesheet_target}${tag ? `(${tag})` : ''}`);
                                     continue;
@@ -11284,30 +11289,33 @@ xover.modernize = async function (targetWindow) {
                                 if (!documentElement) {
                                     continue;
                                 }
-                                if (dom instanceof DocumentFragment) {
-                                    let content = target.cloneNode();
-                                    dom.children.toArray().forEach(el => el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove());
-                                    content.append(...dom.children);
-                                    documentElement = content;
-                                } else {
-                                    documentElement.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
+                                dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
+                                dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
+                                for (let el of dom.children.toArray()) {
+                                    el.document = this;
+                                    el.context = data;
+                                    el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
+                                    if (![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(el.constructor)) {
+                                        let current_scope = el.getAttributeNode("xo-scope") || target.getAttributeNode("xo-scope");
+                                        current_scope && el.setAttributeNS(null, "xo-scope", current_scope.value);
+                                        let store_tag = el.getAttributeNode("xo-source") || target.getAttributeNode("xo-source") || tag || '';
+                                        store_tag && el.setAttributeNS(null, "xo-source", store_tag.value || store_tag);
+                                        let stylesheet_href = stylesheet.href;
+                                        stylesheet_href && el.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
+                                    }
                                 }
-                                documentElement.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
-                                documentElement.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
-
-                                let current_scope = target.getAttribute("xo-scope");
-                                current_scope && documentElement.setAttributeNS(null, "xo-scope", current_scope);
-                                let store_tag = documentElement.getAttribute("xo-source") || target.getAttribute("xo-source") || tag || '';
-                                store_tag && documentElement.setAttributeNS(null, "xo-source", store_tag);
-                                let stylesheet_href = stylesheet.href;
-                                stylesheet_href && documentElement.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
+                                //if (dom instanceof DocumentFragment) {
+                                //    //let content = target.cloneNode();
+                                //    content.append(...dom.children);
+                                //    documentElement = content;
+                                //} else {
+                                //    documentElement.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
+                                //}
 
                                 let old = target.cloneNode(true);
                                 target.document = this;
                                 target.context = data;
-                                documentElement.document = this;
-                                documentElement.context = data;
-                                target = await xover.dom.combine(target, documentElement);
+                                target = await xover.dom.combine(target, dom);
 
                                 xover.delay(10).then(() => {
                                     let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
@@ -11315,7 +11323,7 @@ xover.modernize = async function (targetWindow) {
                                     if (render_event.cancelBubble || render_event.defaultPrevented) return target;
                                     xover.subscribeReferencers(target)
                                 })
-                                targets.push(documentElement);
+                                targets.push(target);
                             }
                             return Promise.resolve(targets);
                         },
