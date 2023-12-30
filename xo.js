@@ -621,8 +621,17 @@ xover.init.Observer = function (target_node = window.document) {
                     observer_node.observer.observe(observer_node, observer_config);
                 }
             }
-            for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor) && target.contains(node))) {/*nodes that were actually reallocated*/
-                window.top.dispatchEvent(new xover.listener.Event('reallocate', { target, nextSibling: mutation.nextSibling }, node));
+            for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
+                if (target.contains(node)) {
+                    window.top.dispatchEvent(new xover.listener.Event('reallocate', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node));
+                } else {
+                    observer.disconnect();
+                    target.insertBefore(node, mutation.nextSibling);
+                    let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
+                    window.top.dispatchEvent(remove_event);
+                    if (!remove_event.defaultPrevented) node.remove();
+                    observer.observe(target_node, config);
+                }
             }
             for (let node of [...mutation.addedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {
                 window.top.dispatchEvent(new xover.listener.Event('append', { target }, node));
@@ -784,6 +793,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         }
     })
     if (_event.detail) {
+        _event.detail["designMode"] = _event.detail.hasOwnProperty("designMode") ? _event.detail["designMode"] : document.designMode == 'on';
         if (context instanceof Attr) {
             _event.detail["element"] = _event.detail["element"] || context.parentNode;
             _event.detail["attribute"] = _event.detail["attribute"] || context;
@@ -818,6 +828,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             node = node instanceof Document && node.documentElement || node;
         }
         if (context instanceof Node) {
+            _event.detail["parentNode"] ? _event.detail["parentNode"] : (context.formerParentNode || context.parentNode) ;
             _event.detail["node"] = _event.detail["node"] || context;
             _event.detail["target"] = _event.detail["target"] || context;
             _event.detail["document"] = _event.detail["document"] || context.ownerDocument;
@@ -843,7 +854,6 @@ Object.defineProperty(xover.listener, 'matches', {
             let tag = event_tag || context.tag || ((event || {}).detail || {}).tag || '';
             let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
             for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && predicate.replace(/^#/, '') === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
-                if (handler.conditions && ![...handler.conditions].every(([key, condition]) => event.detail[key] == condition)) continue;
                 fns.set(handler.toString(), handler);
             }
         }
@@ -918,6 +928,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
             if (event.propagationStopped || event.cancelBubble) break;
+            if (event.detail && handler.conditions && ![...handler.conditions].every(([key, condition]) => condition ? `${event.detail[key]}` == `${condition}` : event.detail[key])) continue;
             //if (context.eventHistory.get(handler)) {
             //    console.warn(`Event ${event.type} recursed`)
             //}
@@ -1013,9 +1024,9 @@ Object.defineProperty(xover.listener, 'on', {
         for (let event_name of name_or_list) {
             handler.selectors.push(event_name);
             let conditions;
-            [event_name, conditions] = event_name.split(/\?/);
             let [scoped_event, ...predicate] = event_name.split(/::/);
             predicate = predicate.join("::");
+            [scoped_event, conditions] = scoped_event.split(/\?/);
             [base_event, scope] = scoped_event.split(/:/).reverse();
             window.top.removeEventListener(base_event, xover.listener.dispatcher);
             window.top.addEventListener(base_event, xover.listener.dispatcher, options);
@@ -8256,11 +8267,11 @@ xover.modernize = async function (targetWindow) {
                                 }
                             }
                             if (![...mutated_targets].some(([target, mutation]) => Object.keys(mutation.attributes || {}).length || mutation.addedNodes.length || mutation.removedNodes.length)) return;
-                            let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self);
+                            let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self).sort(el => el.contains(document.activeElement) && -1 || 1);
                             for (let section of sections) {
                                 let active_element = document.activeElement;
                                 if (section.contains(active_element)) {
-                                    await xover.delay(100);
+                                    await xover.delay(100); //delay to let animations end
                                 }
                                 section.render().then(() => active_element.classList && active_element.classList.remove("xo-working"))
                             }
