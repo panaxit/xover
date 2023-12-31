@@ -829,6 +829,8 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         }
         if (context instanceof Node) {
             _event.detail["parentNode"] = _event.detail.hasOwnProperty("parentNode") ? _event.detail["parentNode"] : (context.formerParentNode || context.parentNode) ;
+            _event.detail["nextNode"] = _event.detail.hasOwnProperty("nextNode") ? _event.detail["nextNode"] : context.nextNode ;
+            _event.detail["previousNode"] = _event.detail.hasOwnProperty("previousNode") ? _event.detail["previousNode"] : context.previousNode;
             _event.detail["node"] = _event.detail["node"] || context;
             _event.detail["target"] = _event.detail["target"] || context;
             _event.detail["document"] = _event.detail["document"] || context.ownerDocument;
