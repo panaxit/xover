@@ -9502,7 +9502,7 @@ xover.modernize = async function (targetWindow) {
                     self = this
                     let responses = [];
                     for (let [attribute, value] of Object.entries(attributes)) {
-                        responses.push(self.setAttribute(attribute, value, refresh));
+                        responses.push(self.setAttribute(attribute, value));
                     }
                     return responses;
                 }
@@ -11634,6 +11634,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
             window.top.dispatchEvent(unhandledrejection_event);
             if (unhandledrejection_event.defaultPrevented) return;
         }
+        if (reason && reason.stack) console.error(reason.stack)
         if (reason instanceof TypeError || reason instanceof DOMException) {
             String(reason).alert()
             console.error(reason.stack || reason)
