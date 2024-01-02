@@ -576,7 +576,7 @@ Object.defineProperty(xover, 'ready', {
 })
 
 xover.init.Observer = function (target_node = window.document) {
-    const config = { characterData: true, attributeFilter: ["xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-static", "xo-stop", "xo-site", "xo-id"], attributeOldValue: true, childList: true, subtree: true };
+    const config = { characterData: true, attributeFilter: ["xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-static", "xo-stop", "xo-site", "xo-id", "class"], attributeOldValue: true, childList: true, subtree: true };
 
     const intersection_observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
@@ -595,6 +595,10 @@ xover.init.Observer = function (target_node = window.document) {
 
             if (mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName) || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")) {
                 target.render()
+            }
+            if (mutation.type == 'attributes' && ["class"].includes(mutation.attributeName)) {
+                let attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
             }
             if (mutation.addedNodes.length) {
                 window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
