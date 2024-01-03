@@ -832,8 +832,8 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             node = node instanceof Document && node.documentElement || node;
         }
         if (context instanceof Node) {
-            _event.detail["parentNode"] = _event.detail.hasOwnProperty("parentNode") ? _event.detail["parentNode"] : (context.formerParentNode || context.parentNode) ;
-            _event.detail["nextNode"] = _event.detail.hasOwnProperty("nextNode") ? _event.detail["nextNode"] : context.nextNode ;
+            _event.detail["parentNode"] = _event.detail.hasOwnProperty("parentNode") ? _event.detail["parentNode"] : (context.formerParentNode || context.parentNode);
+            _event.detail["nextNode"] = _event.detail.hasOwnProperty("nextNode") ? _event.detail["nextNode"] : context.nextNode;
             _event.detail["previousNode"] = _event.detail.hasOwnProperty("previousNode") ? _event.detail["previousNode"] : context.previousNode;
             _event.detail["node"] = _event.detail["node"] || context;
             _event.detail["target"] = _event.detail["target"] || context;
@@ -934,7 +934,17 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
             if (event.propagationStopped || event.cancelBubble) break;
-            if (event.detail && handler.conditions && ![...handler.conditions].every(([key, condition]) => condition ? `${event.detail[key]}` == `${condition}` : event.detail[key])) continue;
+            if (event.detail && handler.conditions && ![...handler.conditions].every(([key, condition]) => {
+                let [arg, ...props] = key.split(/\./g);
+                let context = event.detail[arg];
+                if (context === undefined && arg in window) {
+                    context = window[arg]
+                }
+                for (let prop of props || []) {
+                    context = context[prop];
+                }
+                return condition ? (context instanceof Document ? [context.href.replace(/^\//, '')].includes(condition) : `${context}`.matches(`${condition}`)) : context
+            })) continue;
             //if (context.eventHistory.get(handler)) {
             //    console.warn(`Event ${event.type} recursed`)
             //}
@@ -1100,7 +1110,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
     if (history.state) delete history.state.active;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
-    xover.site.seed = history.state.seed || event.target.location.hash || '#';
+    xover.site.seed = (history.state || {}).seed || event.target.location.hash || '#';
     if (event.defaultPrevented) return;
     (location.search || '').length > 1 && xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
     if (xover.session.status == 'authorizing') xover.session.status = null;
@@ -1249,18 +1259,6 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
 
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
-        let matches = function (tag, key) {
-            return tag == key
-                || key[0] == '^' && (
-                    tag.match(RegExp(key, "i"))
-                    //|| tag.match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
-                )
-                || key[0] == '~' && (
-                    key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
-                        : tag.endsWith(key.slice(1))
-                )
-                || key.slice(-1) == '~' && tag.startsWith(key.slice(1))
-        }
         let tag = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
         let tag_url = input instanceof URL && input || xover.URL(tag);
         let settings = Object.entries(this.settings).filter(([full_key, value]) => full_key.split(/\|\|/g).some(key => {
@@ -1268,7 +1266,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                 if (key[0] != '/') return false;
                 return input.selectFirst(key)
             } else if (key[0] == '^') {
-                return matches(tag_url.href, key)
+                return tag_url.href.matches(key)
             } else {
                 if (key[0] == '/') return false;
                 let key_url = new xover.URL(!(input instanceof Node) ? key : '');
@@ -1277,11 +1275,11 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                         tag_url.protocol == key_url.protocol
                     ) && (
                         !key_url.pathname[1]
-                        || matches(tag_url.pathname.slice(1), key_url.pathname.slice(1))
+                    || tag_url.pathname.slice(1).matches(key_url.pathname.slice(1))
                     ) && (
                         !key_url.hash
                         || tag_url.hash == key_url.hash
-                        || matches(tag_url.hash.slice(1), key_url.hash.slice(1))
+                    || tag_url.hash.slice(1).matches(key_url.hash.slice(1))
                     ) && (
                         !key_url.searchParams.length ||
                         [...key_url.searchParams].every(([key, predicate]) => {
@@ -1685,7 +1683,7 @@ Object.defineProperty(xover.site, 'reference', {
 
 Object.defineProperty(xover.site, 'location', {
     get() {
-        return { location: { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) } }
+        return { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) }
     }
     , enumerable: true
 });
@@ -7892,6 +7890,20 @@ xover.modernize = async function (targetWindow) {
                 return date;
             }
 
+            String.prototype.matches = function (key) {
+                tag = this;
+                return tag == key
+                    || key[0] == '^' && (
+                        tag.match(RegExp(key, "i"))
+                        //|| tag.match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
+                    )
+                    || key[0] == '~' && (
+                        key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
+                            : tag.endsWith(key.slice(1))
+                    )
+                    || key.slice(-1) == '~' && tag.startsWith(key.slice(0, -1))
+            }
+
             String.prototype.parseDate = function (input_format = "dd/mm/yyyy") {
                 sDate = this.toString();
                 let pattern = /\b(\d{1,2})(?:(\/)(\d{1,2})(?:\2(\d{2,4}))?)?/
@@ -8105,7 +8117,7 @@ xover.modernize = async function (targetWindow) {
                     let selection = new Array;
                     let aItems;
                     try {
-                        aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                        aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                     } catch (e) {
                         if (e.message.match(/contains unresolvable namespaces/g)) {
                             ////let prefixes = xpath.match(/\w+(?=\:)/g);
@@ -8121,7 +8133,7 @@ xover.modernize = async function (targetWindow) {
                                 xpath = xpath.replace(RegExp("(?<=::|@|\\/|\\[|^|\\()([\\w-_]+):([\\w-_]+|\\*)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
                                 //console.log(xpath)
                             }
-                            aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                            aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         } else {
                             //if (xover.session.debug) console.warn(e);
                             aItems = {};
