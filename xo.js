@@ -5080,6 +5080,8 @@ xover.dom.combine = async function (target, new_node) {
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
     xover.xml.staticMerge(target, new_node);
+    let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
+    window.top.dispatchEvent(before_dom);
     let changes = xover.xml.getDifferences(target, new_node);
     if (!changes.length) return target;
     scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
@@ -5091,8 +5093,6 @@ xover.dom.combine = async function (target, new_node) {
         });
         return cloned;
     });
-    let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node, changes }, new_node);
-    window.top.dispatchEvent(before_dom);
     if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
     if (new_node && (new_node.tagName || '').toLowerCase() == "html") {
         //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
@@ -10420,7 +10420,7 @@ xover.modernize = async function (targetWindow) {
                     return this.parentNode.replaceChild(new_node.cloneNode(true), this);
                 }
 
-                XMLDocument.prototype.replaceBy = function (new_document) {
+                Document.prototype.replaceBy = function (new_document) {
                     if (new_document !== this) {
                         while (this.firstChild) {
                             this.removeChild(this.lastChild);
@@ -10899,7 +10899,7 @@ xover.modernize = async function (targetWindow) {
                                         if (transformed && transformed.children.length > 1) {
                                             newDoc = transformed;
                                         } else if (transformed) {
-                                            newDoc = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
+                                            newDoc = window.document.cloneNode()//document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);//
                                             newDoc.replaceBy(transformed)
                                         }
                                         result = newDoc;
