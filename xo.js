@@ -4955,7 +4955,7 @@ xover.xml.combine = function (target, new_node) {
 xover.dom.combine = async function (target, new_node) {
     let scripts;
     let script_wrapper = window.document.firstElementChild.cloneNode();
-    script_wrapper.append(...new_node.selectNodes('.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]'));
+    script_wrapper.append(...new_node.selectNodes(`html:script|html:style|.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
     if (target instanceof HTMLElement && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
         if (target.tagName === 'CODE') {
             target.textContent = new_node.toString();
@@ -4971,7 +4971,7 @@ xover.dom.combine = async function (target, new_node) {
         }
         if (new_node.childElementCount > 1) {
             let target_clone = target.cloneNode();
-            target_clone.append(...new_node)
+            target_clone.append(...new_node.childNodes)
             new_node = target_clone;
         } else {
             new_node = new_node.firstElementChild
