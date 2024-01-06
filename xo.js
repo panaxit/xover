@@ -596,8 +596,9 @@ xover.init.Observer = function (target_node = window.document) {
             if (mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName) || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")) {
                 target.render()
             }
+            let attr;
             if (mutation.type == 'attributes' && ["class"].includes(mutation.attributeName)) {
-                let attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+                attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
                 attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
             }
             if (mutation.addedNodes.length) {
@@ -625,6 +626,7 @@ xover.init.Observer = function (target_node = window.document) {
                     observer_node.observer.observe(observer_node, observer_config);
                 }
             }
+            if (![...xover.listener].filter(([event, map]) => ['change', 'remove', 'input', 'append', 'reallocate'].includes(event)).map(([event, [[, [[key, fn]]]]]) => key).some(key => (attr || target).matches(key))) continue;
             for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
                 if (target.contains(node)) {
                     window.top.dispatchEvent(new xover.listener.Event('reallocate', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node));
@@ -682,7 +684,7 @@ xover.initializeElementListeners = function (document = window.document) {
 
     document.querySelectorAll('input,textarea').forEach(el => {
         for (let event_name of ['focus', 'focusin', 'blur']) {
-            if (xo.listener.get(event_name)) {
+            if (xover.listener.get(event_name)) {
                 el.removeEventListener(event_name, event_handler)
                 el.addEventListener(event_name, (event) => event_handler(event, el))
             }
@@ -773,7 +775,7 @@ xover.subscribeReferencers = async function (context = window.document) {
             subscriber.evaluate()
         }
     }
-    context.select(`//*[@xo-site]//@src|//*[@xo-site]//@href`).map(src => src.set(xo.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
+    context.select(`//*[@xo-site]//@src|//*[@xo-site]//@href`).map(src => src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
 }
 
 xover.json = {};
@@ -1085,12 +1087,13 @@ xover.listener.on('pushstate', function ({ state }) {
     }
 });
 
-xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
-    new_hash = (new_hash || window.location.hash);
-    if (new_hash !== '#' && (document.getElementById(new_hash.substr(1))/* || (new_hash in xover.stores)*/)) {
-        event.preventDefault();
-    }
-})
+//xover.listener.on('beforeHashChange', function (new_hash, old_hash) {
+//    new_hash = (new_hash || window.location.hash);
+//    if (new_hash !== '#' && (document.getElementById(new_hash.substr(1))/* || (new_hash in xover.stores)*/)) {
+//        event.preventDefault();
+//        document.getElementById(new_hash.substr(1)).scrollIntoView()
+//    }
+//})
 
 xover.listener.on('blur::[xo-scope][type=search]', async function () {
     let value = this.getAttributeNode("value");
@@ -1107,6 +1110,7 @@ xover.listener.on('keyup', async function (event) {
 })
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
+    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.scrollIntoView());
     await xover.ready;
     if (history.state) delete history.state.active;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
@@ -1275,11 +1279,11 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                         tag_url.protocol == key_url.protocol
                     ) && (
                         !key_url.pathname[1]
-                    || tag_url.pathname.slice(1).matches(key_url.pathname.slice(1))
+                        || tag_url.pathname.slice(1).matches(key_url.pathname.slice(1))
                     ) && (
                         !key_url.hash
                         || tag_url.hash == key_url.hash
-                    || tag_url.hash.slice(1).matches(key_url.hash.slice(1))
+                        || tag_url.hash.slice(1).matches(key_url.hash.slice(1))
                     ) && (
                         !key_url.searchParams.length ||
                         [...key_url.searchParams].every(([key, predicate]) => {
@@ -1700,8 +1704,8 @@ Object.defineProperty(xover.site, 'navigate', {
             url = new xover.URL(url)
         }
         let hashtag = url.hash;
-        xo.site.next = hashtag;
-        xo.site.seed = hashtag;
+        xover.site.next = hashtag;
+        xover.site.seed = hashtag;
         event && event.preventDefault()
     }, writable: false, configurable: false, enumerable: false
 });
@@ -4936,7 +4940,7 @@ xover.xml.combine = function (target, new_node) {
         }
         //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
         target.replaceChildren(...new_node.childNodes)
-        //active_element && xo.delay(100).then(() => active_element.focus());
+        //active_element && xover.delay(100).then(() => active_element.focus());
         return target
     } else {
         if (new_node instanceof Comment && new_node.data == 'ack:empty' && target.classList instanceof DOMTokenList) {
@@ -5622,7 +5626,7 @@ xover.Store = function (xml, ...args) {
             for (let [, document] of Object.entries(this)) {
                 document.source.clear()
             }
-            xover.site.sections.filter(section => section.store === xo.stores.active).forEach(section => [(section.stylesheet || {}).source].filter(source => source).pop().delete());
+            xover.site.sections.filter(section => section.store === xover.stores.active).forEach(section => [(section.stylesheet || {}).source].filter(source => source).pop().delete());
             return _sources;
         },
         writable: false, enumerable: false, configurable: false
@@ -7819,15 +7823,25 @@ xover.modernize = async function (targetWindow) {
                 } catch (e) {
                     if (e instanceof SyntaxError || e.message.indexOf('not a valid selector') != -1) {
                         xover.context = self;
-                        let result = eval(`(${condition})`);
-                        if (result instanceof Promise && params.length) {
-                            result = new Promise((resolve, reject) => {
-                                return resolve(result.then(async result => result == true ? await xover.waitFor.apply(self, params) : result))
-                            })
+                        try {
+                            let result = eval(`(${condition.replace(/^#/, '')})`);
+                            if (result instanceof Promise && params.length) {
+                                result = new Promise((resolve, reject) => {
+                                    return resolve(result.then(async result => result == true ? await xover.waitFor.apply(self, params) : result))
+                                })
+                            }
+                        } catch (e) {
+                            if (e instanceof ReferenceError) {
+                                try {
+                                    return window.document.querySelector(condition) || condition;
+                                } catch (e) { }
+                            }
                         }
                         return result;
                     } else if (e instanceof ReferenceError) {
-                        return condition;
+                        try {
+                            return window.document.querySelector(condition) || condition;
+                        } catch (e) { }
                     }
                 }
             }
@@ -7841,6 +7855,8 @@ xover.modernize = async function (targetWindow) {
                         let result;
                         if (!condition) {
                             return resolve(condition);
+                        } else if (condition instanceof Node) {
+                            result = condition
                         } else if (condition instanceof Promise) {
                             return resolve(await condition);
                         } else {
@@ -8076,7 +8092,8 @@ xover.modernize = async function (targetWindow) {
                     if (this instanceof DocumentFragment) {
                         let children = new DocumentFragment();
                         let matches = [];
-                        const temp_doc = new DOMParser().parseFromString("<root/>", 'text/xml');
+                        const temp_doc = this.firstElementChild instanceof HTMLElement ? window.document.cloneNode() : new DOMParser().parseFromString("<root/>", 'text/xml');
+                        if (!temp_doc.firstElementChild) temp_doc.append(window.document.body.cloneNode());
                         let original_root = temp_doc.firstElementChild;
                         for (let child of [...this.childNodes]) {
                             let target = temp_doc;
@@ -9016,7 +9033,7 @@ xover.modernize = async function (targetWindow) {
                             return Promise.reject(e)
                         }
                     } else {
-                        await xo.delay(200);
+                        await xover.delay(200);
                         let textarea = (document.createElement('textarea'));
                         textarea.setAttribute("readonly", "");
                         textarea.style.position = "absolute";
@@ -9025,7 +9042,7 @@ xover.modernize = async function (targetWindow) {
                         document.body.appendChild(textarea);
                         textarea.select();
                         document.execCommand('copy');
-                        await xo.delay(5000);
+                        await xover.delay(5000);
                         textarea.remove();
                     }
                 }
@@ -9815,7 +9832,7 @@ xover.modernize = async function (targetWindow) {
                         this.disconnect()
                     }
                     Element.native.setAttributeNode.apply(this, [attribute])
-                    if (!disconnected) xo.delay(1).then(() => this.connect())
+                    if (!disconnected) xover.delay(1).then(() => this.connect())
                     return this;
                 }
 
@@ -10237,7 +10254,7 @@ xover.modernize = async function (targetWindow) {
                     }
                     this.value = value;
                     if (!disconnected) this.connect()
-                    //if (!disconnected) xo.delay(100).then(() => this.connect())
+                    //if (!disconnected) xover.delay(100).then(() => this.connect())
                     return this;
                 }
 
