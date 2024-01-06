@@ -1109,8 +1109,12 @@ xover.listener.on('keyup', async function (event) {
     }
 })
 
+xover.listener.on('scrollIntoView', function (event) {
+    this.scrollIntoView()
+})
+
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
-    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.scrollIntoView());
+    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
     await xover.ready;
     if (history.state) delete history.state.active;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
@@ -7823,8 +7827,9 @@ xover.modernize = async function (targetWindow) {
                 } catch (e) {
                     if (e instanceof SyntaxError || e.message.indexOf('not a valid selector') != -1) {
                         xover.context = self;
+                        let result;
                         try {
-                            let result = eval(`(${condition.replace(/^#/, '')})`);
+                            result = eval(`(${condition.replace(/^#/, '')})`);
                             if (result instanceof Promise && params.length) {
                                 result = new Promise((resolve, reject) => {
                                     return resolve(result.then(async result => result == true ? await xover.waitFor.apply(self, params) : result))
