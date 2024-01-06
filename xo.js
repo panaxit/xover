@@ -11630,6 +11630,9 @@ xover.dom.toExcel = (function (table, name) {
 //        event.preventDefault();
 //    }
 //});
+window.addEventListener('load', function () {
+    history.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || createElement('p')).getAttribute("content") || history.scrollRestoration
+});
 
 xover.listener.on('Response:reject', function ({ response, request = {} }) {
     if (!response.ok && ((request.url || {}).pathname || '').indexOf(`.manifest`) != -1) {
