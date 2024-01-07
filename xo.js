@@ -1135,10 +1135,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
 })
 
 xover.listener.on('popstate', async function (event) {
-    let scrollRestoration = (history || {})["scrollRestoration"];
-    if (!scrollRestoration) return;
-    let meta = window.document.querySelector(`head meta[name=scroll-restoration]`) || window.document.head.appendChild(xover.xml.createNode(`<meta name="scroll-restoration" content="${scrollRestoration}"/>`));
-    meta.setAttribute("content", scrollRestoration);
+    history.scrollRestoration = xover.site.scrollRestoration;
 })
 
 xover.listener.on('navigatedForward', function (event) {
@@ -1701,6 +1698,17 @@ Object.defineProperty(xover.site, 'reference', {
 Object.defineProperty(xover.site, 'location', {
     get() {
         return { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) }
+    }
+    , enumerable: true
+});
+
+Object.defineProperty(xover.site, 'scrollRestoration', {
+    get() {
+        return xover.state.scrollRestoration || (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
+    }
+    , set(value) {
+        xover.state.scrollRestoration = value;
+        history.scrollRestoration = xover.state.scrollRestoration;
     }
     , enumerable: true
 });
@@ -7318,8 +7326,10 @@ xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
 
 xover.listener.on('click::*[ancestor-or-self::a[@scroll-restoration]]', function (event) {
     let scrollRestoration = this.closest("a[scroll-restoration]").getAttribute("scroll-restoration");
-    let meta = window.document.querySelector(`head meta[name=scroll-restoration]`) || window.document.head.appendChild(xover.xml.createNode(`<meta name="scroll-restoration" content="${scrollRestoration}"/>`));
-    meta.setAttribute("content", scrollRestoration);
+    xover.delay(100).then(() => {
+        let meta = window.document.querySelector(`head meta[name=scroll-restoration]`) || window.document.head.appendChild(xover.xml.createNode(`<meta name="scroll-restoration" content="${scrollRestoration}"/>`));
+        meta.setAttribute("content", scrollRestoration);
+    })
 })
 
 xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
@@ -11652,9 +11662,7 @@ xover.dom.toExcel = (function (table, name) {
 //    }
 //});
 xover.listener.on(['load', 'change::meta[name=scroll-restoration]'], function () {
-    xover.delay(5).then(() => {
-        history.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
-    })
+    xover.state.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
 });
 
 xover.listener.on('Response:reject', function ({ response, request = {} }) {
