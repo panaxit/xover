@@ -576,7 +576,7 @@ Object.defineProperty(xover, 'ready', {
 })
 
 xover.init.Observer = function (target_node = window.document) {
-    const config = { characterData: true, attributeFilter: ["xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-static", "xo-stop", "xo-site", "xo-id", "class"], attributeOldValue: true, childList: true, subtree: true };
+    const config = { characterData: true, attributeOldValue: true, childList: true, subtree: true }; /*attributeFilter: ["xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-static", "xo-stop", "xo-site", "xo-id", "class"], */
 
     const intersection_observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
@@ -590,20 +590,13 @@ xover.init.Observer = function (target_node = window.document) {
     const observer = new MutationObserver((mutationsList, observer) => {
         for (const mutation of mutationsList) {
             if (mutation.type == 'childList' && mutation.addedNodes.length && [...mutation.addedNodes].every((node, ix) => node.isEqualNode(mutation.removedNodes[ix]))) continue;
-            if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
+            //if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
             let target = mutation.target;
 
             if (mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName) || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")) {
                 target.render()
             }
             let attr;
-            if (mutation.type == 'attributes' && ["class"].includes(mutation.attributeName)) {
-                attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-                attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
-            }
-            if (mutation.addedNodes.length) {
-                window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
-            }
             for (let node of [...mutation.addedNodes].concat(target)) {
                 if (node.closest("[xo-id]")) {
                     let observer_node = node.selectFirst(`ancestor-or-self::*[@xo-id][last()]`);
@@ -626,7 +619,16 @@ xover.init.Observer = function (target_node = window.document) {
                     observer_node.observer.observe(observer_node, observer_config);
                 }
             }
-            if (![...xover.listener].filter(([event, map]) => ['change', 'remove', 'input', 'append', 'reallocate'].includes(event)).map(([event, [[, [[key, fn]]]]]) => key).some(key => (attr || target).matches(key))) continue;
+            if (mutation.type == 'attributes') {
+                attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+            }
+            if (![...xover.listener].filter(([event, map]) => ['change', 'remove', 'input', 'append', 'appendTo', 'reallocate'].includes(event)).map(([event, [[, [[key, fn]]]]]) => key).some(key => attr && (attr).matches(key) || target)) continue;
+            attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
+            window.top.dispatchEvent(new xover.listener.Event('change', { target }, target));
+            if (mutation.addedNodes.length) {
+                window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
+            }
+
             for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
                 if (target.contains(node)) {
                     window.top.dispatchEvent(new xover.listener.Event('reallocate', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node));
@@ -1130,6 +1132,13 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     //if (!item) {
     //    xover.site.seed = (event.state || {}).seed || (history.state || {}).seed || event.target.location.hash;
     //}
+})
+
+xover.listener.on('popstate', async function (event) {
+    let scrollRestoration = (history || {})["scrollRestoration"];
+    if (!scrollRestoration) return;
+    let meta = window.document.querySelector(`head meta[name=scroll-restoration]`) || window.document.head.appendChild(xover.xml.createNode(`<meta name="scroll-restoration" content="${scrollRestoration}"/>`));
+    meta.setAttribute("content", scrollRestoration);
 })
 
 xover.listener.on('navigatedForward', function (event) {
@@ -7307,6 +7316,12 @@ xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
     event.preventDefault();
 })
 
+xover.listener.on('click::*[ancestor-or-self::a[@scroll-restoration]]', function (event) {
+    let scrollRestoration = this.closest("a[scroll-restoration]").getAttribute("scroll-restoration");
+    let meta = window.document.querySelector(`head meta[name=scroll-restoration]`) || window.document.head.appendChild(xover.xml.createNode(`<meta name="scroll-restoration" content="${scrollRestoration}"/>`));
+    meta.setAttribute("content", scrollRestoration);
+})
+
 xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     if (event.defaultPrevented) return;
     xover.listener.click.target = event.target;
@@ -9810,6 +9825,7 @@ xover.modernize = async function (targetWindow) {
 
                 Element.prototype.setAttribute = function (attribute, value, options = {}) {
                     if (!attribute) return Promise.reject("No attribute set");
+                    if (arguments.length < 2 && !(attribute instanceof Attr)) return Promise.reject("Missing value on setAttribute");
                     let namespace;
                     if (attribute instanceof Attr) {
                         value = [value, attribute.value].coalesce();
@@ -11635,8 +11651,10 @@ xover.dom.toExcel = (function (table, name) {
 //        event.preventDefault();
 //    }
 //});
-window.addEventListener('load', function () {
-    history.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || createElement('p')).getAttribute("content") || history.scrollRestoration
+xover.listener.on(['load', 'change::meta[name=scroll-restoration]'], function () {
+    xover.delay(5).then(() => {
+        history.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
+    })
 });
 
 xover.listener.on('Response:reject', function ({ response, request = {} }) {
