@@ -787,8 +787,9 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
     if (!(this instanceof xover.listener.Event)) return new xover.listener.Event(event_name, params, context);
     //let _event = new CustomEvent(event_name, { detail: params, cancelable: true });
     let node;
+    let [scoped_event, predicate] = event_name.split(/::/);
     let args = context instanceof ErrorEvent && { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno } || context instanceof Event && {} || { detail: params, cancelable: true };
-    let _event = eval(`new ${(context instanceof ErrorEvent) && context.constructor.name || 'CustomEvent'}(${context instanceof Event && `'${context.constructor.name}'` || 'event_name'}, {cancelable: true, bubbles: true, ...args})`);
+    let _event = eval(`new ${(context instanceof ErrorEvent) && context.constructor.name || 'CustomEvent'}(${context instanceof Event && `'${context.constructor.name}'` || 'scoped_event'}, {cancelable: true, bubbles: true, ...args})`);
     let _srcEvent = event;
     Object.defineProperty(_event, 'srcEvent', {
         get: function () {
@@ -845,7 +846,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             node = context
         }
         if (context) {
-            let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, context.tag, null].coalesce();
+            let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, (predicate || '')[0] = '#' && predicate, null].coalesce();
             if (tag != null) _event.detail["tag"] = tag;
         }
     }
@@ -861,10 +862,10 @@ Object.defineProperty(xover.listener, 'matches', {
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            let tag = event_tag || context.tag || ((event || {}).detail || {}).tag || '';
+            let tag = (event_tag || context.tag || '').replace(/^#/, '');
             let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
-            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && predicate.replace(/^#/, '') === tag || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag) || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
-                fns.set(handler.toString(), handler);
+            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && tag.matches(predicate.slice(1))/* || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag)*/ || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+                fns.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler);
             }
         }
         return fns;
@@ -1047,16 +1048,16 @@ Object.defineProperty(xover.listener, 'on', {
             let [scoped_event, ...predicate] = event_name.split(/::/);
             predicate = predicate.join("::");
             [scoped_event, conditions] = scoped_event.split(/\?/);
-            [base_event, scope] = scoped_event.split(/:/).reverse();
+            let [base_event, scope] = scoped_event.split(/:/).reverse();
             window.top.removeEventListener(base_event, xover.listener.dispatcher);
             window.top.addEventListener(base_event, xover.listener.dispatcher, options);
 
             handler.scope = scope && eval(scope) || undefined;
             handler.conditions = conditions && new URLSearchParams("?" + conditions) || undefined;
             let event_array = xover.listener.get(base_event) || new Map();
-            let handler_map = event_array.get(handler.toString()) || new Map();
+            let handler_map = event_array.get(`[${handler.selectors.join(',')}]=>${handler.toString()}`) || new Map();
             handler_map.set(predicate, handler);
-            event_array.set(handler.toString(), handler_map);
+            event_array.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler_map);
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
@@ -1449,7 +1450,7 @@ xover.session = new Proxy({}, {
         window.top.dispatchEvent(before);
         if (before.cancelBubble || before.defaultPrevented) return;
         xover.session.setKey(key, new_value);
-        window.top.dispatchEvent(new xover.listener.Event(`change::session:${key}`, { attribute: key, value: new_value, old: old_value }, this));
+        window.top.dispatchEvent(new xover.listener.Event(`change::#session:${key}`, { attribute: key, value: new_value, old: old_value, tag: `session:${key}` }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
         for (let subscriber of Object.keys(xover.subscribers.session[key])) {
             subscriber.evaluate()
@@ -1708,7 +1709,6 @@ Object.defineProperty(xover.site, 'scrollRestoration', {
     }
     , set(value) {
         xover.state.scrollRestoration = value;
-        history.scrollRestoration = xover.state.scrollRestoration;
     }
     , enumerable: true
 });
@@ -1824,7 +1824,7 @@ Object.defineProperty(xover.site, 'state', {
                 let old_value = self[key];
                 self[key] = input;
                 if (old_value != input && key[0] != '#') {
-                    window.top.dispatchEvent(new xover.listener.Event(`change::state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
+                    window.top.dispatchEvent(new xover.listener.Event(`change::#state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
                     xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
                     for (let subscriber of Object.keys(xover.subscribers.state[key])) {
                         subscriber.evaluate()
@@ -7241,6 +7241,10 @@ xover.listener.on('xover.Source:fetch', async function ({ settings = {} }) {
     progress && progress.remove();
 })
 
+xover.listener.on('change::#state:scrollRestoration', function ({ value }) {
+    history.scrollRestoration = value;
+})
+
 xover.listener.on('change::@state:*', async function ({ target, attribute: key }) {
     if (event.defaultPrevented || !(target && target.parentNode)) return;
     let stylesheets = target.parentNode.stylesheets
@@ -7947,7 +7951,7 @@ xover.modernize = async function (targetWindow) {
                         key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
                             : tag.endsWith(key.slice(1))
                     )
-                    || key.slice(-1) == '~' && tag.startsWith(key.slice(0, -1))
+                    || ['~', '*'].includes(key.slice(-1)) && tag.startsWith(key.slice(0, -1))
             }
 
             String.prototype.parseDate = function (input_format = "dd/mm/yyyy") {
@@ -11662,7 +11666,7 @@ xover.dom.toExcel = (function (table, name) {
 //    }
 //});
 xover.listener.on(['load', 'change::meta[name=scroll-restoration]'], function () {
-    xover.state.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
+    xover.site.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
 });
 
 xover.listener.on('Response:reject', function ({ response, request = {} }) {
