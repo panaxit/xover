@@ -587,15 +587,29 @@ xover.init.Observer = function (target_node = window.document) {
         rootMargin: '0px', // Margin around the root
         threshold: 0, // Percentage of the element's visibility to trigger the callback
     });
+
+    const elementsToObserve = target_node.querySelectorAll('[xo-suspense*="Intersection"]');
+    elementsToObserve.forEach(element => {
+        intersection_observer.observe(element);
+    });
+
     const observer = new MutationObserver((mutationsList, observer) => {
+        for (let section of mutationsList.filter(mutation =>
+            mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName) || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")
+        ).map(mutation => mutation.target.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
+            section.render()
+        }
+        //let listeners = [...xover.listener].filter(([event, map]) => ['mutation', 'change', 'remove', 'input', 'append', 'appendTo', 'reallocate'].includes(event));
+        //mutationsList.filter(mutation => {
+        //    let target = mutation.target;
+        //    let attr = mutation.type == 'attributes' ? target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName) : undefined;
+        //    listeners.map(([event, [[, [[key, fn]]]]]) => key).some(key => attr ? (attr).matches(key) : target.matches(key))
+        //})
+        //if (window.document.designMode !== 'on') return;
         for (const mutation of mutationsList) {
             if (mutation.type == 'childList' && mutation.addedNodes.length && [...mutation.addedNodes].every((node, ix) => node.isEqualNode(mutation.removedNodes[ix]))) continue;
             //if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
             let target = mutation.target;
-
-            if (mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName) || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")) {
-                target.render()
-            }
             let attr;
             for (let node of [...mutation.addedNodes].concat(target)) {
                 if (node.closest("[xo-id]")) {
@@ -619,12 +633,12 @@ xover.init.Observer = function (target_node = window.document) {
                     observer_node.observer.observe(observer_node, observer_config);
                 }
             }
-            if (mutation.type == 'attributes') {
+            if (mutation.attributeName && mutation.type == 'attributes') {
                 attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
             }
-            if (![...xover.listener].filter(([event, map]) => ['change', 'remove', 'input', 'append', 'appendTo', 'reallocate'].includes(event)).map(([event, [[, [[key, fn]]]]]) => key).some(key => attr && (attr).matches(key) || target)) continue;
+            if (![...xover.listener].filter(([event, map]) => ['mutate', 'change', 'remove', 'input', 'append', 'appendTo', 'reallocate'].includes(event)).map(([event, [[, [[key, fn]]]]]) => key).some(key => attr && (attr).matches(key) || target.matches(key))) continue;
             attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
-            window.top.dispatchEvent(new xover.listener.Event('change', { target }, target));
+            window.top.dispatchEvent(new xover.listener.Event('mutate', { target }, target));
             if (mutation.addedNodes.length) {
                 window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
             }
@@ -654,11 +668,6 @@ xover.init.Observer = function (target_node = window.document) {
         }
     });
     observer.observe(target_node, config);
-
-    const elementsToObserve = target_node.querySelectorAll('[xo-suspense*="Intersection"]');
-    elementsToObserve.forEach(element => {
-        intersection_observer.observe(element);
-    });
 }
 
 xover.initializeElementListeners = function (document = window.document) {
@@ -1117,8 +1126,8 @@ xover.listener.on('scrollIntoView', function (event) {
 })
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
-    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
     await xover.ready;
+    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
     if (history.state) delete history.state.active;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     xover.site.seed = (history.state || {}).seed || event.target.location.hash || '#';
@@ -2325,7 +2334,9 @@ xover.Source = function (tag) {
                             Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = typeof (value) == 'string' ? value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")]) : value) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
                         }
                     }) || source;
-                    source = JSON.parse(JSON.stringify(source));
+                    if (source && source.constructor !== {}.constructor) {
+                        source = JSON.parse(JSON.stringify(source));
+                    }
                     if (typeof (source) == 'string' && source[0] == '#') {
                         __document = xover.sources[source];
                         source = __document.source.definition;
@@ -5158,7 +5169,7 @@ xover.dom.combine = async function (target, new_node) {
         //let coordinates = active_element.scrollPosition;
 
         //target.observer && target.observer.disconnect();
-        [...target.querySelectorAll("[value]")].filter(input => input !== document.activeElement && input.value != input.getAttribute("value")).forEach(input => input.value = input.getAttribute("value"));
+        [...target.querySelectorAll("input[type=text][value]")].filter(input => input !== document.activeElement && input.value != input.getAttribute("value")).forEach(input => input.value = input.getAttribute("value"));
         for (let [[curr_node, new_node]] of changes) {
             if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
                 continue;
@@ -7595,7 +7606,7 @@ xover.dom.setCaretPosition = function (elem, caret_pos) {
                     xover.site.activeCaret = [start];
                 }
             }
-            else if (elem.setSelectionRange) {
+            else if (start != null && elem.setSelectionRange) {
                 elem.focus();
                 if (end) {
                     if (start > end) {
@@ -9764,20 +9775,43 @@ xover.modernize = async function (targetWindow) {
                 if (!Node.prototype.hasOwnProperty('disconnect')) {
                     Object.defineProperty(Node.prototype, 'disconnect', {
                         value: function (reconnect = 1) {
+                            if (!this.disconnected) reconnect = 0;
                             this.disconnected = true;
-                            let observer;
-                            if (this instanceof Document && this.observer) {
-                                observer = (this.ownerDocument || this).observer;
-                            }
-                            observer && observer.disconnect(reconnect);
-                            if (reconnect) {
-                                xover.delay(reconnect).then(async () => {
-                                    this.connect();
-                                    observer && observer.connect();
-                                });
+                            //let observer;
+                            //if (this instanceof Document && this.observer) {
+                            //    observer = (this.ownerDocument || this).observer;
+                            //}
+                            //observer && observer.disconnect(reconnect);
+                            //if (reconnect) {
+                            //    xover.delay(reconnect).then(async () => {
+                            //        this.connect();
+                            //        observer && observer.connect();
+                            //    });
+                            //}
+
+                            let document = (this.ownerDocument || this);
+                            xover.delay(reconnect).then(() => {
+                                this.connect();
+                            });
+
+                            for (let [observer, config] of document.observers || []) {
+                                observer.disconnect();
+                                if (reconnect) {
+                                    xover.delay(reconnect).then(() => {
+                                        observer.observe(document, config);
+                                    });
+                                }
                             }
                         }
                     })
+                }
+
+                MutationObserver.native = {}
+                MutationObserver.native.observe = MutationObserver.prototype.observe;
+                MutationObserver.prototype.observe = function (target, options) {
+                    target.observers = target.observers || new Map();
+                    target.observers.set(this, options)
+                    return MutationObserver.native.observe.apply(this, arguments);
                 }
 
                 if (!Node.prototype.hasOwnProperty('connect')) {
