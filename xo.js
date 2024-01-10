@@ -7769,6 +7769,19 @@ class TimeoutError extends Error {
         this.name = 'TimeoutError';
     }
 }
+String.prototype.matches = function (key) {
+    tag = this;
+    return tag == key
+        || key[0] == '^' && (
+            tag.match(RegExp(key, "i"))
+            //|| tag.match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
+        )
+        || key[0] == '~' && (
+            key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
+                : tag.endsWith(key.slice(1))
+        )
+        || ['~', '*'].includes(key.slice(-1)) && tag.startsWith(key.slice(0, -1))
+}
 
 xover.modernize = async function (targetWindow) {
     this.modernizing = this.modernizing || xover.delay(1).then(async () => {
@@ -7949,20 +7962,6 @@ xover.modernize = async function (targetWindow) {
                 let date = new Date(this.valueOf());
                 date.setDate(date.getDate() + +days);
                 return date;
-            }
-
-            String.prototype.matches = function (key) {
-                tag = this;
-                return tag == key
-                    || key[0] == '^' && (
-                        tag.match(RegExp(key, "i"))
-                        //|| tag.match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
-                    )
-                    || key[0] == '~' && (
-                        key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
-                            : tag.endsWith(key.slice(1))
-                    )
-                    || ['~', '*'].includes(key.slice(-1)) && tag.startsWith(key.slice(0, -1))
             }
 
             String.prototype.parseDate = function (input_format = "dd/mm/yyyy") {
@@ -11710,6 +11709,7 @@ xover.listener.on('Response:reject', function ({ response, request = {} }) {
 })
 
 xover.listener.on('ErrorEvent', function () {
+    if (!event.lineno) return;
     let args = { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno }
     xover.dom.alert(args);
     console.error(event.message, args)
@@ -11733,7 +11733,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     await xover.ready;
     try {
         let reason = event.message || event.reason;
-        if (!reason) return;
+        if (!reason || reason == 'Script error.') return;
         if (!(/*typeof (reason) == 'string' || */reason instanceof Error)) {
             let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
             window.top.dispatchEvent(unhandledrejection_event);
