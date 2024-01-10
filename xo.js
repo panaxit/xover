@@ -7769,22 +7769,8 @@ class TimeoutError extends Error {
         this.name = 'TimeoutError';
     }
 }
-String.prototype.matches = function (key) {
-    tag = this;
-    return tag == key
-        || key[0] == '^' && (
-            tag.match(RegExp(key, "i"))
-            //|| tag.match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
-        )
-        || key[0] == '~' && (
-            key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
-                : tag.endsWith(key.slice(1))
-        )
-        || ['~', '*'].includes(key.slice(-1)) && tag.startsWith(key.slice(0, -1))
-}
-
 xover.modernize = async function (targetWindow) {
-    this.modernizing = this.modernizing || xover.delay(1).then(async () => {
+    this.modernizing = this.modernizing || xover.delay(0).then(async () => {
         targetWindow = (targetWindow || window);
         if (targetWindow.modernized) return;
         targetWindow.modernized = 'modernizing'
@@ -7956,6 +7942,20 @@ xover.modernize = async function (targetWindow) {
                 descriptor.value = proxy;
                 Object.defineProperty(base.prototype, 'constructor', descriptor);
                 return proxy;
+            }
+
+            String.prototype.matches = function (key) {
+                tag = this;
+                return tag == key
+                    || key[0] == '^' && (
+                        tag.match(RegExp(key, "i"))
+                        //|| tag.match(RegExp(key.replace(/([.*()\\])/ig, '\\$1'), "i"))
+                    )
+                    || key[0] == '~' && (
+                        key.slice(-1) == '~' ? tag.indexOf(key.slice(1)) != -1
+                            : tag.endsWith(key.slice(1))
+                    )
+                    || ['~', '*'].includes(key.slice(-1)) && tag.startsWith(key.slice(0, -1))
             }
 
             Date.prototype.addDays = function (days = 0) {
