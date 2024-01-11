@@ -755,12 +755,19 @@ class Structure {
 
 xover.subscribers = new Structure(new Map(), {
     evaluate: {
-        value: function () {
+        value: function (scope) {
             for (let [subscriber, formula] of this) {
                 if (subscriber.hasOwnProperty("evaluate")) {
                     subscriber.evaluate()
                 } else {
-                    let new_value = formula.replace(/\{\$(site|state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match);
+                    let new_value = formula.replace(/\{\$([^\}]*)\}/g, (match, prefixed_name) => {
+                        let [name, prefix] = prefixed_name.split(/:/).reverse();
+                        if (!prefix && scope instanceof Node) {
+                            return scope.get(name)
+                        } else {
+                            return xover[prefix][name] || match
+                        }
+                    });
                     if (subscriber.name == 'style') {
                         if (subscriber.ownerElement) subscriber.ownerElement.style.cssText = new_value;
                     } else {
@@ -776,17 +783,19 @@ xover.subscribeReferencers = async function (context = window.document) {
     await xover.ready;
     let references = new Map();
 
-    context.select(`.//@*[contains(.,'{$state:')]|.//text()[contains(.,'{$state:')]|.//@*[contains(.,'{$session:')]|.//text()[contains(.,'{$session:')]`).forEach(attr => references.set(attr, attr.value));
+    context.select(`.//@*[contains(.,'{$')]|.//text()[contains(.,'{$')]`).forEach(attr => references.set(attr, attr.value));
     for (let [ref, formula] of references.entries()) {
-        for (let match of formula.match(/\{\$(state|session):([^\}]*)\}/g)) {
+        for (let match of formula.match(/\{\$([^\}]*)\}/g)) {
             match = match.slice(2, -1);
-            let [scope, variable] = match.split(":");
-            let subscriber = xover.subscribers[scope][variable];
+            let source = ref.source;
+            source && source.document && await source.document.ready
+            let [variable, scope = ref.scope] = match.split(":").reverse();
+            let subscriber = xover.subscribers[scope || ''][variable];
             subscriber.set(ref, formula);
-            subscriber.evaluate()
+            subscriber.evaluate(scope)
         }
     }
-    context.select(`//*[@xo-site]//@src|//*[@xo-site]//@href`).map(src => src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
+    context.select(`.//*[@xo-site]//@src|.//*[@xo-site]//@href`).map(src => src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
 }
 
 xover.json = {};
@@ -5118,6 +5127,7 @@ xover.dom.combine = async function (target, new_node) {
     xover.xml.staticMerge(target, new_node);
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
     window.top.dispatchEvent(before_dom);
+    await xover.subscribeReferencers(new_node);
     let changes = xover.xml.getDifferences(target, new_node);
     if (!changes.length) return target;
     scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
@@ -9374,7 +9384,7 @@ xover.modernize = async function (targetWindow) {
                 let scope_handler = { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
                     get: function () {
                         //if (this.scopeNode instanceof Node && this.scopeNode.parentNode && this.scopeNode.name == this.closest('*').getAttribute("xo-slot")) return this.scopeNode;
-                        if (this.ownerDocument instanceof XMLDocument) return null;
+                        //if (this.ownerDocument instanceof XMLDocument) return null;
                         let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
                         let self = this;
                         let section = this.section;
@@ -9386,8 +9396,8 @@ xover.modernize = async function (targetWindow) {
                             //let ref = this.parentElement && this.closest && this || this.parentNode || this
                             let ref = this instanceof Element ? this : this.parentNode;
                             let node_by_id = !ref.hasAttribute("xo-scope") && (((ref.hasAttribute("xo-source") || ref.hasAttribute("xo-stylesheet")) && source) || source.selectFirst(`//*[@xo:id="${ref.id}"]`));
-                            let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("slot,[xo-scope]")].filter(el => el).map(el => [el, el.hasAttribute("xo-scope") ? source.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`) : source.documentElement && source.documentElement.get(el.name)]).pop() || [];
-                            let attribute = ref.closest("slot,[xo-slot]");
+                            let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("slot,[xo-scope],[xo-source],[xo-stylesheet]")].filter(el => el).map(el => [el, el.hasAttribute("xo-scope") ? source.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`) : el.name ? source.documentElement && source.documentElement.get(el.name) : source.documentElement]).pop() || [];
+                            let attribute = ref.closest("slot,[xo-slot],[xo-source],[xo-stylesheet]");
                             if (!dom_scope) {
                                 this.scopeNode = null;
                                 return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
@@ -9396,14 +9406,13 @@ xover.modernize = async function (targetWindow) {
                             } else {
                                 attribute = null;
                             }
-                            if (!attribute && this instanceof Text) attribute = 'text()';
+                            //if (!attribute && this instanceof Text) attribute = 'text()';
                             if (node && attribute) {
                                 if (attribute === 'text()') {
                                     let textNode = [...node.childNodes].filter(el => el instanceof Text).pop() || node.createTextNode(null);
                                     this.scopeNode = textNode;
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                                }
-                                else {
+                                } else {
                                     let attribute_node;
                                     attribute_node = node.getAttributeNode(attribute);
                                     attribute_node = attribute_node || node.createAttribute(attribute, null);
@@ -9489,11 +9498,11 @@ xover.modernize = async function (targetWindow) {
                 if (!Node.prototype.hasOwnProperty('section')) {
                     Object.defineProperty(Node.prototype, 'section', {
                         get: function () {
-                            if (this.ownerDocument instanceof XMLDocument) {
-                                return undefined
-                            } else {
+                            //if (this.ownerDocument instanceof XMLDocument) {
+                            //    return undefined
+                            //} else {
                                 return this.closest("[xo-source],[xo-stylesheet]") || null;
-                            }
+                            //}
                         }
                     });
                 }
@@ -10012,7 +10021,7 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Element.prototype.createTextNode = function (value = '') {
-                    //let node = (value === null && this.cloneNode() || this)
+                    let node = (value === null && this.cloneNode() || this)
                     let parentNode = this;
                     let new_text_node;
                     new_text_node = node.ownerDocument.createTextNode(value || '');
@@ -11435,7 +11444,6 @@ xover.modernize = async function (targetWindow) {
                                     let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
                                     window.top.dispatchEvent(render_event);
                                     if (render_event.cancelBubble || render_event.defaultPrevented) return target;
-                                    xover.subscribeReferencers(target)
                                 })
                                 targets.push(target);
                             }
