@@ -2475,7 +2475,9 @@ xover.Source = function (tag) {
             while (!response && sources.length) {
                 let evaluate_json = (value) => {
                     let result;
-                    if ([].constructor === value.constructor) {
+                    if (value == null) {
+                        result = value
+                    } else if ([].constructor === value.constructor) {
                         result = [];
                         for (let item of value) {
                             result.push(evaluate_json(item))
@@ -11173,7 +11175,7 @@ xover.modernize = async function (targetWindow) {
                                     await source_document.ready
                                 }
                             }
-                            stylesheets = stylesheet && [stylesheet] || source_document && source_document.getStylesheets() || [];
+                            stylesheets = stylesheet && stylesheet !== '*' && [stylesheet] || stylesheet == '*' && source_document && source_document.getStylesheets() || [];
                             if (stylesheets.length) {
                                 stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (target_store || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
