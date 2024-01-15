@@ -966,7 +966,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 for (let prop of props || []) {
                     context = context[prop];
                 }
-                return condition ? (context instanceof Document ? [context.href.replace(/^\//, '')].includes(condition) : `${context}`.matches(`${condition}`)) : context
+                return condition ? (context instanceof Document ? [(context.href || '').replace(/^\//, '')].includes(condition) : `${context}`.matches(`${condition}`)) : context
             })) continue;
             //if (context.eventHistory.get(handler)) {
             //    console.warn(`Event ${event.type} recursed`)
@@ -2325,12 +2325,12 @@ xover.Source = function (tag) {
     if (!this.hasOwnProperty("definition")) {
         Object.defineProperty(this, 'definition', {
             get: function () {
-                _manifest = _manifest || xover.manifest.sources || {};
+                _manifest = _manifest || JSON.parse(JSON.stringify(xover.manifest.sources)) || {};
                 let tag_string = tag instanceof Node ? `${tag instanceof Attr ? '@' : ''}${tag.nodeName}::${tag.value}` : tag;
                 manifest_key = manifest_key || Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && tag_string.match(new RegExp(manifest_key, "i")) || manifest_key === tag_string || tag_string[0] == '#' && manifest_key === '#' + xover.URL(tag_string.substring(1)).pathname.substring(1)).pop();
                 //if (definition !== undefined) return definition;
                 if (manifest_key) {
-                    let source = xover.manifest.sources[manifest_key];
+                    let source = _manifest[manifest_key];
                     if (typeof (source) == 'function') {
                         definition = source;
                         return definition
@@ -9502,8 +9502,8 @@ xover.modernize = async function (targetWindow) {
                         get: function () {
                             //if (this.ownerDocument instanceof XMLDocument) {
                             //    return undefined
-                            //} else {
-                                return this.closest("[xo-source],[xo-stylesheet]") || null;
+                            //} else { /* Some nodes like processing-instructions have no closest method */
+                            return typeof (this.closest) === 'function' ? this.closest("[xo-source],[xo-stylesheet]") : null;
                             //}
                         }
                     });
@@ -11109,10 +11109,10 @@ xover.modernize = async function (targetWindow) {
                     xover.manager.render.set(this, xover.manager.render.get(this) || xover.delay(1).then(async () => {
                         let self = this;
                         if (!this.ownerDocument.contains(this)) return;
-                        let stylesheet = this.getAttribute("xo-stylesheet") || '';
-                        if (stylesheet.indexOf("{$") != -1) {
-                            stylesheet = stylesheet.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
-                            if (stylesheet.indexOf("{$") != -1) {
+                        let stylesheet = this.getAttributeNode("xo-stylesheet");
+                        if (stylesheet instanceof Node && stylesheet.value.indexOf("{$") != -1) {
+                            stylesheet.value = stylesheet.value.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
+                            if (stylesheet.value.indexOf("{$") != -1) {
                                 return;
                             }
                         }
@@ -11175,7 +11175,7 @@ xover.modernize = async function (targetWindow) {
                                     await source_document.ready
                                 }
                             }
-                            stylesheets = stylesheet && stylesheet !== '*' && [stylesheet] || stylesheet == '*' && source_document && source_document.getStylesheets() || [];
+                            stylesheets = stylesheet && [stylesheet.value] || source_document && source_document.getStylesheets() || [];
                             if (stylesheets.length) {
                                 stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (target_store || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
