@@ -2552,6 +2552,9 @@ xover.Source = function (tag) {
                                 } else {
                                     return reject(e)
                                 }
+                            } finally {
+                                progress = await this.settings.progress || [];
+                                progress.forEach(item => item.remove());
                             }
                             resolve(response);
                         }));
@@ -6336,7 +6339,7 @@ xover.Store = function (xml, ...args) {
                 let tag = self.tag;
                 e = e || {}
                 if (e instanceof Response || e instanceof Error || typeof (e) === 'string') {
-                    if ([401].includes(e.status)) {
+                    if ([401].includes(e.status) && e.statusText) {
                         console.error(e.statusText)
                     } else {
                         return Promise.reject(e);
@@ -9511,7 +9514,8 @@ xover.modernize = async function (targetWindow) {
 
                 Node.prototype.normalizeNamespaces = function () {
                     let normalized = xover.xml.normalizeNamespaces(this)
-                    this.replaceWith(normalized)
+                    let target = this instanceof Document ? this.documentElement : this;
+                    target.replaceWith(normalized instanceof Document ? normalized.documentElement : normalized)
                     return this;
                 }
 
@@ -10850,7 +10854,7 @@ xover.modernize = async function (targetWindow) {
                                 return (xml_document || xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed()).transform(this);
                             }
                             let xsl = xml_document;
-                            let xml = this.cloneNode(true);
+                            let xml = this;
                             let xmlDoc;
                             let result = undefined;
                             if (!xsl/* && ((arguments || {}).callee || {}).caller != Node.prototype.transform*/) {
@@ -10862,6 +10866,9 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 return xml;
                             }
+                            let before_listeners = xover.listener.matches(xml, 'beforeTransform')
+                            let after_listeners = xover.listener.matches(xml, 'transform')
+                            xml.disconnect();
                             //if (!(xml && xsl)) {
                             //    return xml;//false;
                             //}
@@ -10869,8 +10876,9 @@ xover.modernize = async function (targetWindow) {
                             if (!(typeof (xsl.selectSingleNode) != 'undefined' && xsl.selectSingleNode('xsl:*'))) {
                                 throw (new Error("XSL document is empty or invalid"));
                             }
+                            let empty_node
                             if (!xml.selectSingleNode("self::*|*|comment()") && xml.createComment) {
-                                xml.appendChild(xml.createComment("empty"))
+                                empty_node = xml.appendChild(xml.createComment("empty"))
                             }
 
                             if (document.implementation && document.implementation.createDocument) {
@@ -10980,9 +10988,6 @@ xover.modernize = async function (targetWindow) {
                                     ////}
                                     let tag = xml.tag || `#${xsl.href || ""}`;
                                     xml.tag = tag;
-                                    let before_listeners = xover.listener.matches(xml, 'beforeTransform')
-                                    let after_listeners = xover.listener.matches(xml, 'transform')
-                                    xml.disconnect();
                                     window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                     let timer_id = `${xsl.href || "Transform"}-${Date.now()}`;
                                     performance.mark(`${timer_id} - Transform start`);
@@ -11011,6 +11016,7 @@ xover.modernize = async function (targetWindow) {
                                     if ((xover.session.debug || {})["transform"] || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                         console.timeEnd(timer_id);
                                     }
+                                    empty_node && empty_node.remove()
                                     performance.mark(`${timer_id} - Transform end`);
                                 } catch (e) {
                                     return Promise.reject(e)
