@@ -756,16 +756,26 @@ class Structure {
 xover.subscribers = new Structure(new Map(), {
     evaluate: {
         value: function (scope) {
+            evaluate = function (values) {
+                for (let value of values) {
+                    let val = eval(`(${value})`);
+                    if (val != undefined) {
+                        return val;
+                    }
+                }
+            }
             for (let [subscriber, formula] of this) {
                 if (subscriber.hasOwnProperty("evaluate")) {
                     subscriber.evaluate()
                 } else {
                     let new_value = formula.replace(/\{\$([^\}]*)\}/g, (match, prefixed_name) => {
-                        let [name, prefix] = prefixed_name.split(/:/).reverse();
+                        let [variable, ...else_value] = prefixed_name.split(/\s*\|\|\s*/g);
+                        let [name, prefix] = variable.split(/:/).reverse();
+                        else_value = else_value.concat(name);
                         if (!prefix && scope instanceof Node) {
-                            return scope.get(name)
+                            return name && scope.get(name) || evaluate(else_value)
                         } else {
-                            return xover[prefix][name] || match
+                            return xover[prefix][name] || evaluate(else_value)
                         }
                     });
                     if (subscriber.name == 'style') {
@@ -783,16 +793,22 @@ xover.subscribeReferencers = async function (context = window.document) {
     await xover.ready;
     let references = new Map();
 
-    context.select(`.//@*[contains(.,'{$')]|.//text()[contains(.,'{$')]`).forEach(attr => references.set(attr, attr.value));
+    context.select(`.//@*[contains(.,'{$')]|.//text()[contains(.,'{$')]|.//text()[not(parent::html:code)][starts-with(.,'$\{')]`).forEach(attr => references.set(attr, attr.value));
     for (let [ref, formula] of references.entries()) {
-        for (let match of formula.match(/\{\$([^\}]*)\}/g)) {
+        if (formula.match(/^\$\{/)) {
+            formula = formula.slice(2, -1);
+            ref.textContent = eval(formula)
+            continue;
+        }
+        for (let match of formula.match(/\{\$([^\}]*)\}/g) || []) {
             match = match.slice(2, -1);
+            let [value, else_value] = match.split(/\s*\|\|\s*/);
             let source = ref.source;
             source && source.document && await source.document.ready
-            let [variable, scope = ref.scope] = match.split(":").reverse();
+            let [variable, scope = ref.scope] = value.split(":").reverse();
             let subscriber = xover.subscribers[scope || ''][variable];
             subscriber.set(ref, formula);
-            subscriber.evaluate(scope)
+            subscriber.evaluate(scope, else_value)
         }
     }
     context.select(`.//*[@xo-site]//@src|.//*[@xo-site]//@href`).map(src => src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
