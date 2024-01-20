@@ -758,9 +758,13 @@ xover.subscribers = new Structure(new Map(), {
         value: function (scope) {
             evaluate = function (values) {
                 for (let value of values) {
-                    let val = eval(`(${value})`);
-                    if (val != undefined) {
-                        return val;
+                    try {
+                        let val = eval(`(${value})`);
+                        if (val != undefined) {
+                            return val;
+                        }
+                    } catch (e) {
+                        console.error(e)
                     }
                 }
             }
