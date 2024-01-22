@@ -636,7 +636,8 @@ xover.init.Observer = function (target_node = window.document) {
             if (mutation.attributeName && mutation.type == 'attributes') {
                 attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
             }
-            if (![...xover.listener].filter(([event, map]) => ['mutate', 'change', 'remove', 'input', 'append', 'appendTo', 'reallocate'].includes(event)).map(([event, [[, [[key, fn]]]]]) => key).some(key => attr && (attr).matches(key) || target.matches(key))) continue;
+            if (![...xover.listener].filter(([event, map]) => ['mutate', 'change', 'remove', 'input', 'append', 'appendTo', 'removeFrom', 'reallocate'].includes(event)).reduce((array, [event, map]) => { array.push(...Array.from(map, ([key, [[predicate, fn]]]) => [event, predicate])); return array }, []).some(([event, key]) => event == 'change' && attr && (attr).matches(key) || event == 'append' && [...mutation.addedNodes].some(node => node.matches(key)) || event == 'remove' && [...mutation.removedNodes].some(node => node.matches(key)) || event == 'appendTo' && target.matches(key) || event == 'appendFrom' && target.matches(key))) continue; /*test if there is any listener that would be triggered*/
+
             attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
             window.top.dispatchEvent(new xover.listener.Event('mutate', { target }, target));
             if (mutation.addedNodes.length) {
@@ -4925,6 +4926,8 @@ xover.xml.createNode = function (xml_string, options) {
     }
     return result;
 }
+
+xml = xover.xml.createNode
 
 xover.xml.encodeValue = function (value) {
     try {
