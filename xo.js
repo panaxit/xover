@@ -610,7 +610,14 @@ xover.init.Observer = function (target_node = window.document) {
             if (mutation.type == 'childList' && mutation.addedNodes.length && [...mutation.addedNodes].every((node, ix) => node.isEqualNode(mutation.removedNodes[ix]))) continue;
             //if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
             let target = mutation.target;
+            //for (let el of [...target.parentNode.querySelectorAll("[checked]:not(:checked)")]) { el.checked = true };
             let attr;
+            if (mutation.attributeName && mutation.type == 'attributes') {
+                attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
+            }
+            if (attr && ['xo-working'].includes(attr.nodeName)) {
+                continue;
+            }
             for (let node of [...mutation.addedNodes].concat(target)) {
                 if (node.closest("[xo-id]")) {
                     let observer_node = node.selectFirst(`ancestor-or-self::*[@xo-id][last()]`);
@@ -633,11 +640,7 @@ xover.init.Observer = function (target_node = window.document) {
                     observer_node.observer.observe(observer_node, observer_config);
                 }
             }
-            if (mutation.attributeName && mutation.type == 'attributes') {
-                attr = target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName);
-            }
             if (![...xover.listener].filter(([event, map]) => ['mutate', 'change', 'remove', 'input', 'append', 'appendTo', 'removeFrom', 'reallocate'].includes(event)).reduce((array, [event, map]) => { array.push(...Array.from(map, ([key, [[predicate, fn]]]) => [event, predicate])); return array }, []).some(([event, key]) => event == 'change' && attr && (attr).matches(key) || event == 'append' && [...mutation.addedNodes].some(node => node.matches(key)) || event == 'remove' && [...mutation.removedNodes].some(node => node.matches(key)) || event == 'appendTo' && target.matches(key) || event == 'appendFrom' && target.matches(key))) continue; /*test if there is any listener that would be triggered*/
-
             attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
             window.top.dispatchEvent(new xover.listener.Event('mutate', { target }, target));
             if (mutation.addedNodes.length) {
@@ -649,10 +652,10 @@ xover.init.Observer = function (target_node = window.document) {
                     window.top.dispatchEvent(new xover.listener.Event('reallocate', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node));
                 } else {
                     observer.disconnect();
-                    target.insertBefore(node, mutation.nextSibling);
+                    node.formerParentNode = target;
                     let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
                     window.top.dispatchEvent(remove_event);
-                    if (!remove_event.defaultPrevented) node.remove();
+                    if (remove_event.defaultPrevented) target.insertBefore(node, mutation.nextSibling);
                     observer.observe(target_node, config);
                 }
             }
@@ -8491,6 +8494,7 @@ xover.modernize = async function (targetWindow) {
                             let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self).sort(el => el.contains(document.activeElement) && -1 || 1);
                             for (let section of sections) {
                                 let active_element = document.activeElement;
+                                event && event.srcElement === active_element && active_element.classList.add("xo-working")
                                 if (section.contains(active_element)) {
                                     await xover.delay(100); //delay to let animations end
                                 }
@@ -8730,8 +8734,18 @@ xover.modernize = async function (targetWindow) {
                 Object.defineProperty(Element.prototype, 'matches', {
                     value: function (...args) {
                         let node = this;
+                        let remove = false;
+                        let matches = false;
+                        if (!this.parentNode && this.formerParentNode) {
+                            remove = true;
+                            let selector = this.formerParentNode.selector;
+                            let document_copy = this.formerParentNode instanceof Document ? this.formerParentNode : this.formerParentNode.ownerDocument.cloneNode(true);
+                            document_copy.disconnect()
+                            let target_copy = !selector ? document_copy : this instanceof HTMLElement ? document_copy.querySelector(selector) : document_copy.selectFirst(selector);
+                            target_copy.insertBefore(node, null)
+                        }
                         try {
-                            return original_element_matches && original_element_matches.value.apply(node, args);
+                            matches = original_element_matches && original_element_matches.value.apply(node, args);
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 /*node = node.parentNode || node.formerParentNode;*/
@@ -8743,9 +8757,11 @@ xover.modernize = async function (targetWindow) {
                                         console.warn(`Not a valid xpath was provided: ${key}`)
                                     }
                                 });
-                                return return_value;
+                                matches = return_value;
                             }
                         }
+                        if (remove) this.remove();
+                        return matches;
                     }
                 })
 
@@ -9093,9 +9109,6 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Node.prototype, 'selector', {
                         enumerable: true,
                         get: function () {
-                            if (!(this.ownerDocument instanceof HTMLDocument)) {
-                                return null;
-                            }
                             let selector_type = this.preferredSelectorType || this.event instanceof Event && 'full_path' || 'fast';
                             let buildQuerySelector = function (target, path = []) {
                                 if (!(target && target.parentNode)) {
@@ -9130,8 +9143,41 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 return path.filter(el => el).flat().join(" > ");
                             }
+                            let buildXPath = function (target, path = []) {
+                                if (!(target && target.parentNode)) {
+                                    return path.filter(el => el).join("/");
+                                } else {
+                                    let nodeName = target.localName;
+                                    let namespacePrefix = target.prefix || null;
+                                    let namespaceURI = target.namespaceURI || null;
 
-                            return buildQuerySelector(this);
+                                    if (namespacePrefix) {
+                                        path.unshift(`${namespacePrefix}:${nodeName}`);
+                                    } else if (namespaceURI) {
+                                        path.unshift(`*[namespace-uri()='${namespaceURI}' and local-name()='${nodeName}']`);
+                                    } else {
+                                        path.unshift(nodeName);
+                                    }
+                                }
+
+                                if (target.parentNode.selectFirst(path[0]) === target) {
+                                    return buildXPath(target.parentNode, path);
+                                } else if (target.parentNode) {
+                                    let position = [...target.parentNode.children].indexOf(target) + 1;
+                                    path[0] = `*[${position}]`;
+                                    path.unshift(buildXPath(target.parentNode, []));
+                                } else {
+                                    return path.filter(el => el).join("/");
+                                }
+
+                                return path.filter(el => el).flat().join("/");
+                            }
+
+                            if (this instanceof HTMLElement) {
+                                return buildQuerySelector(this);
+                            } else {
+                                return buildXPath(this);
+                            }
                         }
 
                     });
