@@ -8739,10 +8739,14 @@ xover.modernize = async function (targetWindow) {
                         if (!this.parentNode && this.formerParentNode) {
                             remove = true;
                             let selector = this.formerParentNode.selector;
-                            let document_copy = this.formerParentNode instanceof Document ? this.formerParentNode : this.formerParentNode.ownerDocument.cloneNode(true);
+                            let document_copy = this.formerParentNode instanceof Document ? this.formerParentNode.cloneNode(true) : this.formerParentNode.ownerDocument.cloneNode(true);
                             document_copy.disconnect()
                             let target_copy = !selector ? document_copy : this instanceof HTMLElement ? document_copy.querySelector(selector) : document_copy.selectFirst(selector);
-                            target_copy.insertBefore(node, null)
+                            if (target_copy instanceof Document) {
+                                target_copy.replaceChild(node, target_copy.documentElement)
+                            } else {
+                                target_copy.insertBefore(node, null)
+                            }
                         }
                         try {
                             matches = original_element_matches && original_element_matches.value.apply(node, args);
