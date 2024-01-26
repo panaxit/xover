@@ -801,11 +801,15 @@ xover.subscribeReferencers = async function (context = window.document) {
     await xover.ready;
     let references = new Map();
 
-    context.select(`.//@*[contains(.,'{$')]|.//text()[contains(.,'{$')]|.//text()[not(parent::html:code)][starts-with(.,'$\{')]`).forEach(attr => references.set(attr, attr.value));
+    context.select(`.//@*[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[starts-with(.,'$\{')]`).forEach(attr => references.set(attr, attr.value));
     for (let [ref, formula] of references.entries()) {
         if (formula.match(/^\$\{/)) {
             formula = formula.slice(2, -1);
-            ref.textContent = eval(formula)
+            try {
+                ref.textContent = eval(formula)
+            } catch (e) {
+                typeof (e.render) == 'function' ? e.render() : String(e).alert()
+            }
             continue;
         }
         for (let match of formula.match(/\{\$([^\}]*)\}/g) || []) {
