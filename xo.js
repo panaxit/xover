@@ -2222,6 +2222,16 @@ xover.xml.getDifferences = function (node1, node2) {
     if (node1 === top.document.activeElement || [HTMLSelectElement].includes(node1.constructor)) {
         return [new Map([[node1, node2]])];
     }
+    if (node1 instanceof Element && (node1.hasAttribute("xo-source") && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") || node1.hasAttribute("xo-stylesheet") && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-source"))) {
+        node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].map(attr => `@${attr.name}`);
+    }
+    let static = document.firstElementChild.cloneNode().classList;
+    static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
+    node1.constructor === node2.constructor && static.add(...node1.staticAttributes || []);
+    for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
+        let static_attribute = node1.getAttributeNode(item.substring(1));
+        static_attribute && node2.setAttributeNode(static_attribute.cloneNode(), { silent: true })
+    }
     if (node1.cloneNode().isEqualNode(node2.cloneNode()) || [...xover.listener.skip_selectors.keys()].find(rule => node1.matches(rule))) {
         if (node1.childNodes.length && node1.childNodes.length == node2.childNodes.length) {
             const node1_children = [...node1.childNodes];
@@ -3999,6 +4009,43 @@ class NodeSet extends Array {
     }
 }
 
+class MutationSet extends Array {
+    constructor(...args) {
+        super(...args)
+    }
+
+    consolidate() {
+        let mutationList = this;
+        let mutated_targets = new Map();
+        for (let mutation of mutationList) {
+            let inserted_ids = [];
+            let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
+            let value = mutated_targets.get(target) || {};
+            if (mutation.target instanceof Text) {
+                value.texts = value.texts || new Map();
+                if (!value.texts.has(mutation.target)) {
+                    value.texts.set(mutation.target, `${mutation.target}`)
+                }
+            } else if (mutation.type == "attributes") {
+                let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
+                if (String(attribute.value) == String(mutation.oldValue)) continue;
+                value.attributes = value.attributes || {};
+                value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace || ''] || {};
+                value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = [attribute, mutation.oldValue];
+            }
+            value.removedNodes = value.removedNodes || [];
+            value.removedNodes.push(...mutation.removedNodes.filter(node => !target.contains(node)));
+            value.addedNodes = value.addedNodes || [];
+            value.addedNodes.push(...mutation.addedNodes.filter(node => target.contains(node)));
+            mutated_targets.set(target, value);
+            [...mutation.addedNodes].forEach((addedNode) => {
+                inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
+            })
+        }
+        return mutated_targets;
+    }
+}
+
 xover.xml.createFromActiveX = function () {
     if (typeof arguments.callee.activeXString != "string") {
         let versions = ["MSXML2.DOMDocument"];
@@ -5003,7 +5050,7 @@ xover.xml.combine = function (target, new_node) {
     }
     if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
 
-    if (target.constructor !== new_node.constructor && (target.id && target.id === new_node.id || target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
+    if ((target.getAttributeNode("xo-scope") || new_node.getAttributeNode("xo-scope")) != new_node.getAttributeNode("xo-scope") || target.constructor !== new_node.constructor && (target.id && target.id === new_node.id || target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
@@ -8689,7 +8736,7 @@ xover.modernize = async function (targetWindow) {
                         if (typeof (args[0]) === 'string') {
                             return [...this].filter(el => el.matches(args[0]))
                         } else if (typeof (args[0]) === 'function') {
-                            return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
+                            return Array.prototype.filter.apply(this, args);
                         }
                     }
                 })
