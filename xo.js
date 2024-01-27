@@ -595,7 +595,9 @@ xover.init.Observer = function (target_node = window.document) {
 
     const observer = new MutationObserver((mutationsList, observer) => {
         for (let section of mutationsList.filter(mutation =>
-            mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName) || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")
+            mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName)
+            || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")
+            || mutation.type == 'attributes' && mutation.target.getAttributeNode("xo-stylesheet") && mutation.target.stylesheet.selectFirst(`//xsl:stylesheet/xsl:param/@name[.="${mutation.attributeName}"]`)
         ).map(mutation => mutation.target.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
             section.render()
         }
@@ -4996,7 +4998,8 @@ xover.xml.combine = function (target, new_node) {
         new_node.append(text);
     }
     for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
-        new_node.setAttribute(item.substring(1), target.getAttribute(item.substring(1)), { silent: true })
+        let static_attribute = target.getAttributeNode(item.substring(1));
+        static_attribute && new_node.setAttributeNode(static_attribute.cloneNode(), { silent: true })
     }
     if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
 
@@ -10176,6 +10179,14 @@ xover.modernize = async function (targetWindow) {
 
                 var original_getAttributeNode = Element.prototype.getAttributeNode;
                 var original_getAttributeNodeNS = Element.prototype.getAttributeNodeNS;
+                Element.prototype.getTextNodes = function (attribute) {
+                    return [...this.childNodes].filter(node => node instanceof Text)
+                }
+
+                Element.prototype.getTextNode = function (attribute) {
+                    return this.getTextNodes()[0] || this.createTextNode()
+                }
+
                 Element.prototype.getAttributeNode = function (attribute) {
                     attribute = (attribute instanceof Attr ? attribute.value : attribute);
 
