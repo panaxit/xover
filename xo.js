@@ -594,20 +594,66 @@ xover.init.Observer = function (target_node = window.document) {
     });
 
     const observer = new MutationObserver((mutationsList, observer) => {
-        for (let section of mutationsList.filter(mutation =>
-            mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName)
-            || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")
-            || mutation.type == 'attributes' && mutation.target.getAttributeNode("xo-stylesheet") && mutation.target.stylesheet.selectFirst(`//xsl:stylesheet/xsl:param/@name[.="${mutation.attributeName}"]`)
-        ).map(mutation => mutation.target.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
+        mutationsList = new MutationSet(...mutationsList)
+        let mutations = mutationsList.consolidate();
+        if (!mutations.size) return;
+        for (let section of [...mutations].filter(([node, mutations]) =>
+            !mutations.addedNodes.length && !mutations.removedNodes.length && !(mutations.attributes || {})[""] && node.matches("[xo-source],[xo-stylesheet]")
+            || mutations.attributes && ["xo-source", "xo-stylesheet"].some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
+            || node.stylesheet instanceof Document && node.stylesheet.select(`//xsl:stylesheet/xsl:param/@name`).some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
+        ).map(([node]) => node.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
             section.render()
         }
-        //let listeners = [...xover.listener].filter(([event, map]) => ['mutation', 'change', 'remove', 'input', 'append', 'appendTo', 'reallocate'].includes(event));
-        //mutationsList.filter(mutation => {
-        //    let target = mutation.target;
-        //    let attr = mutation.type == 'attributes' ? target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName) : undefined;
-        //    listeners.map(([event, [[, [[key, fn]]]]]) => key).some(key => attr ? (attr).matches(key) : target.matches(key))
-        //})
-        //if (window.document.designMode !== 'on') return;
+        //for (let section of mutationsList.filter(mutation =>
+        //    mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName)
+        //    || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")
+        //    || mutation.type == 'attributes' && mutation.target.getAttributeNode("xo-stylesheet") && mutation.target.stylesheet.selectFirst(`//xsl:stylesheet/xsl:param/@name[.="${mutation.attributeName}"]`)
+        //).map(mutation => mutation.target.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
+        //    section.render()
+        //}
+        ////let listeners = [...xover.listener].filter(([event, map]) => ['mutation', 'change', 'remove', 'input', 'append', 'appendTo', 'reallocate'].includes(event));
+        ////mutationsList.filter(mutation => {
+        ////    let target = mutation.target;
+        ////    let attr = mutation.type == 'attributes' ? target.getAttributeNodeNS(mutation.attributeNamespace, mutation.attributeName) : undefined;
+        ////    listeners.map(([event, [[, [[key, fn]]]]]) => key).some(key => attr ? (attr).matches(key) : target.matches(key))
+        ////})
+        ////if (window.document.designMode !== 'on') return;
+        observer.disconnect();
+        for (let [target, mutation] of mutations) {
+            for (let [attr, oldValue] of Object.values((mutation.attributes || {})[""] || {})) {
+                window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue }, attr));
+            }
+            if (mutation.removedNodes.length && mutation.addedNodes.length) {
+                let replace_event = new xover.listener.Event('replaceChildren', { addedNodes: mutation.addedNodes, removedNodes: mutation.removedNodes }, target);
+                window.top.dispatchEvent(replace_event);
+                continue;
+            }
+            for (let node of [...mutation.reallocatedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
+                let remove_event = new xover.listener.Event('reallocate', { nextSibling: node.formerNextSibling, previousSibling: node.formerPreviousSibling, parentNode: target }, node);
+                window.top.dispatchEvent(remove_event);
+                if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
+            }
+            for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
+                node.formerParentNode = target;
+                let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
+                window.top.dispatchEvent(remove_event);
+                if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
+            }
+            for (let node of [...mutation.addedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {
+                window.top.dispatchEvent(new xover.listener.Event('append', { target }, node));
+                const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersection"]');
+                elementsToObserve.forEach(element => {
+                    intersection_observer.observe(element);
+                });
+                //dependants = [...node.querySelectorAll('[xo-source],[xo-stylesheet]')];
+                //if (!node.context && node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
+                //dependants.forEach(el => el.render());
+            }
+            continue
+        }
+        observer.observe(target_node, config);
+
+        return;
         for (const mutation of mutationsList) {
             if (mutation.type == 'childList' && mutation.addedNodes.length && [...mutation.addedNodes].every((node, ix) => node.isEqualNode(mutation.removedNodes[ix]))) continue;
             //if (mutation.type == 'attributes' && mutation.target.getAttribute(mutation.attributeName) == mutation.oldValue) continue;
@@ -850,6 +896,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         }
     })
     if (_event.detail) {
+        _event.detail["srcElement"] = _event.detail["srcElement"] || (event || {}).srcElement;
         _event.detail["designMode"] = _event.detail.hasOwnProperty("designMode") ? _event.detail["designMode"] : document.designMode == 'on';
         if (context instanceof Attr) {
             _event.detail["element"] = _event.detail["element"] || context.parentNode;
@@ -906,13 +953,14 @@ Object.defineProperty(xover.listener, 'matches', {
     value: function (context, event_type, event_tag) {
         let [scoped_event, predicate] = event_type.split(/::/);
         event_type = scoped_event;
+        let default_predicate = Object.fromEntries([['change','@value'], ['remove','*'], ['append', '*']])
 
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
             let tag = (event_tag || context.tag || '').replace(/^#/, '');
-            let handlers = ([...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat());
-            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && tag.matches(predicate.slice(1))/* || predicate[0] == '~' && tag.endsWith(predicate.substr(1)) || predicate.indexOf('~') != -1 && new RegExp(predicate.replace(/([.*()\\])/ig, '\\$1').replace(/~/gi, '.*')).test(tag)*/ || typeof (context.matches) != 'undefined' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+            let handlers = [...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat().map(([predicate, fn]) => [predicate || default_predicate[event_type] || '', fn]);
+            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && tag.matches(predicate.slice(1)) || typeof (context.matches) == 'function' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler);
             }
         }
@@ -4027,16 +4075,21 @@ class MutationSet extends Array {
                     value.texts.set(mutation.target, `${mutation.target}`)
                 }
             } else if (mutation.type == "attributes") {
+                if (["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)) continue;
                 let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
                 if (String(attribute.value) == String(mutation.oldValue)) continue;
                 value.attributes = value.attributes || {};
                 value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace || ''] || {};
                 value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = [attribute, mutation.oldValue];
             }
+            mutation.removedNodes.length && mutation.removedNodes.forEach(node => { node.formerPreviousSibling = mutation.previousSibling; node.formerNextSibling = mutation.nextSibling; node.formerParentNode = target })
             value.removedNodes = value.removedNodes || [];
             value.removedNodes.push(...mutation.removedNodes.filter(node => !target.contains(node)));
+            let reallocatedNodes = mutation.removedNodes.filter(node => target.contains(node));
+            value.reallocatedNodes = value.reallocatedNodes || [];
+            value.reallocatedNodes.push(...reallocatedNodes);
             value.addedNodes = value.addedNodes || [];
-            value.addedNodes.push(...mutation.addedNodes.filter(node => target.contains(node)));
+            value.addedNodes.push(...mutation.addedNodes.filter(node => target.contains(node) && value.reallocatedNodes.indexOf(node) == -1));
             mutated_targets.set(target, value);
             [...mutation.addedNodes].forEach((addedNode) => {
                 inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
@@ -5215,6 +5268,7 @@ xover.dom.combine = async function (target, new_node) {
     await xover.subscribeReferencers(new_node);
     let changes = xover.xml.getDifferences(target, new_node);
     if (!changes.length) return target;
+    target.ownerDocument.disconnect();
     scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
         let cloned = el.cloneNode(true);
         cloned.original = el;
@@ -8457,36 +8511,42 @@ xover.modernize = async function (targetWindow) {
                         }
                         const callback = async (mutationList) => {
                             if (event instanceof InputEvent) await xover.delay(1);
+                            let mutated_targets = new MutationSet(...mutationList).consolidate();
+                            if (!mutated_targets.size) return;
+
                             mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
                             //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
                             if (!mutationList.length) return;
 
-                            let mutated_targets = new Map();
-                            for (let mutation of mutationList) {
-                                let inserted_ids = [];
-                                let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
-                                let value = mutated_targets.get(target) || {};
-                                if (mutation.target instanceof Text) {
-                                    value.texts = value.texts || new Map();
-                                    if (!value.texts.has(mutation.target)) {
-                                        value.texts.set(mutation.target, `${mutation.target}`)
-                                    }
-                                } else if (mutation.type == "attributes") {
-                                    let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
-                                    if (String(attribute.value) == String(mutation.oldValue)) continue;
-                                    value.attributes = value.attributes || {};
-                                    value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace || ''] || {};
-                                    value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = [attribute, mutation.oldValue];
-                                }
-                                value.removedNodes = value.removedNodes || [];
-                                value.removedNodes.push(...mutation.removedNodes);
-                                value.addedNodes = value.addedNodes || [];
-                                value.addedNodes.push(...mutation.addedNodes);
-                                mutated_targets.set(target, value);
-                                [...mutation.addedNodes].forEach((addedNode) => {
-                                    inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
-                                })
-                            }
+
+                            //let mutated_targets = new Map();
+                            //for (let mutation of mutationList) {
+                            //    let inserted_ids = [];
+                            //    let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
+                            //    let value = mutated_targets.get(target) || {};
+                            //    if (mutation.target instanceof Text) {
+                            //        value.texts = value.texts || new Map();
+                            //        if (!value.texts.has(mutation.target)) {
+                            //            value.texts.set(mutation.target, `${mutation.target}`)
+                            //        }
+                            //    } else if (mutation.type == "attributes") {
+                            //        let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
+                            //        if (String(attribute.value) == String(mutation.oldValue)) continue;
+                            //        value.attributes = value.attributes || {};
+                            //        value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace || ''] || {};
+                            //        value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = [attribute, mutation.oldValue];
+                            //    }
+                            //    value.removedNodes = value.removedNodes || [];
+                            //    value.removedNodes.push(...mutation.removedNodes);
+                            //    value.addedNodes = value.addedNodes || [];
+                            //    value.addedNodes.push(...mutation.addedNodes);
+                            //    value.nextSibling = mutation.nextSibling;
+                            //    value.previousSibling = mutation.previousSibling;
+                            //    mutated_targets.set(target, value);
+                            //    [...mutation.addedNodes].forEach((addedNode) => {
+                            //        inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
+                            //    })
+                            //}
 
                             let node_event = new xover.listener.Event('change', {}, self);
                             window.top.dispatchEvent(node_event);
@@ -10020,7 +10080,7 @@ xover.modernize = async function (targetWindow) {
                 if (!Node.prototype.hasOwnProperty('disconnect')) {
                     Object.defineProperty(Node.prototype, 'disconnect', {
                         value: function (reconnect = 1) {
-                            if (!this.disconnected) reconnect = 0;
+                            if (this.disconnected) reconnect = 0;
                             this.disconnected = true;
                             //let observer;
                             //if (this instanceof Document && this.observer) {
