@@ -618,7 +618,7 @@ xover.init.Observer = function (target_node = window.document) {
         ////    listeners.map(([event, [[, [[key, fn]]]]]) => key).some(key => attr ? (attr).matches(key) : target.matches(key))
         ////})
         ////if (window.document.designMode !== 'on') return;
-        observer.disconnect();
+        //observer.disconnect();
         for (let [target, mutation] of mutations) {
             for (let [attr, oldValue] of Object.values((mutation.attributes || {})[""] || {})) {
                 window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue }, attr));
@@ -651,7 +651,7 @@ xover.init.Observer = function (target_node = window.document) {
             }
             continue
         }
-        observer.observe(target_node, config);
+        //observer.observe(target_node, config);
 
         return;
         for (const mutation of mutationsList) {
@@ -4082,7 +4082,20 @@ class MutationSet extends Array {
                 value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace || ''] || {};
                 value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = [attribute, mutation.oldValue];
             }
-            mutation.removedNodes.length && mutation.removedNodes.forEach(node => { node.formerPreviousSibling = mutation.previousSibling; node.formerNextSibling = mutation.nextSibling; node.formerParentNode = target })
+            mutation.removedNodes.length && mutation.removedNodes.forEach(node => {
+                let descriptor_formerParentNode = Object.getPropertyDescriptor(node, 'formerParentNode') || { writable: true };
+                if (!node.formerParentNode && (descriptor_formerParentNode.hasOwnProperty("writable") ? descriptor_formerParentNode.writable : true)) {
+                    Object.defineProperty(node, 'formerParentNode', { value: target, writable: true, configurable: true });
+                }
+                let descriptor_formerPreviousSibling = Object.getPropertyDescriptor(node, 'formerPreviousSibling') || { writable: true };
+                if (!node.formerPreviousSibling && (descriptor_formerPreviousSibling.hasOwnProperty("writable") ? descriptor_formerPreviousSibling.writable : true)) {
+                    Object.defineProperty(node, 'formerPreviousSibling', { value: mutation.previousSibling, writable: true, configurable: true });
+                }
+                let descriptor_formerNextSibling = Object.getPropertyDescriptor(node, 'formerNextSibling') || { writable: true };
+                if (!node.formerNextSibling && (descriptor_formerNextSibling.hasOwnProperty("writable") ? descriptor_formerNextSibling.writable : true)) {
+                    Object.defineProperty(node, 'formerNextSibling', { value: mutation.nextSibling, writable: true, configurable: true });
+                }
+            })
             value.removedNodes = value.removedNodes || [];
             value.removedNodes.push(...mutation.removedNodes.filter(node => !target.contains(node)));
             let reallocatedNodes = mutation.removedNodes.filter(node => target.contains(node));
@@ -5103,7 +5116,23 @@ xover.xml.combine = function (target, new_node) {
     }
     if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
 
-    if ((target.getAttributeNode("xo-scope") || new_node.getAttributeNode("xo-scope")) != new_node.getAttributeNode("xo-scope") || target.constructor !== new_node.constructor && (target.id && target.id === new_node.id || target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) || target instanceof Element && (swap.contains("self") || [...swap].some(predicate => target.matches(predicate))) || (!(target instanceof Element) || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)) && target.constructor == new_node.constructor || target instanceof SVGElement && !(new_node instanceof SVGElement)) {
+    if (
+        target instanceof Element && (
+            `${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope") || new_node.getAttributeNode("xo-scope")}` && `${target.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}` == `${new_node.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}`
+            || swap.contains("self")
+            || [...swap].some(predicate => target.matches(predicate))
+        )
+        || target.constructor !== new_node.constructor && (
+            target.id && target.id === new_node.id
+            || target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source")
+            || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")
+        )
+        || target.constructor == new_node.constructor && (
+            !(target instanceof Element)
+            || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)
+        )
+        || target instanceof SVGElement && !(new_node instanceof SVGElement)
+    ) {
         target.replaceWith(new_node)
         return new_node
     } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
@@ -5268,7 +5297,7 @@ xover.dom.combine = async function (target, new_node) {
     await xover.subscribeReferencers(new_node);
     let changes = xover.xml.getDifferences(target, new_node);
     if (!changes.length) return target;
-    target.ownerDocument.disconnect();
+    //target.ownerDocument.disconnect();
     scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
         let cloned = el.cloneNode(true);
         cloned.original = el;
@@ -5336,8 +5365,15 @@ xover.dom.combine = async function (target, new_node) {
             }
             if (document.startViewTransition && (curr_node instanceof Element && curr_node.querySelector("[style*=view-transition-name]") || new_node instanceof Element && new_node.querySelector("[style*=view-transition-name]"))) {
                 curr_node.querySelectorAll("[style*=view-transition-name][id]").toArray().map(item => [item, new_node.querySelector(`[id=${item.id}]`)]).filter(([, matched]) => matched).forEach(([curr, matched]) => matched.style.viewTransitionName = curr.style.viewTransitionName);
-                let view_transition = document.startViewTransition(() => result = xover.xml.combine(curr_node, new_node));
-                await view_transition.finished;//.then(() => img.style.viewTransitionName = '');
+                try {
+                    let view_transition = document.startViewTransition(() => result = xover.xml.combine(curr_node, new_node));
+                    await view_transition.finished;//.then(() => img.style.viewTransitionName = '');
+                } catch (e) {
+                    result = xover.xml.combine(curr_node, new_node)
+                    if (!(e && e.name == 'AbortError')) {
+                        throw (e)
+                    }
+                }
             } else {
                 result = xover.xml.combine(curr_node, new_node);
             }
@@ -9823,6 +9859,7 @@ xover.modernize = async function (targetWindow) {
                     if (beforeRemove.cancelBubble || beforeRemove.defaultPrevented) return;
                     let parentNode = this.parentNode;
                     let nextSibling = this.nextSibling;
+                    let previousSibling = this.previousSibling;
                     let parentElement = this.parentElement;
 
                     //let store = this.ownerDocument.store
@@ -9841,8 +9878,19 @@ xover.modernize = async function (targetWindow) {
 
                     let descriptor = Object.getPropertyDescriptor(this, 'formerParentNode') || { writable: true };
                     if (!this.formerParentNode && (descriptor.hasOwnProperty("writable") ? descriptor.writable : true)) {
-                        Object.defineProperty(this, 'formerNextSibling', { get: function () { return nextSibling } });
-                        Object.defineProperty(this, 'formerParentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de parentElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
+                        let node = this;
+                        let descriptor_formerParentNode = Object.getPropertyDescriptor(node, 'formerParentNode') || { writable: true };
+                        if (!node.formerParentNode && (descriptor_formerParentNode.hasOwnProperty("writable") ? descriptor_formerParentNode.writable : true)) {
+                            Object.defineProperty(node, 'formerParentNode', { value: parentNode, writable: true, configurable: true });
+                        }
+                        let descriptor_formerPreviousSibling = Object.getPropertyDescriptor(node, 'formerPreviousSibling') || { writable: true };
+                        if (!node.formerPreviousSibling && (descriptor_formerPreviousSibling.hasOwnProperty("writable") ? descriptor_formerPreviousSibling.writable : true)) {
+                            Object.defineProperty(node, 'formerPreviousSibling', { value: previousSibling, writable: true, configurable: true });
+                        }
+                        let descriptor_formerNextSibling = Object.getPropertyDescriptor(node, 'formerNextSibling') || { writable: true };
+                        if (!node.formerNextSibling && (descriptor_formerNextSibling.hasOwnProperty("writable") ? descriptor_formerNextSibling.writable : true)) {
+                            Object.defineProperty(node, 'formerNextSibling', { value: nextSibling, writable: true, configurable: true });
+                        }
                     }
                     //if (this.ownerDocument.selectSingleNode && store) {
                     //    //let refresh = !parent.selectSingleNode('//@state:refresh');
