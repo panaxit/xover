@@ -1801,7 +1801,7 @@ Object.defineProperty(xover.site, 'location', {
 
 Object.defineProperty(xover.site, 'scrollRestoration', {
     get() {
-        return xover.state.scrollRestoration || (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
+        return 'scrollRestoration' in xover.state && xover.state.scrollRestoration || (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
     }
     , set(value) {
         xover.state.scrollRestoration = value;
@@ -1904,6 +1904,9 @@ Object.defineProperty(xover.site, 'state', {
                     }
                 } else if (key in xover.manifest.state) {
                     return_value = xover.manifest.state[key];
+                } else {
+                    self[key] = {};
+                    return_value = self[key]
                 }
                 if (typeof (return_value) == 'string' && return_value.indexOf("${") != -1) {
                     let formula = return_value;
@@ -11536,7 +11539,7 @@ xover.modernize = async function (targetWindow) {
                                     await source_document.ready
                                 }
                             }
-                            stylesheets = stylesheet && [stylesheet.value] || source_document && source_document.getStylesheets() || [];
+                            stylesheets = stylesheet && [stylesheet.value] || source_document && !this.closest("[xo-stylesheet]") && source_document.getStylesheets() || [];
                             if (stylesheets.length) {
                                 stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (target_store || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
