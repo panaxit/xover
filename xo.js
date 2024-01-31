@@ -1904,7 +1904,7 @@ Object.defineProperty(xover.site, 'state', {
                     }
                 } else if (key in xover.manifest.state) {
                     return_value = xover.manifest.state[key];
-                } else {
+                } else if (key[0] == '#') {
                     self[key] = {};
                     return_value = self[key]
                 }
