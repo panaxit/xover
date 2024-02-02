@@ -4071,6 +4071,7 @@ class MutationSet extends Array {
         for (let mutation of mutationList) {
             let inserted_ids = [];
             let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
+            if (['', 'true'].includes((target.closest('[xo-silent]') || document.createElement('p')).getAttribute("xo-silent"))) continue;
             let value = mutated_targets.get(target) || {};
             if (mutation.target instanceof Text) {
                 value.texts = value.texts || new Map();
