@@ -621,7 +621,7 @@ xover.init.Observer = function (target_node = window.document) {
         //observer.disconnect();
         for (let [target, mutation] of mutations) {
             for (let [attr, oldValue] of Object.values((mutation.attributes || {})[""] || {})) {
-                window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue }, attr));
+                window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue, parentNode: (attr.parentNode || target) }, attr));
             }
             if (mutation.removedNodes.length && mutation.addedNodes.length) {
                 let replace_event = new xover.listener.Event('replaceChildren', { addedNodes: mutation.addedNodes, removedNodes: mutation.removedNodes }, target);
@@ -8958,7 +8958,7 @@ xover.modernize = async function (targetWindow) {
                                 let remove;
                                 let observer = (this.ownerDocument || this).observer;
 
-                                if (!this.ownerElement) {
+                                if (!this.ownerElement && this.parentNode) {
                                     //this.ownerDocument.disconnect(0);
                                     Element.native.setAttributeNode.call(this.parentNode, this);
                                     remove = true;
