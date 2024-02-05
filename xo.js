@@ -7662,8 +7662,8 @@ xover.modernize = async function (targetWindow) {
                                 if (stylesheet.assert && !data.selectFirst(stylesheet.assert)) {
                                     continue;
                                 }
-                                let tag = (stylesheet.store || {}).tag || typeof (stylesheet.store) == 'string' && stylesheet.store || '';
-                                let store = tag && xover.stores[tag] || null;
+                                let store = stylesheet.store || typeof (stylesheet.store) == 'string' && xover.stores[stylesheet.store] || xo.stores.active.document == self && xo.stores.active || null;
+                                let tag = store && store.tag || '';
                                 let action = stylesheet.action;// || !stylesheet.target && "append";
                                 let stylesheet_target = stylesheet instanceof HTMLElement && stylesheet || stylesheet.target instanceof HTMLElement && stylesheet.target || (stylesheet.target || '').indexOf("@#") != -1 && stylesheet.target.replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-source="$1"]`) || stylesheet.target || 'body';
                                 stylesheet_target = typeof (stylesheet_target) == 'string' && document.querySelector(stylesheet_target) || stylesheet_target;
@@ -7708,7 +7708,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 data.store = store;
                                 data.target = target;
-                                data.disconnected = false;
+                                //data.disconnected = false;
                                 target.tag = data.tag;
                                 let dom;
                                 if (xsl) {
@@ -7717,6 +7717,8 @@ xover.modernize = async function (targetWindow) {
                                     dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove()
                                 } else if (data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) {
                                     dom = this.cloneNode(true);
+                                } else {
+                                    return new Text()
                                 }
 
                                 typeof (dom.querySelectorAll) == 'function' && dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
@@ -7727,7 +7729,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
                                 dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
-                                for (let el of dom.children.toArray()) {
+                                for (let el of dom.children) {
                                     el.document = this;
                                     el.context = data;
                                     el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove()
