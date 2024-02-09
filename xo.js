@@ -214,8 +214,15 @@ Object.defineProperty(Array.prototype, 'coalesce',
 
 Object.defineProperty(Array.prototype, 'distinct',
     {
-        value: function () {
-            return [... new Set(this)];
+        value: function (fn) {
+            let array = this;
+            if (!fn && array.some(item => [Attr, Text].includes(item.constructor))) {
+                fn = String
+            }
+            if (typeof (fn) == 'function') {
+                array = array.map(fn)
+            }
+            return [... new Set(array)];
         },
         writable: true, enumerable: false, configurable: false
     }
