@@ -4920,6 +4920,9 @@ xover.modernize = async function (targetWindow) {
                             }
                         }
                         try {
+                            if (args[0].match(/\/|@/)) {
+                                throw new DOMException('not a valid selector');
+                            }
                             matches = original_element_matches && original_element_matches.value.apply(node, args);
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
@@ -4954,7 +4957,7 @@ xover.modernize = async function (targetWindow) {
                         //let node = this.documentElement;
                         //return node.matches(predicate);
 
-                        return !["appendTo"].includes((event || {}).type) && [...this.childNodes].some(node => typeof (node.matches) != 'undefined' && node.matches(predicate));
+                        return !["appendTo"].includes((event || {}).type) && this.childElementCount && [...this.childNodes].some(node => typeof (node.matches) == 'function' && node.matches(predicate));
                     }
                 })
 
