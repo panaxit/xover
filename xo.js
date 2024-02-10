@@ -9486,7 +9486,8 @@ xover.dom.combine = async function (target, new_node) {
 
 xover.xml.createElement = function (tagName) {
     let { prefix } = xover.xml.getAttributeParts(tagName);
-    let namespace = xover.stores.active.documentElement.resolveNS(prefix)
+    let target_document = xover.stores.active.document;
+    let namespace = (target_document.documentElement || target_document).resolveNS(prefix)
     return document.implementation.createDocument(namespace || "", tagName, null).documentElement;
 }
 
