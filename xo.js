@@ -7375,8 +7375,12 @@ xover.modernize = async function (targetWindow) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
                                         } catch (e) {
-                                            //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                            Promise.reject(e.message);
+                                            if (e instanceof ReferenceError || e instanceof SyntaxError) {
+                                                param_value = param.textContent
+                                                //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
+                                            } else {
+                                                Promise.reject(e.message);
+                                            }
                                         }
                                     };
                                     for (let param_name of xsl.selectNodes(`//xsl:stylesheet/xsl:param/@name`).filter(name => this.target && this.target.getAttribute(name.value))) {
@@ -9199,7 +9203,7 @@ xover.dom.combine = async function (target, new_node) {
                 return target;
             }
         }
-        if ((new_node.documentElement || new_node).matches("xson:*")) {
+        if ((new_node.firstElementChild || new_node).matches("xson:*")) {
             new_node = xover.xml.toJSON(new_node)
             new_node = JSON.stringify(new_node)
         }
