@@ -601,6 +601,7 @@ xover.init.Observer = function (target_node = window.document) {
     });
 
     const observer = new MutationObserver((mutationsList, observer) => {
+        //if ([MouseEvent, TransitionEvent].includes((event || {}).constructor)) return; // Should these events be skipped? 
         mutationsList = new MutationSet(...mutationsList)
         let mutations = mutationsList.consolidate();
         if (!mutations.size) return;
@@ -1001,8 +1002,8 @@ Object.defineProperty(xover.listener, 'debug', {
 Object.defineProperty(xover.listener.debug, 'matches', {
     value: function (handler, map = xover.listener.debugger) {
         let context = this;
-        let reference_debugger = map.get(context) || map.get('*') || new Map();
-        if (reference_debugger.get(event.type) || reference_debugger.get('*') || (handler.selectors || []).some(selector => reference_debugger.get(selector)) || [...map].some(([reference]) => reference instanceof Function && context instanceof reference)) {
+        let reference_debugger = map.get(context) || map.get(event.constructor) || map.get('*') || new Map();
+        if (reference_debugger.get(event.type) || reference_debugger.get(event.constructor) || reference_debugger.get('*') || handler && (handler.selectors || []).some(selector => reference_debugger.get(selector)) || [...map].some(([reference]) => reference instanceof Function && context instanceof reference)) {
             return true
         }
         return false;
@@ -1036,6 +1037,9 @@ Object.defineProperty(xover.listener, 'dispatcher', {
     value: function (event) {
         if (xover.listener.off === true) return;
         let context = event.context || event.target;
+        if (xover.listener.debug.matches.call(context, null, xover.listener.debugger) && !xover.listener.debug.matches.call(context, null, xover.listener.debuggerExceptions)) {
+            debugger;
+        }
         let fns = xover.listener.matches(context, event.type, (event.detail || {}).tag);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         //context.eventHistory = context.eventHistory || new Map();
@@ -1123,7 +1127,7 @@ Object.defineProperty(xover.listener, 'off', {
     get: function () {
         if (xover.listener.disabled.get('*')) return true;
         if (event) {
-            return !!(xover.listener.disabled.get(event.type))
+            return !!(xover.listener.disabled.get(event.type) || xover.listener.disabled.get(event.constructor))
         } else {
             return xover.listener.turnOff;
         }
@@ -4923,7 +4927,11 @@ xover.modernize = async function (targetWindow) {
                             if (args[0].match(/\/|@/)) {
                                 throw new DOMException('not a valid selector');
                             }
-                            matches = original_element_matches && original_element_matches.value.apply(node, args);
+                            if (event && ['click'].includes(event.type)) {
+                                matches = original_element_closest && original_element_closest.value.apply(node, args);
+                            } else {
+                                matches = original_element_matches && original_element_matches.value.apply(node, args);
+                            }
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 /*node = node.parentNode || node.formerParentNode;*/
@@ -9169,7 +9177,13 @@ xover.xml.combine = function (target, new_node) {
             target.setAttribute(attr, attr.value, { silent: true });
         }
         //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
-        target.replaceChildren(...new_node.childNodes)
+        try {
+            target.replaceChildren(...new_node.childNodes)
+        } catch (e) {
+            if (!(e instanceof DOMException && e.name == 'NotFoundError')) {
+                return Promise.reject(e)
+            }
+        }
         //active_element && xover.delay(100).then(() => active_element.focus());
         return target
     } else {
