@@ -11877,7 +11877,7 @@ function isNumber(value) {
 xover.dom.getCaretPosition = function (elem) {
     let caret_pos, caret_start, caret_end;
     elem = elem instanceof Element && elem || typeof (elem) == 'string' && document.querySelector(elem);
-    if (!(elem && elem.value)) return;
+    if (!(elem && elem.value)) return [0];
     if (elem.isContentEditable || (elem.selectionStart || elem.selectionStart == 0)) {
         caret_start = elem.selectionStart;
         caret_end = elem.selectionEnd;
