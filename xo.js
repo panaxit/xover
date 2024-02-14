@@ -9228,9 +9228,10 @@ xover.dom.combine = async function (target, new_node) {
             target_clone.append(...new_node.childNodes)
             new_node = target_clone;
         } else {
-            new_node = new_node.firstElementChild
+            new_node = new_node.firstElementChild || new_node.firstChild
         }
     }
+    if (!(new_node instanceof Node)) return;
     //documentElement.setAttributeNS(null, "xo-scope", new_node.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
     //if (new_node.hasAttribute("id") && new_node.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-source])`)) {
     //    action = 'replace';
