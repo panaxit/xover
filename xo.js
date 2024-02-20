@@ -981,29 +981,56 @@ xover.listener.debugger = new Map()
 
 Object.defineProperty(xover.listener, 'debug', {
     value: function (...args) {
-        let reference = '*', event = '*';
+        let reference
         for (let arg of args) {
-            if (arg instanceof HTMLElement) {
-                reference = arg
+            if (arg instanceof Object) {
+                xover.listener.debugger.set(arg, (xover.listener.debugger.get(arg) || true))
+            }
+            if (arg instanceof Attr) {
+                reference = `@${arg.nodeName}`
+                subreference = arg.parentNode
+            } else if (arg instanceof Node && !arg.ownerDocument.contains(arg)) {
+                reference = arg.nodeName
+                subreference = arg.constructor
+            } else if (arg instanceof Element || arg instanceof Comment) {
+                reference = arg.nodeName
+                subreference = arg
+            } else if (arg instanceof Node) {
+                reference = `${arg instanceof Attr ? '@' : ''}${arg.nodeName}`
+                subreference = arg.parentNode
             } else if (typeof (arg) == 'string') {
-                event = arg
-            } else if (typeof (arg) == 'function') {
                 reference = arg
+            } else if (typeof (arg) == 'function') {
+                reference = arg.name || arg
+                subreference = Function
+            } else if (arg instanceof Event) {
+                reference = arg.name || arg
+                subreference = Event
+            } else if (arg instanceof Object && arg.constructor) {
+                reference = reference || arg
+                subreference = arg.constructor
             }
         }
-        if (!xover.listener.debugger.has(reference)) {
-            xover.listener.debugger.set(reference, new Map())
-        }
-        xover.listener.debugger.get(reference).set(event, true)
+        reference = reference || '*'
+        subreference = subreference || '*'
+
+
+        xover.listener.debugger.set(reference, (xover.listener.debugger.get(reference) || new Map()))
+        let target = xover.listener.debugger.get(reference);
+        target.set(subreference, (target.get(subreference) || true))
     },
     writable: false, enumerable: false, configurable: false
 })
 
 Object.defineProperty(xover.listener.debug, 'matches', {
-    value: function (handler, map = xover.listener.debugger) {
+    value: function (...args) {
+        map = args.pop() || xover.listener.debugger;
+        handler = args.pop();
+        if (!map.size) return false;
         let context = this;
-        let reference_debugger = map.get(context) || map.get(event.constructor) || map.get('*') || new Map();
-        if (reference_debugger.get(event.type) || reference_debugger.get(event.constructor) || reference_debugger.get('*') || handler && (handler.selectors || []).some(selector => reference_debugger.get(selector)) || [...map].some(([reference]) => reference instanceof Function && context instanceof reference)) {
+        let reference_debugger = map.get(context) || map.get(event.type) || map.get(`${context instanceof Attr ? '@' : ''}${context.nodeName}`) || map.get('*') || new Map();
+        if (!reference_debugger.size) return false;
+        if (reference_debugger.get('*') || reference_debugger.get(handler) || reference_debugger.get(event) || handler && reference_debugger.get(handler.constructor) || reference_debugger.get(context instanceof Attr && context.parentNode || context) || reference_debugger.get(event.constructor) || handler && (handler.selectors || []).some(selector => reference_debugger.get(selector)) || [...map].some(([reference]) => reference instanceof Function && context instanceof reference)) {
             return true
         }
         return false;
@@ -1046,7 +1073,13 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
             if (event.propagationStopped || event.cancelBubble) break;
-            if (event.detail && handler.conditions && ![...handler.conditions].every(([key, condition]) => {
+            if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
+                if (!condition) return true;
+                let operator = "="
+                if (["*", "!"].includes(key[key.length - 1])) {
+                    operator = key[key.length - 1];
+                    key = key.slice(0, -1);
+                }
                 let [arg, ...props] = key.split(/\./g);
                 let context = event.detail[arg];
                 if (context === undefined && arg in window) {
@@ -1055,8 +1088,18 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 for (let prop of props || []) {
                     context = context[prop];
                 }
-                return condition ? (context instanceof Document ? [(context.href || '').replace(/^\//, '')].includes(condition) : `${context}`.matches(`${condition}`)) : context
-            })) continue;
+                if (context instanceof Document) {
+                    context = (context.href || '').replace(/^\//, '')
+                }
+                switch (operator) {
+                    case "!":
+                        return !`${context}`.matches(`${condition}`)
+                    case "*":
+                        return `${context}`.indexOf(`${condition}`) !=-1
+                    default:
+                        return `${context}`.matches(`${condition}`)
+                }
+            }))) continue;
             //if (context.eventHistory.get(handler)) {
             //    console.warn(`Event ${event.type} recursed`)
             //}
@@ -1154,13 +1197,17 @@ Object.defineProperty(xover.listener, 'on', {
             let conditions;
             let [scoped_event, ...predicate] = event_name.split(/::/);
             predicate = predicate.join("::");
-            [scoped_event, conditions] = scoped_event.split(/\?/);
+            [scoped_event, ...conditions] = scoped_event.split(/\?/g);
             let [base_event, scope] = scoped_event.split(/:/).reverse();
             window.top.removeEventListener(base_event, xover.listener.dispatcher);
             window.top.addEventListener(base_event, xover.listener.dispatcher/*, options --removed for it might cause event to trigger multiple times*/);
 
             handler.scope = scope && eval(scope) || undefined;
-            handler.conditions = conditions && new URLSearchParams("?" + conditions) || undefined;
+            handler.conditions = handler.conditions || conditions && [] || undefined;
+            for (let condition of conditions) {
+                handler.conditions.push(new URLSearchParams("?" + condition));
+            }
+
             let event_array = xover.listener.get(base_event) || new Map();
             let handler_map = event_array.get(`[${handler.selectors.join(',')}]=>${handler.toString()}`) || new Map();
             handler_map.set(predicate, handler);
@@ -4570,13 +4617,20 @@ xover.modernize = async function (targetWindow) {
                     let self = first_node instanceof Document ? first_node : first_node.ownerDocument;
                     let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self).sort(el => el.contains(document.activeElement) && -1 || 1);
                     let active_element = event && event.srcElement || document.activeElement;
+                    let renders = [];
                     for (let section of sections) {
                         !(active_element instanceof HTMLBodyElement) && active_element instanceof HTMLElement && active_element.classList.add("xo-working")
                         if (section.contains(active_element)) {
                             await xover.delay(100); //delay to let animations end
                         }
-                        section.render().then(() => active_element.classList && active_element.classList.remove("xo-working"))
+                        renders.push(section.render())
                     }
+                    Promise.all(renders).then(() => {
+                        if (active_element.ownerDocument && !active_element.ownerDocument.contains(active_element)) {
+                            active_element = document.activeElement
+                        }
+                        active_element.classList && active_element.classList.remove("xo-working")
+                    })
 
                     if (event instanceof InputEvent) await xover.delay(1);
 
@@ -5303,7 +5357,7 @@ xover.modernize = async function (targetWindow) {
                                 } else if (target.id) {
                                     path.unshift(`${target.tagName}[id='${target.id}']`);
                                 } else if ((target.classList || []).length && selector_type != 'full_path') {
-                                    let classes = [...target.classList].filter(class_name => class_name.match(/^[a-zA-Z_][a-zA-Z0-9_\-]*$/));
+                                    let classes = [...target.classList].filter(class_name => !["xo-working"].includes(class_name) && class_name.match(/^[a-zA-Z_][a-zA-Z0-9_\-]*$/));
                                     path.unshift(target.tagName + (classes.length && '.' + classes.join(".") || ""));
                                 } else if (target.nodeName == '#text') {
                                     path.unshift(buildQuerySelector(target.parentNode, path.flat()));
@@ -8941,7 +8995,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 el.prepend(xover.xml.createNode(`<xsl:with-param name="xo:context" select="$xo:context"/>`));
             }
 
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:*[not(@match="/")]/html:*[not(self::html:script or self::html:style or self::html:link)]|//xsl:*/svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
@@ -9097,7 +9151,8 @@ xover.xml.parseValue = function (value) {
 xover.xml.staticMerge = function (node1, node2) {
     node1.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
-    if (!node1.contains("[xo-static]") || node1.nodeName.toLowerCase() !== node2.nodeName.toLowerCase() || node1.isEqualNode(node2)) return;
+    if (node1.classList && node2.classList && node1.classList.contains("xo-working")) node2.classList.add("xo-working");
+    if (!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working")) || node1.nodeName.toLowerCase() !== node2.nodeName.toLowerCase() || node1.isEqualNode(node2)) return;
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
 
@@ -9163,7 +9218,9 @@ xover.xml.combine = function (target, new_node) {
         )
         || target instanceof SVGElement && !(new_node instanceof SVGElement)
     ) {
+        let restore_focus = target.contains(document.activeElement)
         target.replaceWith(new_node)
+        restore_focus && new_node.focus()
         return new_node
     } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
         let remove_attributes = [...target.attributes].filter(attr => !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name));
@@ -11059,7 +11116,7 @@ xmlns=""
   </xsl:template>
 </xsl:stylesheet>`));
     let content = xson_to_json.firstElementChild && xson_to_json.firstElementChild.textContent;
-    let json = JSON.parse(content.replace(/\n/g,'\\n'));
+    let json = JSON.parse(content.replace(/\n/g, '\\n'));
     return json
 }
 
