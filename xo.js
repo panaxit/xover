@@ -4970,11 +4970,11 @@ xover.modernize = async function (targetWindow) {
                             let selector = this.formerParentNode.selector;
                             let document_copy = this.formerParentNode instanceof Document ? this.formerParentNode.cloneNode(true) : this.formerParentNode.ownerDocument.cloneNode(true);
                             document_copy.disconnect()
-                            let target_copy = !selector ? document_copy : this instanceof HTMLElement ? document_copy.querySelector(selector) : document_copy.selectFirst(selector);
+                            let target_copy = !selector ? document_copy : this instanceof Element ? document_copy.querySelector(selector) : document_copy.selectFirst(selector);
                             if (target_copy instanceof Document && target_copy.documentElement) {
                                 target_copy.replaceChild(node, target_copy.documentElement)
                             } else {
-                                target_copy.insertBefore(node, null)
+                                target_copy instanceof Node && target_copy.insertBefore(node, null)
                             }
                         }
                         try {
