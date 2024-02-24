@@ -2882,6 +2882,16 @@ Object.defineProperty(xover.sources, 'defaults', {
     writable: false, enumerable: false, configurable: false
 });
 
+Object.defineProperty(xover.sources, '#', {
+    get: function () {
+        let key = xover.manifest.sources['#'] || '#';
+        if (!this.has(key)) {
+            this.set(key, new xover.Source(key).document);
+        }
+        return this.get(key);
+    }
+});
+
 var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 xover.URL = function (url, base, settings = {}) {
     if (url === null) {
@@ -3974,11 +3984,11 @@ Object.defineProperty(xover.sources, 'xover/databind.xslt', {
     }
 })
 
-//Object.defineProperty(xover.stores, '#', {
-//    get: function () {
-//        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] })); //new xover.Store(xover.manifest.sources["#"] && xover.sources["#"] || xover.sources["#shell"], { tag: "#" });//
-//    }
-//});
+Object.defineProperty(xover.stores, '#', {
+    get: function () {
+        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] }));
+    }
+});
 
 Object.defineProperty(xover.stores, 'active', {
     get: function () {
@@ -3992,7 +4002,6 @@ Object.defineProperty(xover.stores, 'active', {
         }
         if (!(input instanceof xover.Store)) {
             input = new xover.Store(input);
-            //input.seed();
         }
 
         if (input) {
