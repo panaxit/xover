@@ -4636,7 +4636,7 @@ xover.modernize = async function (targetWindow) {
                     }
                     Promise.all(renders).then(() => {
                         if (active_element.ownerDocument && !active_element.ownerDocument.contains(active_element)) {
-                            active_element = document.activeElement
+                            active_element = document.activeElement || document.documentElement
                         }
                         active_element.classList && active_element.classList.remove("xo-working")
                     })
@@ -7510,6 +7510,7 @@ xover.modernize = async function (targetWindow) {
                                     //}
                                 }
                                 if (!result) {
+                                    if (this.documentElement instanceof HTMLElement) return new Comment("ack:empty");
                                     if (/*((arguments || {}).callee || {}).caller != xover.xml.transform && */xsl.selectSingleNode('//xsl:import[@href="login.xslt"]')) {
                                         result = xml.transform(xover.sources.defaults["login.xslt"]);
                                     } else if (/*((arguments || {}).callee || {}).caller != xover.xml.transform && */xsl.selectSingleNode('//xsl:import[@href="shell.xslt"]')) {
@@ -9231,7 +9232,7 @@ xover.xml.combine = function (target, new_node) {
         target.replaceWith(new_node)
         restore_focus && new_node.focus()
         return new_node
-    } else if (target.constructor === new_node.constructor && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
+    } else if ((target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName == new_node.nodeName) && (target.getAttribute("xo-source") || new_node.getAttribute("xo-source")) == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source")) || new_node instanceof HTMLBodyElement || target.parentNode.matches(".xo-swap")) {
         let remove_attributes = [...target.attributes].filter(attr => !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name));
         remove_attributes.forEach(attr => attr.remove({ silent: true }));
         for (let attr of new_node.attributes) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
@@ -9298,48 +9299,6 @@ xover.dom.combine = async function (target, new_node) {
         }
     }
     if (!(new_node instanceof Node)) return;
-    //documentElement.setAttributeNS(null, "xo-scope", new_node.getAttribute("xo-scope") || target.getAttribute("xo-scope") || (data.documentElement || data).getAttribute("xo:id"));
-    //if (new_node.hasAttribute("id") && new_node.id == target.id || target.matches(`[xo-stylesheet="${stylesheet_href}"]:not([xo-source])`)) {
-    //    action = 'replace';
-    //} else if (target.constructor == new_node.constructor && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) {
-    //    action = 'replace';
-    //} else if (!action && xsl && target.matches(`[xo-source="${tag}"]:not([xo-stylesheet])`)) {
-    //    action = 'append';
-    //} else if (target.matches(`[xo-source="${tag}"][xo-stylesheet="${stylesheet_href}"]`)) {
-    //    action = 'replace';
-    //} else if (target.matches(`[xo-source="${tag}"][xo-stylesheet]`)) {
-    //    continue;
-    //}
-
-    //if (action === 'replace') {
-    //    if (target.constructor !== new_node.constructor) {
-    //        let new_node = new_node.cloneNode();
-    //        target = target.replaceWith(new_node);
-    //    } else {
-    //        target.attributes.toArray().filter(attr => !['xmlns'].includes(attr.nodeName)).filter(attr => !new_node.hasAttribute(attr.name)).forEach(attr => new_node.setAttribute(attr.name, attr.value));
-    //        //target.classList.forEach(class_name => new_node.classList.add(class_name));
-    //    }
-    //}
-
-    //if (target === document.body && action === 'replace') {
-    //    action = null;
-    //}
-
-    //if (!stylesheet_href) {
-    //    console.warn(`There's a missing href in a processing-instruction`)
-    //}
-    //if (((dom || {}).namespaceURI || "").indexOf("http://www.mozilla.org/TransforMiix") != -1) {
-    //    // TODO: Revisar esta parte, regularmente esto sucede cuando la transformación trae más de un nodo
-    //    data.selectNodes(`processing-instruction('xml-stylesheet')`).remove();
-    //    if (!this.sources[stylesheet_href]) {
-    //        dom = data.transform(xover.sources[stylesheet_href] || xover.sources.defaults[stylesheet_href] || xover.sources.defaults["shell.xslt"]);
-    //    } else {
-    //        dom = data.transform(this.sources[stylesheet_href]);
-    //    }
-    //}
-    //if (!(dom.namespaceURI && dom.namespaceURI.indexOf("http://www.w3.org") != -1)) {
-    //    data = dom;
-    //}
 
     let _applyScripts = async function (targetDocument, scripts = []) {
         for (let script of scripts) {
@@ -9430,7 +9389,7 @@ xover.dom.combine = async function (target, new_node) {
             target = (document.activeElement || {}).contentDocument.querySelector('main,table,div,span');
             target.parentElement.replaceChild(new_node.querySelector(target.tagName.toLowerCase()), target);
         } else {
-            target.replaceChildren();
+            //target.replaceChildren();
             if (target.tagName.toLowerCase() == "iframe") {
                 iframe = target;
             } else {
@@ -9441,13 +9400,13 @@ xover.dom.combine = async function (target, new_node) {
                 iframe.setAttributeNS(null, "xo-source", tag);
                 //stylesheet_href && iframe.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
                 iframe.style.backgroundColor = 'white';
-                target.replaceWith(iframe);
+                xover.xml.combine(target, iframe);
                 Object.entries(xover.listener).forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
                 //iframe.addEventListener('focusout', xover.listeners.dom.onfocusout);
                 //iframe.addEventListener('change', xover.listeners.dom.onchange);
             }
             let url = xover.dom.getGeneratedPageURL({
-                html: xover.string.htmlDecode(new_node.toString()),
+                html: xover.xml.fromHTML(new_node),//xover.string.htmlDecode(new_node.toString()),
                 css: (new_node.querySelector('style') || {}).innerHTML,
                 js: `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; let iframe=parent.document.querySelector('iframe'); iframe.height=document.querySelector('body').scrollHeight+10; iframe.width=document.querySelector('body').scrollWidth+10; xover.modernize(iframe.contentWindow); document.querySelector('body').setAttributeNS(null, "xo-source", '${tag}');` //+ js//((dom.querySelector('script') || {}).innerHTML || "")
                 //window.top.document.querySelector('body').setAttributeNS(null, "xo-source", window.top.location.hash)
@@ -10385,6 +10344,7 @@ xover.Store = function (xml, ...args) {
         value: function () {
             let start_date = new Date();
             let data = this.document;
+            if (data.documentElement instanceof HTMLHtmlElement) return;
             return data.seed();
             //        if (!data.documentElement) return data;
             //        let xsl = xover.xml.createDocument(`
