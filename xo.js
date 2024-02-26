@@ -8325,10 +8325,9 @@ xover.Response = function (response, request) {
                     const text = decoder.decode(buffer);
                     responseContent = text;
                 }
-                body = responseContent;
-                if (body.substr(0, 2) === '��') { //Removes BOM mark
-                    body = body.replace(/\x00/ig, '');
-                    body = body.substr(2);
+                if (responseContent.substr(0, 2) === 'ÿþ') { //Removes BOM mark
+                    responseContent = responseContent.replace(/\x00/ig, '');
+                    responseContent = responseContent.substr(2);
                 }
             }
 
