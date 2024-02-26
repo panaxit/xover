@@ -4632,7 +4632,7 @@ xover.modernize = async function (targetWindow) {
                     let [first_node] = mutated_targets.keys();
                     let self = first_node instanceof Document ? first_node : first_node.ownerDocument;
                     let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self).sort(el => el.contains(document.activeElement) && -1 || 1);
-                    let active_element = event && event.srcElement || document.activeElement;
+                    let active_element = event && event.srcElement instanceof HTMLElement && event.srcElement || document.activeElement;
                     let renders = [];
                     for (let section of sections) {
                         !(active_element instanceof HTMLBodyElement) && active_element instanceof HTMLElement && active_element.classList.add("xo-working")
@@ -4645,7 +4645,7 @@ xover.modernize = async function (targetWindow) {
                         if (active_element.ownerDocument && !active_element.ownerDocument.contains(active_element)) {
                             active_element = document.activeElement || document.documentElement
                         }
-                        active_element.classList && active_element.classList.remove("xo-working")
+                        [...active_element.querySelectorAll(".xo-working")].concat([active_element]).forEach(element => element.classList.remove("xo-working"))
                     })
 
                     if (event instanceof InputEvent) await xover.delay(1);
@@ -7700,6 +7700,7 @@ xover.modernize = async function (targetWindow) {
                             self.stop && self.stop.then(result => xover.manager.stoped.set(self, result)).finally(() => delete self.stop)
                             xover.delay(1).then(() => suspense_node.render())
                         }
+                        return Promise.resolve(this)
                     }).catch((e) => {
                         return Promise.reject(e)
                     }).finally(async () => {
