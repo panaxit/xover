@@ -1074,11 +1074,21 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         for (let handler of [...handlers.values()].reverse()) {
             if (event.propagationStopped || event.cancelBubble) break;
             if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
-                if (!condition) return true;
                 let operator = "="
                 if (["*", "!"].includes(key[key.length - 1])) {
                     operator = key[key.length - 1];
                     key = key.slice(0, -1);
+                } else if (!condition && ["*", "!"].includes(key[0])) {
+                    operator = key[0];
+                    key = key.slice(1);
+                }
+                if (!condition) {
+                    switch (operator) {
+                        case "!":
+                            return !event.detail[key]
+                        default:
+                            return event.detail[key]
+                    }
                 }
                 let [arg, ...props] = key.split(/\./g);
                 let context = event.detail[arg];
@@ -2808,7 +2818,7 @@ xover.Source = function (tag) {
                         response = __document.createTextNode(response)
                     }
                     if (response instanceof Document) {
-                        this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => response.addStylesheet(stylesheet));
+                        this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => typeof(response.addStylesheet) == 'function' && response.addStylesheet(stylesheet));
                     }
                     window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: response, tag: tag_string, settings: this.settings }, self));
                     return Promise.resolve(response);
@@ -4632,7 +4642,7 @@ xover.modernize = async function (targetWindow) {
                     let [first_node] = mutated_targets.keys();
                     let self = first_node instanceof Document ? first_node : first_node.ownerDocument;
                     let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self).sort(el => el.contains(document.activeElement) && -1 || 1);
-                    let active_element = event && event.srcElement instanceof HTMLElement && event.srcElement || document.activeElement;
+                    let active_element = event && event.srcElement instanceof Element && event.srcElement || document.activeElement;
                     let renders = [];
                     for (let section of sections) {
                         !(active_element instanceof HTMLBodyElement) && active_element instanceof HTMLElement && active_element.classList.add("xo-working")
@@ -10565,9 +10575,6 @@ xover.Store = function (xml, ...args) {
     let render_manager = new Map()
     Object.defineProperty(this, 'render', {
         value: async function (target) {
-            //let before = new xover.listener.Event('beforeRender', this);
-            //xover.listener.dispatchEvent(before, this);
-            //if (before.cancelBubble || before.defaultPrevented) return;
             await xover.ready;
             let progress;
             let tag = self.tag;
@@ -10582,9 +10589,11 @@ xover.Store = function (xml, ...args) {
                 if (!__document.firstChild) {
                     await store.fetch();
                 }
+                let document = __document.cloneNode(true);
+                window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
                 let renders = [];
                 let sections = !target && xover.site.sections.filter(el => el.store && el.store === self) || [];
-                let stylesheets = [..._store_stylesheets, ...__document.stylesheets].distinct();
+                let stylesheets = [..._store_stylesheets, ...document.stylesheets].distinct();
                 if (sections.length) {
                     renders = renders.concat(sections.map(el => el.render()));
                 }
@@ -10595,10 +10604,10 @@ xover.Store = function (xml, ...args) {
                             stylesheet.srcElement = target;
                         }
                     }
-                    renders = renders.concat(__document.render(stylesheets))
+                    renders = renders.concat(document.render(stylesheets))
                 }
                 renders = await Promise.all(renders);
-                if (!renders.length && active_store === self) __document.render(window.document.body);
+                if (!renders.length && active_store === self) document.render(window.document.body);
                 return renders;
             }).then((renders) => {
                 window.top.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
