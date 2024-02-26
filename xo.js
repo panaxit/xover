@@ -4614,6 +4614,13 @@ xover.modernize = async function (targetWindow) {
                                 settings.set(this, {})
                             }
                             return settings.get(this);
+                        }, set: function (input) {
+                            if (input) {
+                                settings.set(this, input)
+                            } else {
+                                settings.delete(this)
+                            }
+                            return settings.get(this);
                         }
                     });
                 }
