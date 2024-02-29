@@ -8378,7 +8378,7 @@ xover.Response = function (response, request) {
                         return "html";
                     } else if ((contentType.toLowerCase().indexOf("json") != -1 || contentType.toLowerCase().indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) && xover.json.isValid(xover.json.tryParse(responseContent))) {
                         return "json";
-                    } else if ((contentType.toLowerCase().indexOf("xml") != -1 || contentType.toLowerCase().indexOf("xsl") != -1 || body.toLowerCase().indexOf("<?xml ") != -1 || contentType.toLowerCase().indexOf('application/octet-stream') != -1) && xover.xml.isValid(xover.xml.tryParse(responseContent))) {
+                    } else if ((contentType.toLowerCase().indexOf("xml") != -1 || contentType.toLowerCase().indexOf("xsl") != -1 || responseContent.toLowerCase().indexOf("<?xml ") != -1 || contentType.toLowerCase().indexOf('application/octet-stream') != -1) && xover.xml.isValid(xover.xml.tryParse(responseContent))) {
                         return "xml"
                     } else {
                         return "text";
