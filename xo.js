@@ -4743,6 +4743,7 @@ xover.modernize = async function (targetWindow) {
                             }
                         }
                     }
+                    if (![...mutated_targets.values()].some(config => Object.values(config).some(arr => Object.values(arr).length))) return;
                     let renders = [];
                     for (let section of sections) {
                         !(active_element instanceof HTMLBodyElement) && active_element instanceof HTMLElement && active_element.classList.add("xo-working")
@@ -8182,7 +8183,7 @@ class MutationSet extends Array {
     consolidate() {
         let mutationList = this;
         let mutated_targets = new Map();
-        for (let mutation of mutationList) {
+        for (let mutation of mutationList.filter(mutation=>!["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))) {
             let inserted_ids = [];
             let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
             if (['', 'true'].includes((target.closest('[xo-silent]') || document.createElement('p')).getAttribute("xo-silent"))) continue;
@@ -8193,7 +8194,6 @@ class MutationSet extends Array {
                     value.texts.set(mutation.target, `${mutation.target}`)
                 }
             } else if (mutation.type == "attributes") {
-                if (["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace)) continue;
                 let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
                 if (String(attribute.value) == String(mutation.oldValue)) continue;
                 value.attributes = value.attributes || {};
