@@ -4121,51 +4121,20 @@ xover.modernize = async function (targetWindow) {
         with (targetWindow) {
 
             Attr.value = Attr.value || Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
-            Attr.native = Attr.native || {};
-            Attr.native.value = Attr.native.value || Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
 
             Node.namespaceURI = Node.namespaceURI || Object.getOwnPropertyDescriptor(Node.prototype, 'namespaceURI');
-            Node.native = Node.native || {};
-            Node.native.namespaceURI = Node.native.namespaceURI || Object.getOwnPropertyDescriptor(Node.prototype, 'namespaceURI');
 
             Element.setAttribute = Element.setAttribute || Element.prototype.setAttribute;
             Element.setAttributeNS = Element.setAttributeNS || Element.prototype.setAttributeNS;
             Element.setAttributeNode = Element.setAttributeNode || Element.prototype.setAttributeNode;
             Element.setAttributeNodeNS = Element.setAttributeNodeNS || Element.prototype.setAttributeNodeNS;
-            Element.native = Element.native || {};
-            Element.native.setAttribute = Element.native.setAttribute || Element.prototype.setAttribute;
-            Element.native.setAttributeNS = Element.native.setAttributeNS || Element.prototype.setAttributeNS;
-            Element.native.setAttributeNode = Element.native.setAttributeNode || Element.prototype.setAttributeNode;
-            Element.native.setAttributeNodeNS = Element.native.setAttributeNodeNS || Element.prototype.setAttributeNodeNS;
 
             Element.replaceChild = Element.replaceChild || Element.prototype.replaceChild;
-            Element.native.replaceChild = Element.native.replaceChild || Element.prototype.replaceChild;
 
             Element.remove = Element.remove || Element.prototype.remove;
             Element.removeChild = Element.removeChild || Node.prototype.removeChild;
             Element.removeAttribute = Element.removeAttribute || Element.prototype.removeAttribute;
             Element.removeAttributeNS = Element.removeAttributeNS || Element.prototype.removeAttributeNS;
-            Element.native.remove = Element.native.remove || Element.prototype.remove;
-            Element.native.removeChild = Element.native.removeChild || Node.prototype.removeChild;
-            Element.native.removeAttribute = Element.native.removeAttribute || Element.prototype.removeAttribute;
-            Element.native.removeAttributeNS = Element.native.removeAttributeNS || Element.prototype.removeAttributeNS;
-
-            Element.prototype.native = Element.prototype.native || {};
-            Element.prototype.native.setAttribute = Element.prototype.native.setAttribute || Element.prototype.setAttribute;
-            Element.prototype.native.setAttributeNS = Element.prototype.native.setAttributeNS || Element.prototype.setAttributeNS;
-
-            Element.prototype.native.replaceChild = Element.prototype.native.replaceChild || Element.prototype.replaceChild;
-
-            Element.prototype.native.remove = Element.prototype.native.remove || Element.prototype.remove;
-            Element.prototype.native.removeChild = Element.prototype.native.removeChild || Node.prototype.removeChild;
-            Element.prototype.native.removeAttribute = Element.prototype.native.removeAttribute || Element.prototype.removeAttribute;
-            Element.prototype.native.removeAttributeNS = Element.prototype.native.removeAttributeNS || Element.prototype.removeAttributeNS;
-
-            Element.prototype.native.setAttribute = Element.prototype.native.setAttribute || Element.prototype.setAttribute;
-            Element.prototype.native.setAttributeNS = Element.prototype.native.setAttributeNS || Element.prototype.setAttributeNS;
-            Element.prototype.native.setAttributeNode = Element.prototype.native.setAttributeNode || Element.prototype.setAttributeNode;
-            Element.prototype.native.setAttributeNodeNS = Element.prototype.native.setAttributeNodeNS || Element.prototype.setAttributeNodeNS;
-
 
             if (typeof (HasContent) == 'undefined') HasContent = async (element) => (element.ownerElement || element).hasChildNodes();
 
@@ -4520,8 +4489,6 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 HTMLTextAreaElement.select = HTMLTextAreaElement.select || HTMLTextAreaElement.prototype.select;
-                HTMLTextAreaElement.native = {};
-                HTMLTextAreaElement.native.select = HTMLTextAreaElement.prototype.select;
                 Node.prototype.selectNodes = function (xpath) {
                     if (this instanceof HTMLTextAreaElement && xpath == undefined) {
                         return HTMLTextAreaElement.select.apply(this)
@@ -4833,8 +4800,6 @@ xover.modernize = async function (targetWindow) {
                 HTMLTextAreaElement.prototype.select = Node.prototype.selectNodes;
 
                 HTMLInputElement.select = HTMLInputElement.select || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'select');
-                HTMLInputElement.native = {};
-                HTMLInputElement.native.select = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'select');
                 Object.defineProperty(HTMLInputElement.prototype, 'select', {
                     value: function (...args) {
                         if (!args.length) {
@@ -4852,7 +4817,6 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Node.contains = Node.contains || Object.getOwnPropertyDescriptor(Node.prototype, 'contains');
-                Node.native.contains = Object.getOwnPropertyDescriptor(Node.prototype, 'contains');
                 Object.defineProperty(Node.prototype, 'contains', {
                     value: function (...args) {
                         let selector = args[0];
@@ -4874,7 +4838,6 @@ xover.modernize = async function (targetWindow) {
                 })
 
                 Node.find = Node.find || Object.getOwnPropertyDescriptor(Node.prototype, 'find');
-                Node.native.find = Object.getOwnPropertyDescriptor(Node.prototype, 'find');
                 Object.defineProperty(Node.prototype, 'find', {
                     value: function (...args) {
                         let selector = args[0];
@@ -4896,7 +4859,6 @@ xover.modernize = async function (targetWindow) {
                 })
 
                 Node.findAll = Node.findAll || Object.getOwnPropertyDescriptor(Node.prototype, 'findAll');
-                Node.native.findAll = Object.getOwnPropertyDescriptor(Node.prototype, 'findAll');
                 Object.defineProperty(Node.prototype, 'findAll', {
                     value: function (...args) {
                         let selector = args[0];
@@ -4918,8 +4880,6 @@ xover.modernize = async function (targetWindow) {
                 })
 
                 HTMLCollection.filter = HTMLCollection.filter || Object.getOwnPropertyDescriptor(HTMLCollection.prototype, 'filter');
-                HTMLCollection.prototype.native = {};
-                HTMLCollection.prototype.native.filter = Object.getOwnPropertyDescriptor(HTMLCollection.prototype, 'filter');
                 Object.defineProperty(HTMLCollection.prototype, 'filter', {
                     value: function (...args) {
                         if (typeof (args[0]) === 'string') {
@@ -4951,8 +4911,6 @@ xover.modernize = async function (targetWindow) {
                 if (!NamedNodeMap.prototype.hasOwnProperty('toArray')) Object.defineProperty(NamedNodeMap.prototype, 'toArray', xo_handler_toArray);
 
                 NodeList.filter = NodeList.filter || Object.getOwnPropertyDescriptor(NodeList.prototype, 'filter');
-                NodeList.prototype.native = {};
-                NodeList.prototype.native.filter = Object.getOwnPropertyDescriptor(NodeList.prototype, 'filter');
                 Object.defineProperty(NodeList.prototype, 'filter', {
                     value: function (...args) {
                         if (typeof (args[0]) === 'string') {
@@ -6295,8 +6253,6 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 MutationObserver.observe = MutationObserver.observe || MutationObserver.prototype.observe;
-                MutationObserver.native = {}
-                MutationObserver.native.observe = MutationObserver.prototype.observe;
                 MutationObserver.prototype.observe = function (target, options) {
                     target.observers = target.observers || new Map();
                     target.observers.set(this, options)
@@ -6707,8 +6663,6 @@ xover.modernize = async function (targetWindow) {
 
 
                 //Event.srcElement = Event.srcElement || Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
-                //Event.native = {};
-                //Event.native.srcElement = Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
                 //Object.defineProperty(Event.prototype, 'srcElement', {
                 //    get: function () {
                 //        let return_value = Event.srcElement.get.call(this);
@@ -7020,7 +6974,6 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Element.clear = Element.clear || Element.prototype.clear;
-                Element.native.clear = Element.prototype.clear;
                 Element.prototype.clear = function () {
                     this.replaceChildren()
                 }
