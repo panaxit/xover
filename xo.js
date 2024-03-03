@@ -4517,7 +4517,7 @@ xover.modernize = async function (targetWindow) {
                     let remove = false;
                     //let store = this.ownerDocument.store;
                     //let observer = (this.ownerDocument || this).observer;
-                    if (this instanceof Attr && !this.ownerElement && this.parentNode instanceof Element) {
+                    if (this instanceof Attr && !this.ownerElement && this.parentNode instanceof Element && !this.nil) {
                         //observer && observer.disconnect(0);
                         //this.ownerDocument.disconnect(0);
                         Element.setAttributeNode.call(this.parentNode, this);
@@ -5043,7 +5043,7 @@ xover.modernize = async function (targetWindow) {
                                 let remove;
                                 let observer = (this.ownerDocument || this).observer;
 
-                                if (!this.ownerElement && this.parentNode) {
+                                if (!this.ownerElement && this.parentNode && !this.nil) {
                                     //this.ownerDocument.disconnect(0);
                                     Element.setAttributeNode.call(this.parentNode, this);
                                     remove = true;
@@ -9264,6 +9264,8 @@ xover.xml.combine = function (target, new_node) {
                 return Promise.reject(e)
             }
         }
+        target.context = new_node.context;
+        target.document = new_node.document;
         //active_element && xover.delay(100).then(() => active_element.focus());
         return target
     } else {
