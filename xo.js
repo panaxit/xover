@@ -216,7 +216,7 @@ Object.defineProperty(Array.prototype, 'distinct',
     {
         value: function (fn) {
             let array = this;
-            if (!fn && array.some(item => [Attr, Text].includes(item.constructor))) {
+            if (!fn && array.some(item => item && [Attr, Text].includes(item.constructor))) {
                 fn = String
             }
             if (typeof (fn) == 'function') {
@@ -605,13 +605,6 @@ xover.init.Observer = function (target_node = window.document) {
         mutationsList = new MutationSet(...mutationsList)
         let mutations = mutationsList.consolidate();
         if (!mutations.size) return;
-        for (let section of [...mutations].filter(([node, mutations]) =>
-            !mutations.addedNodes.length && !mutations.removedNodes.length && !(mutations.attributes || {})[""] && node.matches("[xo-source],[xo-stylesheet]")
-            || mutations.attributes && ["xo-source", "xo-stylesheet"].some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
-            || node.stylesheet instanceof Document && node.stylesheet.select(`//xsl:stylesheet/xsl:param/@name`).some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
-        ).map(([node]) => node.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
-            section.render()
-        }
         //for (let section of mutationsList.filter(mutation =>
         //    mutation.type == 'attributes' && ["xo-source", "xo-stylesheet"].includes(mutation.attributeName)
         //    || mutation.type === 'childList' && !mutation.addedNodes.length && !mutation.removedNodes.length && target.matches("[xo-source],[xo-stylesheet]")
@@ -627,6 +620,10 @@ xover.init.Observer = function (target_node = window.document) {
         ////})
         ////if (window.document.designMode !== 'on') return;
         //observer.disconnect();
+        let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement;
+        let mutation_event = new xover.listener.Event('mutate', { document: target_node, srcElement: active_element, mutations }, target_node);
+        window.top.dispatchEvent(mutation_event);
+        mutations = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue) : mutations;
         for (let [target, mutation] of mutations) {
             for (let [attr, oldValue] of Object.values((mutation.attributes || {})[""] || {})) {
                 window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue, parentNode: (attr.parentNode || target) }, attr));
@@ -640,20 +637,28 @@ xover.init.Observer = function (target_node = window.document) {
                 window.top.dispatchEvent(remove_event);
                 if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
             }
-            for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
-                if (target.contains(node)) continue;
+            for (let node of mutation.removedNodes) {
+                if (target.contains(node)
+                    || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)
+                ) {
+                    continue
+                };
                 node.formerParentNode = target;
                 let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
                 window.top.dispatchEvent(remove_event);
                 if (target.contains(node)) continue;
                 if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
             }
-            for (let node of [...mutation.addedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {
-                if (!target.contains(node)) continue;
+            for (let node of mutation.addedNodes) {
+                if (!target.contains(node)
+                    || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)) {
+                    //mutation.addedNodes.delete(node);
+                    continue;
+                }
                 let append_event = new xover.listener.Event('append', { target }, node);
                 window.top.dispatchEvent(append_event);
                 if (!target.contains(node)) continue;
-                const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersection"]');
+                const elementsToObserve = typeof (node.querySelectorAll) == 'function' && node.querySelectorAll('[xo-suspense*="Intersection"]') || [];
                 elementsToObserve.forEach(element => {
                     intersection_observer.observe(element);
                 });
@@ -662,6 +667,13 @@ xover.init.Observer = function (target_node = window.document) {
                 //&& `[${target.getAttribute("xo-source") || ''}].[${target.getAttribute("xo-stylesheet") || ''}]` != `[${node.getAttribute("xo-source") || ''}].[${node.getAttribute("xo-stylesheet") || ''}]` && /*!node.context && */node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
                 //dependants.forEach(el => el.render());
             }
+        }
+        for (let section of [...mutations].filter(([node, mutations]) =>
+            !mutations.addedNodes.length && !mutations.removedNodes.length && !(mutations.attributes || {})[""] && node.matches("[xo-source],[xo-stylesheet]")
+            || mutations.attributes && ["xo-source", "xo-stylesheet"].some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
+            || node.stylesheet instanceof Document && node.stylesheet.select(`//xsl:stylesheet/xsl:param/@name`).some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
+        ).map(([node]) => node.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
+            section.render()
         }
         //observer.observe(target_node, config);
 
@@ -4517,7 +4529,7 @@ xover.modernize = async function (targetWindow) {
                     let remove = false;
                     //let store = this.ownerDocument.store;
                     //let observer = (this.ownerDocument || this).observer;
-                    if (this instanceof Attr && !this.ownerElement && this.parentNode instanceof Element && !this.nil) {
+                    if (this instanceof Attr && !this.ownerElement && this.parentNode instanceof Element) {
                         //observer && observer.disconnect(0);
                         //this.ownerDocument.disconnect(0);
                         Element.setAttributeNode.call(this.parentNode, this);
@@ -4625,43 +4637,15 @@ xover.modernize = async function (targetWindow) {
                     let [first_node] = mutated_targets.keys();
                     let self = first_node instanceof Document ? first_node : first_node.ownerDocument;
                     let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self).sort(el => el.contains(document.activeElement) && -1 || 1);
-                    let active_element = event && event.srcElement instanceof Element && event.srcElement || document.activeElement;
+                    let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement;
 
                     if (event instanceof InputEvent) await xover.delay(1);
 
                     //mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
-                    //mutationList = distinctMutations(mutationList); //removed to allow multiple removed nodes
-                    //if (!mutationList.length) return;
-
-
-                    //let mutated_targets = new Map();
-                    //for (let mutation of mutationList) {
-                    //    let inserted_ids = [];
-                    //    let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
-                    //    let value = mutated_targets.get(target) || {};
-                    //    if (mutation.target instanceof Text) {
-                    //        value.texts = value.texts || new Map();
-                    //        if (!value.texts.has(mutation.target)) {
-                    //            value.texts.set(mutation.target, `${mutation.target}`)
-                    //        }
-                    //    } else if (mutation.type == "attributes") {
-                    //        let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
-                    //        if (String(attribute.value) == String(mutation.oldValue)) continue;
-                    //        value.attributes = value.attributes || {};
-                    //        value.attributes[mutation.attributeNamespace || ''] = value.attributes[mutation.attributeNamespace || ''] || {};
-                    //        value.attributes[mutation.attributeNamespace || ''][mutation.attributeName] = [attribute, mutation.oldValue];
-                    //    }
-                    //    value.removedNodes = value.removedNodes || [];
-                    //    value.removedNodes.push(...mutation.removedNodes);
-                    //    value.addedNodes = value.addedNodes || [];
-                    //    value.addedNodes.push(...mutation.addedNodes);
-                    //    value.nextSibling = mutation.nextSibling;
-                    //    value.previousSibling = mutation.previousSibling;
-                    //    mutated_targets.set(target, value);
-                    //    [...mutation.addedNodes].forEach((addedNode) => {
-                    //        inserted_ids = inserted_ids.concat(addedNode.select(`.//@xo:id`).map(node => node.value));
-                    //    })
-                    //}
+                    
+                    let mutation_event = new xover.listener.Event('mutate', { document: self, srcElement: active_element, mutations: mutated_targets }, self);
+                    window.top.dispatchEvent(mutation_event);
+                    mutated_targets = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue || []) : mutated_targets;
 
                     let node_event = new xover.listener.Event('change', { srcElement: active_element }, self);
                     window.top.dispatchEvent(node_event);
@@ -5043,9 +5027,10 @@ xover.modernize = async function (targetWindow) {
                                 let remove;
                                 let observer = (this.ownerDocument || this).observer;
 
-                                if (!this.ownerElement && this.parentNode && !this.nil) {
+                                if (!this.ownerElement && this.parentNode) {
                                     //this.ownerDocument.disconnect(0);
-                                    Element.setAttributeNode.call(this.parentNode, this);
+                                    this.parentNode.setAttributeNode(this);
+                                    //clonedParent = cloneNodePath(this.formerParentNode);
                                     remove = true;
                                 }
                                 let return_value = [this, node.selectNodes('self::*|ancestor::*').reverse(), node.ownerDocument].flat().some(el => el && el.selectNodes(key).includes(this));
@@ -5106,6 +5091,18 @@ xover.modernize = async function (targetWindow) {
                                 }
                             }
                         }
+                    }
+                })
+
+                let oldValues = new Map()
+                var original_attr_closest = Object.getOwnPropertyDescriptor(Attr.prototype, 'oldValue');
+                Object.defineProperty(Attr.prototype, 'oldValue', {
+                    get: function () {
+                        oldValues.set(this.parentNode, oldValues.get(this.parentNode) || {});
+                        return oldValues.get(this.parentNode)[`{${this.namespaceURI}}:${this.localName}`];
+                    }, set: function (value) {
+                        oldValues.set(this.parentNode, oldValues.get(this.parentNode) || {});
+                        oldValues.get(this.parentNode)[`{${this.namespaceURI}}:${this.localName}`] = value;
                     }
                 })
 
@@ -7036,6 +7033,7 @@ xover.modernize = async function (targetWindow) {
 
                 Attr.prototype.remove = function (options = {}) {
                     if (!this.reactive || options.silent) {
+                        this.removing = true;
                         if (this.namespaceURI) {
                             return_value = Element.removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
                         } else {
@@ -7048,6 +7046,7 @@ xover.modernize = async function (targetWindow) {
                     if (ownerElement) {
                         let return_value;
                         let event_type = 'remove', node = this;
+                        this.oldValue = Attr.value.get.call(this);
                         let matching_listeners; //= xover.listener.matches(node, event_type);
                         if (this.namespaceURI) {
                             return_value = Element.removeAttributeNS.call(this.parentNode, this.namespaceURI, this.localName)
@@ -8154,7 +8153,7 @@ class MutationSet extends Array {
     consolidate() {
         let mutationList = this;
         let mutated_targets = new Map();
-        for (let mutation of mutationList.filter(mutation=>!["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))) {
+        for (let mutation of mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))) {
             let inserted_ids = [];
             let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
             if (['', 'true'].includes((target.closest('[xo-silent]') || document.createElement('p')).getAttribute("xo-silent"))) continue;
@@ -9188,7 +9187,7 @@ xover.xml.combine = function (target, new_node) {
     if (target instanceof Element && !target.staticAttributes && target.hasAttributes() && (
         target.hasAttribute("xo-source") && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source"))
         || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-stylesheet"))
-        )
+    )
     ) {
         target.staticAttributes = [...target.attributes || []].map(attr => `@${attr.name}`);
     }
