@@ -934,11 +934,13 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             _event.detail["store"] = _event.detail["store"] || context.ownerDocument.store;
             node = context
         } else if (context instanceof Document) {
+            _event.detail["stylesheets"] = _event.detail.hasOwnProperty("stylesheets") ? _event.detail["stylesheets"] : context.stylesheets;
             _event.detail["document"] = _event.detail["document"] || context;
             _event.detail["store"] = _event.detail["store"] || context.store;
             _event.detail["target"] = _event.detail["target"] || context.documentElement;
         } else if (context instanceof xover.Store) {
             //_event.detail["tag"] = _event.detail["tag"] || context.tag;
+            _event.detail["stylesheets"] = _event.detail.hasOwnProperty("stylesheets") ? _event.detail["stylesheets"] : context.stylesheets;
             _event.detail["store"] = _event.detail["store"] || context;
             _event.detail["target"] = _event.detail["target"] || context.documentElement;
         } else if (context instanceof xover.Source) {
@@ -1098,32 +1100,33 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                     operator = key[0];
                     key = key.slice(1);
                 }
-                if (!condition) {
-                    switch (operator) {
-                        case "!":
-                            return !event.detail[key]
-                        default:
-                            return event.detail[key]
-                    }
-                }
                 let [arg, ...props] = key.split(/\./g);
                 let context = event.detail[arg];
                 if (context === undefined && arg in window) {
                     context = window[arg]
                 }
-                for (let prop of props || []) {
-                    context = context[prop];
+                for (let [ix, prop] of Object.entries(props)) {
+                    context = context[prop] != null ? context[prop] : props.length - 1 != ix ? {} : null;
                 }
                 if (context instanceof Document) {
                     context = (context.href || '').replace(/^\//, '')
                 }
-                switch (operator) {
-                    case "!":
-                        return !`${context}`.matches(`${condition}`)
-                    case "*":
-                        return `${context}`.indexOf(`${condition}`) != -1
-                    default:
-                        return `${context}`.matches(`${condition}`)
+                if (!condition) {
+                    switch (operator) {
+                        case "!":
+                            return !context
+                        default:
+                            return context
+                    }
+                } else {
+                    switch (operator) {
+                        case "!":
+                            return !`${context}`.matches(`${condition}`)
+                        case "*":
+                            return `${context}`.indexOf(`${condition}`) != -1
+                        default:
+                            return `${context}`.matches(`${condition}`)
+                    }
                 }
             }))) continue;
             //if (context.eventHistory.get(handler)) {
@@ -4932,7 +4935,6 @@ xover.modernize = async function (targetWindow) {
                     }
                 }
 
-                var original_response_matches = Object.getOwnPropertyDescriptor(Response.prototype, 'matches');
                 Object.defineProperty(Response.prototype, 'matches', {
                     value: function (...args) {
                         let predicate = args.pop();
@@ -4948,7 +4950,7 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                var original_element_matches = Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
+                Element.matches = Element.matches || Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
                 Object.defineProperty(Element.prototype, 'matches', {
                     value: function (...args) {
                         let node = this;
@@ -4973,7 +4975,7 @@ xover.modernize = async function (targetWindow) {
                             if (event && ['click'].includes(event.type)) {
                                 matches = Element.closest && Element.closest.value.apply(node, args);
                             } else {
-                                matches = original_element_matches && original_element_matches.value.apply(node, args);
+                                matches = Element.matches && Element.matches.value.apply(node, args);
                             }
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
@@ -4994,21 +4996,33 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                var original_document_matches = Object.getOwnPropertyDescriptor(Document.prototype, 'matches');
                 Object.defineProperty(Document.prototype, 'matches', {
                     value: function (...args) {
                         let predicate = args.pop();
                         let tag = this.tag || event && event.detail && event.detail.tag || '';
+                        let document = this;
                         if (predicate[0] == '#') {
                             if (tag == predicate || predicate == tag.split(/[:\?~]/)[0]) {
                                 return true;
                             }
                             return false;
                         }
-                        //let node = this.documentElement;
-                        //return node.matches(predicate);
+                        return !["appendTo"].includes((event || {}).type) && document.childElementCount && [...document.childNodes].some(node => typeof (node.matches) == 'function' && node.matches(predicate));
+                    }
+                })
 
-                        return !["appendTo"].includes((event || {}).type) && this.childElementCount && [...this.childNodes].some(node => typeof (node.matches) == 'function' && node.matches(predicate));
+                Object.defineProperty(xover.Store.prototype, 'matches', {
+                    value: function (...args) {
+                        let predicate = args.pop();
+                        let tag = this.tag || event && event.detail && event.detail.tag || '';
+                        let document = this.document;
+                        if (predicate[0] == '#') {
+                            if (tag == predicate || predicate == tag.split(/[:\?~]/)[0]) {
+                                return true;
+                            }
+                            return false;
+                        }
+                        return !["appendTo"].includes((event || {}).type) && document.childElementCount && [...document.childNodes].some(node => typeof (node.matches) == 'function' && node.matches(predicate));
                     }
                 })
 
