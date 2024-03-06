@@ -5509,7 +5509,7 @@ xover.modernize = async function (targetWindow) {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
-                    xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@select[contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed ${key}`)))
+                    xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@select[contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)))
                     return xsl;
                 }
 
@@ -8169,7 +8169,10 @@ class MutationSet extends Array {
         for (let mutation of mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))) {
             let inserted_ids = [];
             let target = mutation.target instanceof Text && mutation.target.parentNode || mutation.target;
-            if (['', 'true'].includes((target.closest('[xo-silent]') || document.createElement('p')).getAttribute("xo-silent"))) continue;
+            if ([target.closest('.xo-silent,.xo-silent-off') || document.createElement('p')].filter(node => node.classList.contains('xo-silent') && !node.classList.contains('xo-silent-off')).length) {
+                continue;
+            }
+
             let value = mutated_targets.get(target) || {};
             if (mutation.target instanceof Text) {
                 value.texts = value.texts || new Map();
