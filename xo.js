@@ -2924,7 +2924,6 @@ Object.defineProperty(xover.sources, '#', {
     }
 });
 
-var original_href = Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 xover.URL = function (url, base, settings = {}) {
     if (url === null) {
         return Promise.reject(`${url} is not a valid value for xover.URL`)
@@ -2979,9 +2978,10 @@ xover.URL = function (url, base, settings = {}) {
     return url;
 }
 
+URL.href = URL.href || Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 Object.defineProperty(URL.prototype, 'href', {
     get: function (...args) {
-        let href = original_href.get.apply(this, args);
+        let href = URL.href.get.apply(this, args);
         return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "")//.replace(/^\/+/, '');
     }
 });
@@ -5026,15 +5026,15 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                var original_attr_matches = Object.getOwnPropertyDescriptor(Attr.prototype, 'matches');
+                Attr.matches = Attr.matches || Object.getOwnPropertyDescriptor(Attr.prototype, 'matches');
                 Object.defineProperty(Attr.prototype, 'matches', {
                     value: function (...args) {
                         let node = this;
                         try {
-                            if (!(original_attr_matches && node.ownerElement instanceof HTMLElement)) {
+                            if (!(Attr.matches && node.ownerElement instanceof HTMLElement)) {
                                 throw new DOMException('not a valid selector');
                             }
-                            return (original_attr_matches || {}).value && original_attr_matches.value.apply(node, args);
+                            return (Attr.matches || {}).value && Attr.matches.value.apply(node, args);
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 let key = args[0];
@@ -5087,12 +5087,12 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                var original_attr_closest = Object.getOwnPropertyDescriptor(Attr.prototype, 'closest');
+                Attr.closest = Attr.closest || Object.getOwnPropertyDescriptor(Attr.prototype, 'closest');
                 Object.defineProperty(Attr.prototype, 'closest', {
                     value: function (...args) {
                         let node = this;
                         try {
-                            return (original_attr_closest || {}).value && original_attr_closest.value.apply(node, args) || (Element.closest || {}).value && Element.closest.value.apply(node.parentNode, args);
+                            return (Attr.closest || {}).value && Attr.closest.value.apply(node, args) || (Element.closest || {}).value && Element.closest.value.apply(node.parentNode, args);
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 node = node.parentNode || node.formerParentNode;
@@ -5109,7 +5109,7 @@ xover.modernize = async function (targetWindow) {
                 })
 
                 let oldValues = new Map()
-                var original_attr_closest = Object.getOwnPropertyDescriptor(Attr.prototype, 'oldValue');
+                Attr.oldValue = Attr.oldValue || Object.getOwnPropertyDescriptor(Attr.prototype, 'oldValue');
                 Object.defineProperty(Attr.prototype, 'oldValue', {
                     get: function () {
                         oldValues.set(this.parentNode, oldValues.get(this.parentNode) || {});
@@ -5120,15 +5120,15 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                var original_comment_closest = Object.getOwnPropertyDescriptor(Comment.prototype, 'closest');
+                Comment.closest = Comment.closest || Object.getOwnPropertyDescriptor(Comment.prototype, 'closest');
                 Object.defineProperty(Comment.prototype, 'closest', {
                     value: function (...args) {
                         let node = this;
                         try {
-                            //if (!(original_comment_closest && node.parentNode instanceof HTMLElement)) {
+                            //if (!(Comment.closest && node.parentNode instanceof HTMLElement)) {
                             //    throw new DOMException('not a valid selector');
                             //}
-                            return (original_comment_closest || {}).value && original_comment_closest.value.apply(node, args) || (Element.closest || {}).value && Element.closest.value.apply(node.parentNode, args);
+                            return (Comment.closest || {}).value && Comment.closest.value.apply(node, args) || (Element.closest || {}).value && Element.closest.value.apply(node.parentNode, args);
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 node = node.parentNode || node.formerParentNode;
@@ -5144,15 +5144,15 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                var original_text_closest = Object.getOwnPropertyDescriptor(Text.prototype, 'closest');
+                Text.closest = Text.closest || Object.getOwnPropertyDescriptor(Text.prototype, 'closest');
                 Object.defineProperty(Text.prototype, 'closest', {
                     value: function (...args) {
                         let node = this;
                         try {
-                            //if (!(original_text_closest && node.parentNode instanceof HTMLElement)) {
+                            //if (!(Text.closest && node.parentNode instanceof HTMLElement)) {
                             //    throw new DOMException('not a valid selector');
                             //}
-                            return (original_text_closest || {}).value && original_text_closest.value.apply(node, args) || (Element.closest || {}).value && Element.closest.value.apply(node.parentNode, args);
+                            return (Text.closest || {}).value && Text.closest.value.apply(node, args) || (Element.closest || {}).value && Element.closest.value.apply(node.parentNode, args);
                         } catch (e) {
                             if (e.message.indexOf('not a valid selector') != -1) {
                                 node = node.parentNode || node.formerParentNode;
@@ -5168,11 +5168,11 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                var original_StopPropagation = Object.getOwnPropertyDescriptor(Event.prototype, 'stopPropagation');
+                Event.stopPropagation = Event.stopPropagation || Object.getOwnPropertyDescriptor(Event.prototype, 'stopPropagation');
                 Object.defineProperty(Event.prototype, 'stopPropagation', {
                     value: function () {
                         Object.defineProperty(this, 'propagationStopped', { value: true })
-                        original_StopPropagation.value.call(this);
+                        Event.stopPropagation.value.call(this);
                     }
                 });
 
@@ -5440,12 +5440,12 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                var original_createProcessingInstruction = XMLDocument.prototype.createProcessingInstruction;
+                XMLDocument.createProcessingInstruction = XMLDocument.createProcessingInstruction || XMLDocument.prototype.createProcessingInstruction;
                 XMLDocument.prototype.createProcessingInstruction = function (target, data) {
                     if (target) {
                         let last_stylesheet = this.selectNodes("processing-instruction('xml-stylesheet')").pop();
                         let definition = data.constructor === {}.constructor && xover.json.toAttributes(data) || data instanceof ProcessingInstruction && data.textContent || data
-                        let piNode = new xover.ProcessingInstruction(original_createProcessingInstruction.call(this, 'xml-stylesheet', definition));
+                        let piNode = new xover.ProcessingInstruction(XMLDocument.createProcessingInstruction.call(this, 'xml-stylesheet', definition));
                         return piNode;
                     }
                 }
@@ -5815,12 +5815,12 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                let original_HTMLTableCellElement = Object.getOwnPropertyDescriptor(HTMLTableCellElement.prototype, 'scope')
+                HTMLTableCellElement.scope = HTMLTableCellElement.scope || Object.getOwnPropertyDescriptor(HTMLTableCellElement.prototype, 'scope')
                 let scope_handler = { /*Estaba con HTMLElement, pero los SVG los ignoraba. Se deja abierto para cualquier elemento*/
                     get: function () {
                         //if (this.scopeNode instanceof Node && this.scopeNode.parentNode && this.scopeNode.name == this.closest('*').getAttribute("xo-slot")) return this.scopeNode;
                         //if (this.ownerDocument instanceof XMLDocument) return null;
-                        let original_PropertyDescriptor = this instanceof HTMLTableCellElement && original_HTMLTableCellElement || {};
+                        let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
                         let self = this;
                         let section = this.section;
                         let source = section && section.source;
@@ -6041,23 +6041,23 @@ xover.modernize = async function (targetWindow) {
                     return responses;
                 }
 
-                var original_textContent = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+                Node.textContent = Node.textContent || Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
                 Object.defineProperty(Node.prototype, 'textContent',
                     // Passing innerText or innerText.get directly does not work,
                     // wrapper function is required.
                     {
                         get: function () {
-                            return original_textContent.get.call(this);
+                            return Node.textContent.get.call(this);
                         },
                         set: function (value) {
                             if (this.textContent != value) {
-                                original_textContent.set.call(this, value);
+                                Node.textContent.set.call(this, value);
                                 if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                                     this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                                 }
-                                return original_textContent.set.call(this, value);
+                                return Node.textContent.set.call(this, value);
                             } else {
-                                return original_textContent.set.call(this, value);
+                                return Node.textContent.set.call(this, value);
                             }
                         }
                     }
@@ -6094,21 +6094,21 @@ xover.modernize = async function (targetWindow) {
                     // wrapper function is required.
                     {
                         get: function () {
-                            return original_textContent.get.call(this);
+                            return Node.textContent.get.call(this);
                         },
                         set: function (value) {
                             if (this.textContent != value) {
                                 this.replaceBy(this.ownerDocument.createProcessingInstruction('xml-stylesheet', value));
-                                original_textContent.set.call(this, value);
+                                Node.textContent.set.call(this, value);
                                 if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                                     this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                                 } else if (this.ownerDocument && this.ownerDocument.selectSingleNode && this.ownerDocument.store) {
                                     //this.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                                     this.ownerDocument.store.render();
                                 }
-                                return original_textContent.set.call(this, value);
+                                return Node.textContent.set.call(this, value);
                             } else {
-                                return original_textContent.set.call(this, value);
+                                return Node.textContent.set.call(this, value);
                             }
                         }
                     }
@@ -6418,8 +6418,8 @@ xover.modernize = async function (targetWindow) {
                     return this;
                 }
 
-                var original_getAttribute = Element.prototype.getAttribute;
-                var original_getAttributeNS = Element.prototype.getAttributeNS;
+                Element.getAttribute = Element.getAttribute || Element.prototype.getAttribute;
+                Element.getAttributeNS = Element.getAttributeNS || Element.prototype.getAttributeNS;
 
                 //Element.prototype.getAttribute = function (attribute) {
                 //    let target = this;
@@ -6428,7 +6428,7 @@ xover.modernize = async function (targetWindow) {
                 //    }
 
                 //    if (this.hasAttribute(attribute)) {
-                //        return original_getAttribute.call(this, attribute)
+                //        return Element.getAttribute.call(this, attribute)
                 //    }
 
                 //    let attribute_node = target.getAttributeNode(attribute);
@@ -6466,8 +6466,8 @@ xover.modernize = async function (targetWindow) {
                     return this.getAttribute.apply(this, arguments)
                 }
 
-                var original_getAttributeNode = Element.prototype.getAttributeNode;
-                var original_getAttributeNodeNS = Element.prototype.getAttributeNodeNS;
+                Element.getAttributeNode = Element.getAttributeNode || Element.prototype.getAttributeNode;
+                Element.getAttributeNodeNS = Element.getAttributeNodeNS || Element.prototype.getAttributeNodeNS;
                 Element.prototype.getTextNodes = function (attribute) {
                     return [...this.childNodes].filter(node => node instanceof Text)
                 }
@@ -6480,15 +6480,15 @@ xover.modernize = async function (targetWindow) {
                     attribute = (attribute instanceof Attr ? attribute.value : attribute);
 
                     if (this.hasAttribute(attribute)) {
-                        return original_getAttributeNode.call(this, attribute)
+                        return Element.getAttributeNode.call(this, attribute)
                     }
                     let namespace;
                     let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
                     namespace = prefix && (this.resolveNS(prefix) || xover.spaces[prefix]);
                     if (!namespace) {
-                        return original_getAttributeNode.call(this, attribute);
+                        return Element.getAttributeNode.call(this, attribute);
                     } else {
-                        return original_getAttributeNodeNS.call(this, namespace, attribute_name);
+                        return Element.getAttributeNodeNS.call(this, namespace, attribute_name);
                     }
                 }
 
@@ -6529,7 +6529,7 @@ xover.modernize = async function (targetWindow) {
                     } else {
                         Element.setAttributeNS.call(node, namespace, attribute, value);
                     }
-                    new_attribute_node = original_getAttributeNode.call(node, attribute);
+                    new_attribute_node = Element.getAttributeNode.call(node, attribute);
                     if (value === null) {
                         Element.removeAttribute.call(node, attribute);
                         let descriptor = Object.getPropertyDescriptor(new_attribute_node, 'parentNode') || { writable: true };
@@ -6551,12 +6551,12 @@ xover.modernize = async function (targetWindow) {
                         if (!this.hasAttributeNS(namespace_URI, attribute_name)/* && (this.namespaceURI || '').indexOf("http://www.w3.org") !== 0*/) {
                             Element.setAttributeNS.call(node, namespace_URI, attribute, value);
                         }
-                        new_attribute_node = original_getAttributeNodeNS.call(node, namespace_URI, attribute_name);
+                        new_attribute_node = Element.getAttributeNodeNS.call(node, namespace_URI, attribute_name);
                     } else {
                         if (!node.hasAttribute(attribute)/* && (node.namespaceURI || '').indexOf("http://www.w3.org") !== 0*/) {
                             Element.setAttribute.call(node, attribute, value);
                         }
-                        new_attribute_node = original_getAttributeNode.call(node, attribute);
+                        new_attribute_node = Element.getAttributeNode.call(node, attribute);
                     }
                     if (value === null) {
                         Element.removeAttribute.call(node, attribute);
@@ -6779,29 +6779,27 @@ xover.modernize = async function (targetWindow) {
                     }
                 );
 
-                var original_attr_namespaceURI = Object.getOwnPropertyDescriptor(Attr.prototype, 'namespaceURI');
+                Attr.namespaceURI = Attr.namespaceURI || Object.getOwnPropertyDescriptor(Attr.prototype, 'namespaceURI');
                 Object.defineProperty(Attr.prototype, 'namespaceURI',
                     {
                         get: function () {
-                            return original_attr_namespaceURI.get.call(this) || "";
+                            return Attr.namespaceURI.get.call(this) || "";
                         },
                         set: function (value) {
-                            return original_attr_namespaceURI.set.call(this);
+                            return Attr.namespaceURI.set.call(this);
 
                         }
                     }
                 );
 
-                var original_HTMLTextAreaElement_value = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-                var original_HTMLSelectElement_value = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+                HTMLTextAreaElement.value = HTMLTextAreaElement.value || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+                HTMLSelectElement.value = HTMLSelectElement.value || Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
                 var value_handler = {
                     get: function () {
-                        let original_handler = eval(`original_${this.constructor.name}_value`)
-                        return original_handler.get.call(this);
+                        return this.constructor.value.get.call(this);
                     },
                     set: function (value) {
-                        let original_handler = eval(`original_${this.constructor.name}_value`)
-                        let return_value = original_handler.set.call(this, [value]);
+                        let return_value = this.constructor.value.set.call(this, [value]);
                         this.dispatchEvent(new Event('change'));
                         return return_value;
                     }
@@ -6931,9 +6929,9 @@ xover.modernize = async function (targetWindow) {
                     })
                 }
 
-                let original_ProcessingInstruction_remove = ProcessingInstruction.prototype.remove;
+                ProcessingInstruction.remove = ProcessingInstruction.remove || ProcessingInstruction.prototype.remove;
                 ProcessingInstruction.prototype.remove = function (refresh = true) {
-                    original_ProcessingInstruction_remove.apply(this, arguments);
+                    ProcessingInstruction.remove.apply(this, arguments);
                     if (this.ownerDocument && this.ownerDocument.store) {
                         [document.querySelector(`[xo-source="${this.ownerDocument.store.tag}"][xo-stylesheet='${xover.json.fromAttributes(this.textContent)["href"]}']`)].map(el => el && el.remove());
                         this.ownerDocument.store.removeStylesheet(this);
@@ -6943,7 +6941,7 @@ xover.modernize = async function (targetWindow) {
                 ProcessingInstruction.prototype.replaceBy = function (new_element) {
                     if (new_element !== this) {
                         this.parentNode.insertBefore(new_element, this);
-                        return original_ProcessingInstruction_remove.apply(this, arguments);
+                        return ProcessingInstruction.remove.apply(this, arguments);
                     } else {
                         return this;
                     }
@@ -6954,10 +6952,10 @@ xover.modernize = async function (targetWindow) {
                     return this.parentNode && this.parentNode.replaceChild(new_node/*.cloneNode(true)*/, this) || new_node;
                 }
 
-                let original_attr_replace = Attr.prototype.replace
+                Attr.replace = Attr.replace || Attr.prototype.replace;
                 Attr.prototype.replace = function (...args) {
                     if (args[0] instanceof Attr) {
-                        return original_attr_replace.apply(this, args)
+                        return Attr.replace.apply(this, args)
                     } else if (typeof (args[0]) == 'string' || args[0] instanceof RegExp) {
                         this.value = this.value.replace(args[0], args[1])
                         return this;
@@ -7081,13 +7079,13 @@ xover.modernize = async function (targetWindow) {
                     return Object.fromEntries([this, ...this.querySelectorAll("*")].map(el => [...el.attributes].filter(attr => attr.namespaceURI === 'http://www.w3.org/2000/xmlns/')).flat(Infinity).map(attr => [attr.localName, attr.value]));
                 }
 
-                var original_insertBefore = Element.prototype.insertBefore
+                Element.insertBefore = Element.insertBefore || Element.prototype.insertBefore
                 Element.prototype.insertBefore = function (new_node, options = {}) {
                     if ((this.ownerDocument || this) instanceof XMLDocument) {
                         //if ((xover.manifest.server || {}).login && !(xover.session.status == 'authorized')) {
                         //    return;
                         //}
-                        original_insertBefore.apply(this, arguments);
+                        Element.insertBefore.apply(this, arguments);
                         if (this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                             /*Update of session variables*/
                             let attribute = new_node;
@@ -7101,11 +7099,11 @@ xover.modernize = async function (targetWindow) {
                         window.top.dispatchEvent(new xover.listener.Event('change', { node: this }, this));
                         window.top.dispatchEvent(new xover.listener.Event('insert', { node: this }, this));
                     } else {
-                        original_insertBefore.apply(this, arguments);
+                        Element.insertBefore.apply(this, arguments);
                     }
                 }
 
-                var original_append = Element.prototype.append
+                Element.append = Element.append || Element.prototype.append
                 Element.prototype.append = function (...args) {
                     if (this.frozen) return this;
                     if (!args.length) return;
@@ -7115,14 +7113,14 @@ xover.modernize = async function (targetWindow) {
                     }
                     if (!this.reactive || options.silent) {
                         try {
-                            original_append.apply(this, args);
+                            Element.append.apply(this, args);
                         } catch (e) {
                             if (e.name == 'RangeError') {
                                 let array = args
                                 let chunkSize = 9999;
                                 let index = 0;
                                 while (index < array.length) {
-                                    original_append.apply(this, (array.slice(index, index + chunkSize)));
+                                    Element.append.apply(this, (array.slice(index, index + chunkSize)));
                                     index += chunkSize;
                                 }
                             }
@@ -7138,7 +7136,7 @@ xover.modernize = async function (targetWindow) {
                     let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this, args: args, srcEvent: event }, this);
                     window.top.dispatchEvent(beforeEvent);
                     if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
-                    original_append.apply(this, args);
+                    Element.append.apply(this, args);
                     if (!(this instanceof HTMLElement) && this.store) this.seed();
                     return args;
                 }
@@ -7772,13 +7770,13 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                var original_pushState = Object.getOwnPropertyDescriptor(History.prototype, 'pushState');
+                History.pushState = History.pushState || Object.getOwnPropertyDescriptor(History.prototype, 'pushState');
                 Object.defineProperty(History.prototype, 'pushState', {
                     value: function (...args) {
                         let before = new xover.listener.Event('beforePushstate', { state: args[0] }, this)
                         window.top.dispatchEvent(before);
                         if (before.cancelBubble || before.defaultPrevented) return;
-                        let response = original_pushState.value.apply(this, [JSON.parse(JSON.stringify(args[0])), args[1], args[2]]);
+                        let response = History.pushState.value.apply(this, [JSON.parse(JSON.stringify(args[0])), args[1], args[2]]);
                         window.top.dispatchEvent(new xover.listener.Event('pushstate', { state: args[0] }, this));
                         return response;
                     }
@@ -7933,9 +7931,9 @@ xover.modernize = async function (targetWindow) {
                                 //}
 
                                 let old = target.cloneNode(true);
-                                //target.document = this;
-                                //target.context = data;
                                 target = await xover.dom.combine(target, dom);
+                                target.document = this;
+                                target.context = data;
 
                                 xover.delay(10).then(() => {
                                     let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
@@ -9277,8 +9275,6 @@ xover.xml.combine = function (target, new_node) {
                 return Promise.reject(e)
             }
         }
-        target.context = new_node.context;
-        target.document = new_node.document;
         //active_element && xover.delay(100).then(() => active_element.focus());
         return target
     } else {
