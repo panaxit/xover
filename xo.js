@@ -4961,7 +4961,7 @@ xover.modernize = async function (targetWindow) {
                             let selector = this.formerParentNode.selector;
                             let document_copy = this.formerParentNode instanceof Document ? this.formerParentNode.cloneNode(true) : this.formerParentNode.ownerDocument.cloneNode(true);
                             document_copy.disconnect()
-                            let target_copy = !selector ? document_copy : this instanceof Element ? document_copy.querySelector(selector) : document_copy.selectFirst(selector);
+                            let target_copy = !selector ? document_copy : (this instanceof HTMLElement || this instanceof SVGElement) ? document_copy.querySelector(selector) : document_copy.selectFirst(selector);
                             if (target_copy instanceof Document && target_copy.documentElement) {
                                 target_copy.replaceChild(node, target_copy.documentElement)
                             } else {
@@ -5509,6 +5509,7 @@ xover.modernize = async function (targetWindow) {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
+                    xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@select[contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed ${key}`)))
                     return xsl;
                 }
 
