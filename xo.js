@@ -7097,8 +7097,8 @@ xover.modernize = async function (targetWindow) {
                         //if (this.ownerDocument.store) {
                         //    this.ownerDocument.store.render();
                         //}
-                        window.top.dispatchEvent(new xover.listener.Event('change', { node: this }, this));
-                        window.top.dispatchEvent(new xover.listener.Event('insert', { node: this }, this));
+                        //window.top.dispatchEvent(new xover.listener.Event('change', { node: this }, this));
+                        //window.top.dispatchEvent(new xover.listener.Event('insert', { node: this }, this));
                     } else {
                         Element.insertBefore.apply(this, arguments);
                     }
