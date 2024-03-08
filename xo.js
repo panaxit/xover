@@ -5509,7 +5509,7 @@ xover.modernize = async function (targetWindow) {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
-                    xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@select[contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)))
+                    xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)))
                     return xsl;
                 }
 
