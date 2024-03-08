@@ -9002,7 +9002,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
 
             for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
-                el.set("xo-slot", (el.getAttribute("type") == "search" ? "search:{local-" : "{") + "name(current()[not(self::*)])}")
+                el.set("xo-slot", (el.getAttribute("type") == "search" ? "search:{local-" : "{") + "name(current())}")
             }
 
             for (let el of return_value.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
