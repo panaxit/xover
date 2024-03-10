@@ -8997,6 +8997,10 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             //if (!return_value.documentElement.resolveNS('')) {
             //    return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns", xover.spaces["xhtml"])
             //}/*doesn't work properly as when declared from origin */
+
+            /* Preserve significant spaces*/
+            return_value.select(`.//text()[normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement).forEach(text => text.replaceWith(xover.xml.createNode(`<text xmlns="http://www.w3.org/1999/XSL/Transform"> </text>`)));
+
             if (!return_value.documentElement.resolveNS('xo')) {
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
@@ -9167,8 +9171,8 @@ xover.xml.parseValue = function (value) {
 }
 
 xover.xml.staticMerge = function (node1, node2) {
-    node1.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
-    node2.select(`.//text()[normalize-space(.)='']`).forEach(text => text.remove());
+    node1.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
+    node2.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
     if (node1.classList && node2.classList && node1.classList.contains("xo-working")) node2.classList.add("xo-working");
     if (!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working")) || node1.nodeName.toLowerCase() !== node2.nodeName.toLowerCase() || node1.isEqualNode(node2)) return;
     let static = document.firstElementChild.cloneNode().classList;
