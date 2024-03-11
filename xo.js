@@ -293,7 +293,7 @@ xover.stores = new Proxy({}, {
         }
         return exists && !(key in self)
     }, has: function (self, key) {
-        return key != '#' && (key in self || key.toLowerCase() in self || key in xover.sources) || key in (xover.manifest.server || {});
+        return (key in self || key.toLowerCase() in self || key in xover.sources) || key in (xover.manifest.server || {});
     }
 });
 
@@ -2725,9 +2725,9 @@ xover.Source = function (tag) {
                     }
                     let url = new xover.URL(tag_string.replace(/^#/, ''));
                     parameters = parameters.concat([...url.searchParams.entries()]);
-                    let current_url = xover.URL(location.hash.replace(/^#/, ''));
-                    if (location.hash && current_url.pathname === xover.URL(url).pathname) {
-                        parameters = parameters.concat([...current_url.searchParams.entries()])
+                    let current_url = xover.URL(xover.site.seed.replace(/^#/, ''));
+                    if (location.searchParams && current_url.pathname === xover.URL(url).pathname) {
+                        parameters = parameters.concat([...location.searchParams.entries()])
                     }
                 }
 
@@ -10133,7 +10133,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'hash', {
         get: function () {
-            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), config.tag && store.tag || ''].coalesce();
+            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), config.tag/* && store.tag*/ || ''].coalesce();
             /*return '#' + Array.prototype.coalesce(_hash, __document.documentElement && Array.prototype.coalesce(__document.documentElement.getAttributeNS("http://panax.io/xover", "hash"), __document.documentElement.getAttributeNS("http://panax.io/xover", "tag"), __document.documentElement.localName.toLowerCase()), _tag).split(/^#/).pop();*/
         },
         set: function (input) {
@@ -10600,11 +10600,11 @@ xover.Store = function (xml, ...args) {
                 //    progress = xover.sources['loading.xslt'].render({ action: "append" });
                 //}
                 let active_store = xover.stores.active
-                if (!__document.firstChild) {
-                    await store.fetch();
-                }
                 if (active_store === self) {
                     xover.site.hash = self.hash;
+                }
+                if (!__document.firstChild) {
+                    await store.fetch();
                 }
                 let document = __document.cloneNode(true);
                 window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
