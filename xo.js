@@ -556,14 +556,14 @@ xover.init = async function () {
             xover.dom.updateTitle();
             xover.site.sections.forEach(section => section.render());
             let active = xover.stores.active;
-            active && active.render();
+            active && await active.render();
             return Promise.resolve();
         } catch (e) {
             return Promise.reject(e)
         }
     }).catch(e => {
         this.init.status = 'error';
-        return Promise.reject(e);
+        /*return*/ Promise.reject(e); // Ommited return to prevent hitting multiple times unhandled rejection
     }).finally(async () => {
         this.init.initializing = 'done';
         progress = await progress || [];
@@ -2548,7 +2548,7 @@ xover.Source = function (tag) {
             get: function () {
                 _manifest = _manifest || JSON.parse(JSON.stringify(xover.manifest.sources)) || {};
                 let tag_string = tag instanceof Node ? `${tag instanceof Attr ? '@' : ''}${tag.nodeName}::${tag.value}` : tag;
-                manifest_key = manifest_key || Object.keys(_manifest).filter(manifest_key => manifest_key[0] === '^' && tag_string.match(new RegExp(manifest_key, "i")) || manifest_key === tag_string || tag_string[0] == '#' && manifest_key === '#' + xover.URL(tag_string.substring(1)).pathname.substring(1)).pop();
+                manifest_key = manifest_key || Object.keys(_manifest).find(manifest_key => manifest_key === tag_string) || Object.keys(_manifest).reverse().find(manifest_key => tag_string[0] == '#' && manifest_key === '#' + xover.URL(tag_string.substring(1)).pathname.slice(location.pathname.length) || manifest_key[0] === '^' && tag_string.matches(manifest_key));
                 //if (definition !== undefined) return definition;
                 if (manifest_key) {
                     let source = _manifest[manifest_key];
@@ -2723,8 +2723,10 @@ xover.Source = function (tag) {
                     if (parameters.constructor === {}.constructor) {
                         parameters = Object.entries(parameters) || parameters
                     }
+                    let url = new xover.URL(tag_string.replace(/^#/, ''));
+                    parameters = parameters.concat([...url.searchParams.entries()]);
                     let current_url = xover.URL(location.hash.replace(/^#/, ''));
-                    if (location.hash && current_url.pathname === xover.URL(tag_string.replace(/^#/, '')).pathname) {
+                    if (location.hash && current_url.pathname === xover.URL(url).pathname) {
                         parameters = parameters.concat([...current_url.searchParams.entries()])
                     }
                 }
@@ -10598,11 +10600,11 @@ xover.Store = function (xml, ...args) {
                 //    progress = xover.sources['loading.xslt'].render({ action: "append" });
                 //}
                 let active_store = xover.stores.active
-                if (active_store === self) {
-                    xover.site.hash = self.hash;
-                }
                 if (!__document.firstChild) {
                     await store.fetch();
+                }
+                if (active_store === self) {
+                    xover.site.hash = self.hash;
                 }
                 let document = __document.cloneNode(true);
                 window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
@@ -10630,7 +10632,7 @@ xover.Store = function (xml, ...args) {
             }).catch((e) => {
                 let tag = self.tag;
                 e = e || {}
-                if (e instanceof Response || e instanceof Error || typeof (e) === 'string') {
+                if (e instanceof Response || e instanceof Node || e instanceof Error || typeof (e) === 'string') {
                     if ([401].includes(e.status) && e.statusText) {
                         console.error(e.statusText)
                     } else {
@@ -10640,7 +10642,6 @@ xover.Store = function (xml, ...args) {
                     //e = e instanceof Error && e || e.message || e || `Couldn't render store ${tag}`
                     return Promise.reject();
                 }
-                return;
             }).finally(async () => {
                 //xover.site.restore();
                 render_manager.delete(target);
