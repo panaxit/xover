@@ -8988,10 +8988,10 @@ file="${new xover.URL(url).href}"
 ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
-                } else if (el.selectSingleNode('self::html:textarea')) {
+                } else if (debug_node.selectSingleNode('self::xsl:attribute') || el.selectSingleNode('self::html:*')) {
                     el.prepend(debug_node)
                 } else {
-                    el.appendBefore(debug_node)
+                    el.before(debug_node)
                 }
             }
         }
@@ -9001,14 +9001,16 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             //}/*doesn't work properly as when declared from origin */
 
             /* Preserve significant spaces*/
-            return_value.select(`.//text()[normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement).forEach(text => text.replaceWith(xover.xml.createNode(`<text xmlns="http://www.w3.org/1999/XSL/Transform"> </text>`)));
+            for (let text of return_value.select(`.//text()[.!='' and normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement && text.previousElementSibling instanceof HTMLElement && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.previousElementSibling) && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.nextElementSibling) )) {
+                text.replaceWith(xover.xml.createNode(`<xsl:text xmlns:xsl="http://www.w3.org/1999/XSL/Transform"> </xsl:text>`))
+            }
 
             if (!return_value.documentElement.resolveNS('xo')) {
                 return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
             }
 
             for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
-                el.set("xo-slot", (el.getAttribute("type") == "search" ? "search:{local-" : "{") + "name(current())}")
+                el.set("xo-slot", el.getAttribute("type") == "search" ? "search:{local-name(current())}" : "{name(current()[not(self::*)])}")
             }
 
             for (let el of return_value.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
