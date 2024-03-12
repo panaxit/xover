@@ -936,6 +936,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         } else if (context instanceof Document) {
             _event.detail["stylesheets"] = _event.detail.hasOwnProperty("stylesheets") ? _event.detail["stylesheets"] : context.stylesheets;
             _event.detail["document"] = _event.detail["document"] || context;
+            _event.detail["element"] = _event.detail["element"] || context.firstElementChild;
             _event.detail["store"] = _event.detail["store"] || context.store;
             _event.detail["target"] = _event.detail["target"] || context.documentElement;
         } else if (context instanceof xover.Store) {
