@@ -4653,8 +4653,8 @@ xover.modernize = async function (targetWindow) {
                     window.top.dispatchEvent(mutation_event);
                     mutated_targets = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue || []) : mutated_targets;
 
-                    let node_event = new xover.listener.Event('change', { srcElement: active_element }, self);
-                    window.top.dispatchEvent(node_event);
+                    //let node_event = new xover.listener.Event('change', { srcElement: active_element }, self);
+                    //window.top.dispatchEvent(node_event);
                     //if (node_event.defaultPrevented) return;
 
                     for (const [target, mutation] of [...mutated_targets]) {
