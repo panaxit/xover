@@ -4343,12 +4343,19 @@ xover.modernize = async function (targetWindow) {
                 return date;
             }
 
+            String.parseDate = String.parseDate || String.prototype.parseDate
             String.prototype.parseDate = function (input_format = "dd/mm/yyyy") {
                 sDate = this.toString();
-                let pattern = /\b(\d{1,2})(?:(\/)(\d{1,2})(?:\2(\d{2,4}))?)?/
-                let currentDate = new Date();
-                let [, day, separator, month, year] = (sDate.match(pattern) || []);
-                let result = new Date(`${year}-${month}-${day}T00:00:00`);
+                let result;
+                if (new RegExp(/(\d{4})(-?)(\d{2})-?(\d{2})/).test(sDate)) {
+                    let pattern = /(\d{4})(-?)(\d{2})-?(\d{2})/
+                    let [, year, separator, month, day] = (sDate.match(pattern) || []);
+                    result = new Date(`${year}-${month}-${day}T00:00:00`);
+                } else {
+                    let pattern = /\b(\d{1,2})(?:(\/)(\d{1,2})(?:\2(\d{2,4}))?)?/
+                    let [, day, separator, month, year] = (sDate.match(pattern) || []);
+                    result = new Date(`${year}-${month}-${day}T00:00:00`);
+                }
                 return result;
             }
 
@@ -4648,7 +4655,7 @@ xover.modernize = async function (targetWindow) {
                     if (event instanceof InputEvent) await xover.delay(1);
 
                     //mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
-                    
+
                     let mutation_event = new xover.listener.Event('mutate', { document: self, srcElement: active_element, mutations: mutated_targets }, self);
                     window.top.dispatchEvent(mutation_event);
                     mutated_targets = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue || []) : mutated_targets;
@@ -9002,7 +9009,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             //}/*doesn't work properly as when declared from origin */
 
             /* Preserve significant spaces*/
-            for (let text of return_value.select(`.//text()[.!='' and normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement && text.previousElementSibling instanceof HTMLElement && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.previousElementSibling) && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.nextElementSibling) )) {
+            for (let text of return_value.select(`.//text()[.!='' and normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement && text.previousElementSibling instanceof HTMLElement && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.previousElementSibling) && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.nextElementSibling))) {
                 text.replaceWith(xover.xml.createNode(`<xsl:text xmlns:xsl="http://www.w3.org/1999/XSL/Transform"> </xsl:text>`))
             }
 
