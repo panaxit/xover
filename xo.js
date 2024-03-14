@@ -9008,6 +9008,11 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             //    return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns", xover.spaces["xhtml"])
             //}/*doesn't work properly as when declared from origin */
 
+            /*sets xhtml namespace by default */
+            if (!return_value.documentElement.hasAttribute("xmlns")) {
+                return_value.documentElement.setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns", "http://www.w3.org/1999/xhtml");
+            }
+
             /* Preserve significant spaces*/
             for (let text of return_value.select(`.//text()[.!='' and normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement && text.previousElementSibling instanceof HTMLElement && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.previousElementSibling) && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.nextElementSibling))) {
                 text.replaceWith(xover.xml.createNode(`<xsl:text xmlns:xsl="http://www.w3.org/1999/XSL/Transform"> </xsl:text>`))
