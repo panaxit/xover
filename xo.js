@@ -6613,7 +6613,7 @@ xover.modernize = async function (targetWindow) {
                     attribute_node && attribute_node.remove();
                 }
 
-                Element.prototype.removeAttribute = async function (attribute, options = {}) {
+                Element.prototype.removeAttribute = function (attribute, options = {}) {
                     if (!this.reactive || options.silent) {
                         return_value = Element.removeAttribute.call(this, attribute)
                         return this;
@@ -6628,6 +6628,7 @@ xover.modernize = async function (targetWindow) {
                     //}
                     let attribute_node = this.getAttributeNode(attribute);
                     attribute_node && attribute_node.remove();
+                    return this;
                 }
 
                 //Element.prototype.removeAttribute = function (attribute, refresh) {
