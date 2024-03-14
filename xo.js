@@ -779,15 +779,15 @@ xover.initializeElementListeners = function (document = window.document) {
     });
 
     document.querySelectorAll('textarea').forEach(el => el.addEventListener('mouseup', function () {
-        //let el = event.srcElement;
-        //let scope = el.scope;
-        //if (scope instanceof Attr) {
-        //    scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight, { silent: true });
-        //    scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth, { silent: true });
-        //} else {
-        //    scope.set('state:height', el.offsetHeight, { silent: true });
-        //    scope.set('state:width', el.offsetWidth, { silent: true });
-        //}
+        let el = event.srcElement;
+        let scope = el.scope;
+        if (scope instanceof Attr) {
+            scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight, { silent: true });
+            scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth, { silent: true });
+        } else if (scope instanceof Element) {
+            scope.set('state:height', el.offsetHeight, { silent: true });
+            scope.set('state:width', el.offsetWidth, { silent: true });
+        }
     }));
 
     document.querySelectorAll('[xo-slot="text()"]').forEach(el => observer.observe(el, { characterData: true, subtree: true }));
