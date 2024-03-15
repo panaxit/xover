@@ -9013,6 +9013,15 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             if (!return_value.documentElement.hasAttribute("xmlns")) {
                 return_value.documentElement.setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns", "http://www.w3.org/1999/xhtml");
             }
+            /*Fixes naamespace for svg with missing xmlns*/
+            for (let svg of [...return_value.documentElement.querySelectorAll(`svg, svg > *`)].filter(svg => !svg.attributes.xmlns && svg.namespaceURI == 'http://www.w3.org/1999/xhtml')) {
+                let new_svg = document.createElementNS('http://www.w3.org/2000/svg', svg.nodeName);
+                Array.from(svg.attributes).forEach(attr => {
+                    new_svg.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+                });
+                new_svg.append(...svg.childNodes)
+                svg.replaceWith(new_svg)
+            }
 
             /* Preserve significant spaces*/
             for (let text of return_value.select(`.//text()[.!='' and normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement && text.previousElementSibling instanceof HTMLElement && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.previousElementSibling) && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.nextElementSibling))) {
