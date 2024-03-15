@@ -980,7 +980,7 @@ Object.defineProperty(xover.listener, 'matches', {
     value: function (context, event_type, event_tag) {
         let [scoped_event, predicate] = event_type.split(/::/);
         event_type = scoped_event;
-        let default_predicate = Object.fromEntries([['change', '@value'], ['remove', '*'], ['append', '*']])
+        let default_predicate = Object.fromEntries([['change', '@value'], ['remove', '*'], ['append', '*'], ['render', '*']])
 
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
         let fns = new Map();
@@ -4610,7 +4610,7 @@ xover.modernize = async function (targetWindow) {
                         try {
                             if (!this.childNodes.length) {
                                 if (this.source) {
-                                    this.observe();
+                                    //this.observe();
                                     await this.fetch();
                                 }
                             }
@@ -5983,7 +5983,7 @@ xover.modernize = async function (targetWindow) {
                     //    context_store.save();
                     //}
                     let event_type = 'remove', node = this;
-                    let matching_listeners = xover.listener.matches(node, event_type);
+                    //let matching_listeners = xover.listener.matches(node, event_type);
 
                     Element.remove.apply(this, arguments);
 
@@ -6026,7 +6026,7 @@ xover.modernize = async function (targetWindow) {
                     //    //        resolve(true);
                     //    //    }, 50);
                     //    //});
-                    window.top.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
+                    //window.top.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
                     //}
                     /*!(this instanceof HTMLElement) && xover.site.sections.filter(el => el.store && el.store === this.store).forEach((el) => el.render())*/
                     return this;
@@ -7620,7 +7620,7 @@ xover.modernize = async function (targetWindow) {
                             }
                         }
 
-                        let target_store = this.store;
+                        let source_document = this.store;
 
                         let do_render = true;
                         let stop_condition = this.getAttribute("xo-stop");
@@ -7643,55 +7643,45 @@ xover.modernize = async function (targetWindow) {
                         }
                         let stylesheets = []
                         if (do_render) {
-                            let source = this.getAttribute("xo-source");
-                            if (source && source.indexOf("{$") != -1) {
-                                source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
-                            }
-
-                            let source_document;
-                            if (this.hasAttribute("xo-source")) {
-                                source_document = target_store && target_store.document || xover.sources[source];
-
-                                if (source_document) {
-                                    source_document = source_document.document || source_document;
-                                    source_document.settings.headers = source_document.settings.headers || new Headers({});
-                                    if (this instanceof SVGElement) {
-                                        source_document.settings.headers.set("accept", "application/svg+xml");
-                                    } else if (this instanceof HTMLImageElement || this instanceof HTMLPictureElement) {
-                                        source_document.settings.headers.set("accept", "image/*");
-                                    }
-                                    if (this.hasAttribute("xo-settings")) {
-                                        let document = xover.xml.createDocument();
-                                        let headers = this.getAttribute("xo-settings");
+                            if (source_document instanceof Document && this.hasAttribute("xo-source")) {
+                                source_document.settings.headers = source_document.settings.headers || new Headers({});
+                                if (this instanceof SVGElement) {
+                                    source_document.settings.headers.set("accept", "application/svg+xml");
+                                } else if (this instanceof HTMLImageElement || this instanceof HTMLPictureElement) {
+                                    source_document.settings.headers.set("accept", "image/*");
+                                }
+                                if (this.hasAttribute("xo-settings")) {
+                                    let document = xover.xml.createDocument();
+                                    let headers = this.getAttribute("xo-settings");
+                                    try {
+                                        headers = eval(`({${headers}})`)
+                                    } catch (e) {
                                         try {
                                             headers = eval(`({${headers}})`)
                                         } catch (e) {
-                                            try {
-                                                headers = eval(`({${headers}})`)
-                                            } catch (e) {
-                                                throw (e)
-                                            }
+                                            throw (e)
                                         }
-                                        document.settings.headers = new Headers(headers || {});
-                                        source_document = await source_document.source.fetch.apply(document);
                                     }
-                                    await source_document.ready
+                                    document.settings.headers = new Headers(headers || {});
+                                    source_document = await source_document.source.fetch.apply(document);
                                 }
                             }
+                            source_document && await source_document.ready;
                             stylesheets = stylesheet && [stylesheet.value] || [];
                             if (stylesheets.length) {
-                                stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (target_store || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
+                                stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (source_document || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
                                     stylesheet.target = stylesheet.target || self;
                                 }
-                                if (source_document) {
-                                    source_document && source_document.render(stylesheets) || null;
+                                source_document = (source_document.document || source_document);
+                                if (source_document instanceof Document) {
+                                    source_document.render(stylesheets) || null;
                                 } else {
                                     let document = xover.sources[stylesheet];
                                     document.render({ target: self });
                                 }
-                            } else if (target_store instanceof xover.Store) {
-                                target_store.render(self)
+                            } else if (source_document instanceof xover.Store) {
+                                source_document.render(self)
                             } else {
                                 let body = source_document.cloneNode(true);
                                 let result = await xover.dom.combine(self, body);
