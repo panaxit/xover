@@ -1079,10 +1079,48 @@ Object.defineProperty(xover.listener, 'debugException', {
     writable: false, enumerable: false, configurable: false
 })
 
+xover.listener.maxRecursion = 200;
+class EventHistory {
+    constructor(queryString) {
+        this.handlers = new Map();
+    }
+
+    set(handler, item) {
+        this.handlers.set(handler, (this.handlers.get(handler) || new Map()))
+        let target = this.handlers.get(handler);
+        target.set(item, (target.get(item) || 0) + 1)
+        xover.delay(10).then(() => {
+            xover.listener.history.delete(handler, item);
+        })
+    }
+
+    get(handler, item) {
+        return (this.handlers.get(handler) || new Map()).get(item);
+    }
+
+    delete(handler, item) {
+        let target = this.handlers.get(handler) || new Map();
+        target.set(item, (target.get(item) || 0) - 1)
+    }
+
+    has(handler, item) {
+        let count = (this.handlers.get(handler) || new Map()).get(item) || 0;
+        return !!count;
+    }
+
+    overflowed(handler, item) {
+        let count = (this.handlers.get(handler) || new Map()).get(item) || 0;
+        return count > xover.listener.maxRecursion;
+    }
+}
+
+xover.listener.history = new EventHistory();
+
 Object.defineProperty(xover.listener, 'dispatcher', {
     value: function (event) {
         if (xover.listener.off === true) return;
-        let context = event.context || event.target;
+        let context = event.context || !(event instanceof CustomEvent) && event.target || null;
+        if (!context) return;
         if (xover.listener.debug.matches.call(context, null, xover.listener.debugger) && !xover.listener.debug.matches.call(context, null, xover.listener.debuggerExceptions)) {
             debugger;
         }
@@ -1092,6 +1130,10 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
             if (event.propagationStopped || event.cancelBubble) break;
+            if (xover.listener.history.overflowed(handler, context)) {
+                console.warn(`Listener dispatcher overflown`, [handler, context])
+                continue;
+            }
             if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
                 let operator = "="
                 if (["*", "!"].includes(key[key.length - 1])) {
@@ -1133,7 +1175,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             //if (context.eventHistory.get(handler)) {
             //    console.warn(`Event ${event.type} recursed`)
             //}
-            //context.eventHistory.set(handler, event.type);
+            xover.listener.history.set(handler, context);
             if (returnValue !== undefined && !(returnValue instanceof Promise) && event.detail && event.detail.value) {
                 event.detail.value = returnValue;
             }
@@ -1156,7 +1198,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             if (event.srcEvent && event.cancelBubble) {
                 event.srcEvent.stopPropagation();
             }
-            //context.eventHistory.delete(handler);
+            //xover.listener.history.delete(handler, context);
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -11734,8 +11776,8 @@ xover.listener.on('remove::@state:busy', function ({ target, value }) {
 //    //}
 //})
 
-xover.listener.on('input', function (event) {
-    let contentEdited = function (event) {
+Object.defineProperty(xover.listener, 'contentEdited', {
+    value: function (event) {
         let elem = event.srcElement;
         let source = elem && elem.scope || null
         if (source instanceof Attr || source instanceof Text) {
@@ -11745,16 +11787,14 @@ xover.listener.on('input', function (event) {
                 source.set(elem.value, false)
             }
         }
-        elem.removeEventListener('blur', contentEdited);
-    }
+    }, writable: true, enumerable: false, configurable: false
+})
+
+xover.listener.on('input', function (event) {
     if (event.defaultPrevented) return;
     let elem = event.srcElement;
-    let source = elem && elem.scope || null;
-    if (source instanceof Attr || source instanceof Text) {
-        if (elem.isContentEditable) {
-            elem.removeEventListener('blur', contentEdited);
-            elem.addEventListener('blur', contentEdited);
-        }
+    if (elem.isContentEditable) {
+        elem.addEventListener('blur', xover.listener.contentEdited);
     }
 })
 
