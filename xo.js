@@ -540,9 +540,10 @@ xover.init = async function () {
         try {
             await xover.modernize();
             xover.init.Observer();
-            if (history.state) delete history.state.active;
             await xover.manifest.init()
             Object.assign(xover.spaces, xover.manifest.spaces);
+            if (history.state) delete history.state.active;
+            xover.site.seed = (history.state || {}).seed || top.location.hash || '#';
             this.init.status = 'initialized';
             progress = xover.sources['loading.xslt'].render({ action: "append" });
             if (xover.session.status == 'authorized' && 'session' in xover.server) {
@@ -673,7 +674,7 @@ xover.init.Observer = function (target_node = window.document) {
             || mutations.attributes && ["xo-source", "xo-stylesheet"].some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
             || node.stylesheet instanceof Document && node.stylesheet.select(`//xsl:stylesheet/xsl:param/@name`).some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
         ).map(([node]) => node.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
-            section.render()
+            section && section.render()
         }
         //observer.observe(target_node, config);
 
@@ -840,18 +841,31 @@ xover.subscribers = new Structure(new Map(), {
                             return val;
                         }
                     } catch (e) {
-                        console.error(e)
+                        if (e instanceof ReferenceError) {
+                            return String(value)
+                        } else {
+                            console.error(e)
+                        }
                     }
                 }
             }
             for (let [subscriber, formula] of this) {
+                if (subscriber instanceof Attr && !subscriber.ownerElement) {
+                    this.delete(subscriber)
+                    continue;
+                }
+                if (!subscriber.hasOwnProperty("formula")) {
+                    Object.defineProperty(subscriber, 'formula', {
+                        value: formula
+                    })
+                }
                 if (subscriber.hasOwnProperty("evaluate")) {
                     subscriber.evaluate()
                 } else {
                     let new_value = formula.replace(/\{\$([^\}]*)\}/g, (match, prefixed_name) => {
                         let [variable, ...else_value] = prefixed_name.split(/\s*\|\|\s*/g);
                         let [name, prefix] = variable.split(/:/).reverse();
-                        else_value = else_value.concat(name);
+                        else_value = else_value.concat(match);
                         if (!prefix && scope instanceof Node) {
                             return name && scope.get(name) || evaluate(else_value)
                         } else {
@@ -1344,10 +1358,10 @@ xover.listener.on('scrollIntoView', function (event) {
 
 xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
-    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
-    if (history.state) delete history.state.active;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
-    xover.site.seed = (history.state || {}).seed || event.target.location.hash || '#';
+    if (history.state) delete history.state.active;
+    xover.site.seed = (history.state || {}).seed || top.location.hash || '#';
+    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
     if (event.defaultPrevented) return;
     (location.search || '').length > 1 && [...xover.site.sections].filter(section => section.store === xover.stores.seed).map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
     if (xover.session.status == 'authorizing') xover.session.status = null;
@@ -1910,7 +1924,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), location.hash, self['active'], ''].coalesce();
             history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
             if (key === 'seed') self['active'] = new_value
-            for (let subscriber of Object.keys(xover.subscribers.site[key])) {
+            for (let [subscriber] of xover.subscribers.site[key]) {
                 subscriber.evaluate()
             }
         } catch (e) {
@@ -2591,7 +2605,7 @@ xover.Source = function (tag) {
             get: function () {
                 _manifest = _manifest || JSON.parse(JSON.stringify(xover.manifest.sources)) || {};
                 let tag_string = tag instanceof Node ? `${tag instanceof Attr ? '@' : ''}${tag.nodeName}::${tag.value}` : tag;
-                manifest_key = manifest_key || Object.keys(_manifest).find(manifest_key => manifest_key === tag_string) || Object.keys(_manifest).reverse().find(manifest_key => tag_string[0] == '#' && manifest_key === '#' + xover.URL(tag_string.substring(1)).pathname.slice(location.pathname.length) || manifest_key[0] === '^' && tag_string.matches(manifest_key));
+                manifest_key = manifest_key || Object.keys(_manifest).find(manifest_key => manifest_key === tag_string) || Object.keys(_manifest).reverse().find(manifest_key => tag_string[0] == '#' && manifest_key[1] && manifest_key === '#' + xover.URL(tag_string.substring(1)).pathname.slice(location.pathname.length) || manifest_key[0] === '^' && tag_string.matches(manifest_key));
                 //if (definition !== undefined) return definition;
                 if (manifest_key) {
                     let source = _manifest[manifest_key];
@@ -2944,7 +2958,7 @@ xover.sources = new Proxy(new Map(), {
     },
     has: function (self, key) {
         if (!key) return false;
-        return source_defined = key in self || !!Object.keys(xover.manifest.sources || {}).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key).pop()
+        return key in self || !!Object.keys(xover.manifest.sources || {}).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key).pop()
     }
 })
 
@@ -4692,7 +4706,7 @@ xover.modernize = async function (targetWindow) {
                     let [first_node] = mutated_targets.keys();
                     let self = first_node instanceof Document ? first_node : first_node.ownerDocument;
                     let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self).sort(el => el.contains(document.activeElement) && -1 || 1);
-                    let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement;
+                    let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement || window.document.createElement('p');;
 
                     if (event instanceof InputEvent) await xover.delay(1);
 
@@ -7715,7 +7729,7 @@ xover.modernize = async function (targetWindow) {
                                 for (let stylesheet of stylesheets) {
                                     stylesheet.target = stylesheet.target || self;
                                 }
-                                source_document = (source_document.document || source_document);
+                                source_document = (source_document && source_document.document || source_document);
                                 if (source_document instanceof Document) {
                                     source_document.render(stylesheets) || null;
                                 } else {
@@ -9316,6 +9330,9 @@ xover.xml.combine = function (target, new_node) {
         || target instanceof SVGElement && !(new_node instanceof SVGElement)
     ) {
         let restore_focus = target.contains(document.activeElement)
+        for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
+            new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
+        }
         target.replaceWith(new_node)
         restore_focus && new_node.focus()
         return new_node
@@ -11735,7 +11752,8 @@ xover.listener.on('change::@state:*', async function ({ target, attribute: key }
 });
 
 xover.listener.on('change::@xo-source', function ({ element }) {
-    element.section.render()
+    let section = element.section;
+    section && section.render()
 });
 
 xover.listener.on('change::@state:busy', function ({ target, value }) {
