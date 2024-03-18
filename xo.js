@@ -1057,8 +1057,8 @@ Object.defineProperty(xover.listener, 'debug', {
 
 Object.defineProperty(xover.listener.debug, 'matches', {
     value: function (...args) {
-        map = args.pop() || xover.listener.debugger;
-        handler = args.pop();
+        let map = args.pop() || xover.listener.debugger;
+        let handler = args.pop();
         if (!map.size) return false;
         let context = this;
         let reference_debugger = map.get(context) || map.get(event.type) || map.get(`${context instanceof Attr ? '@' : ''}${context.nodeName}`) || map.get('*') || new Map();
@@ -7677,6 +7677,10 @@ xover.modernize = async function (targetWindow) {
                         }
 
                         let source_document = this.store;
+                        if (this.select(`ancestor::*[@xo-stylesheet or @xo-source]`).some(ancestor => ancestor.getAttribute("xo-stylesheet") == stylesheet && ancestor.source == source_document)) {
+                            console.warn(`A recursion was prevented`, this)
+                            return Promise.resolve(this)
+                        }
 
                         let do_render = true;
                         let stop_condition = this.getAttribute("xo-stop");
@@ -7967,6 +7971,9 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
                                 dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
+
+                                let stylesheet_href = stylesheet.href;
+                                let target_source = target.getAttributeNode("xo-source");
                                 for (let el of dom.children) {
                                     el.document = this;
                                     el.context = data;
@@ -7974,9 +7981,8 @@ xover.modernize = async function (targetWindow) {
                                     if (![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(el.constructor)) {
                                         let current_scope = el.getAttributeNode("xo-scope");
                                         current_scope && el.setAttributeNS(null, "xo-scope", current_scope.value);
-                                        let store_tag = el.getAttributeNode("xo-source") || tag || '';
+                                        let store_tag = el.getAttributeNode("xo-source") || target_source || tag || '';
                                         store_tag && el.setAttributeNS(null, "xo-source", store_tag.value || store_tag);
-                                        let stylesheet_href = stylesheet.href;
                                         stylesheet_href && el.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
                                     }
                                 }
@@ -9313,9 +9319,9 @@ xover.xml.combine = function (target, new_node) {
     if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
     if (
         target instanceof Element && (
-            `${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope")
+            /*`${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope")
             || new_node.getAttributeNode("xo-scope")}` && `${target.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}` == `${new_node.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}`
-            || swap.contains("self")
+            || */swap.contains("self")
             || [...swap].some(predicate => target.matches(predicate))
         )
         || target.constructor !== new_node.constructor && (
@@ -9339,6 +9345,7 @@ xover.xml.combine = function (target, new_node) {
     } else if (
         (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase()) && (target.getAttribute("xo-source") || new_node.getAttribute("xo-source")) == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source"))
         || new_node instanceof HTMLBodyElement
+        || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")
         || target.parentNode.matches(".xo-swap")
     ) {
         let remove_attributes = [...target.attributes].filter(attr => !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name));
