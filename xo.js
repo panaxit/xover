@@ -2521,12 +2521,12 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                 for (let message of [...result.querySelectorAll('parsererror div')]) {
                     if (String(message.textContent).match(/prefix|prefijo/)) {
                         let prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
-                        if (!xover.spaces[prefix]) {
+                        if (!xover.spaces[prefix] || sXML.indexOf(` xmlns:${prefix}=`) != -1) {
                             //xml.documentElement.appendChild(message.documentElement);
                             return Promise.reject(message.textContent.match("(error [^:]+):(.+)"));
                         }
                         //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
-                        sXML = sXML.replace(new RegExp(`^(<[^\\s\/>]+)`), `$1 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
+                        sXML = sXML.replace(new RegExp(`(<[^\\s\/\!\?>]+)`), `$1 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
                         result = xover.xml.createDocument(sXML, options);
                         return result;
                     } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
@@ -9793,7 +9793,7 @@ xover.sources.defaults["login.xslt"] = xover.xml.createDocument(`
     </div>
     </xsl:template>                                                                                     
     <xsl:template match="text()|processing-instruction()|comment()"/>
-</xsl:stylesheet> `);
+</xsl:stylesheet>`);
 
 xover.sources.defaults["loading.xslt"] = xover.xml.createDocument(`
 <xsl:stylesheet version="1.0"                                                                           
