@@ -7735,13 +7735,13 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 source_document = (source_document && source_document.document || source_document);
                                 if (source_document instanceof Document) {
-                                    source_document.render(stylesheets) || null;
+                                    await source_document.render(stylesheets) || null;
                                 } else {
                                     let document = xover.sources[stylesheet];
-                                    document.render({ target: self });
+                                    await document.render({ target: self });
                                 }
                             } else if (source_document instanceof xover.Store) {
-                                source_document.render(self)
+                                await source_document.render(self)
                             } else {
                                 let body = source_document.cloneNode(true);
                                 let result = await xover.dom.combine(self, body);
