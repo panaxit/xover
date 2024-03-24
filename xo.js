@@ -9414,7 +9414,6 @@ xover.dom.combine = async function (target, new_node) {
         }
     }
     if (!(new_node instanceof Node)) return;
-
     let _applyScripts = async function (targetDocument, scripts = []) {
         for (let script of scripts) {
             let promise;
@@ -9469,7 +9468,7 @@ xover.dom.combine = async function (target, new_node) {
             if (script.hasAttribute("defer")) await promise;
         }
     }
-    _applyScripts(document, [...script_wrapper.children]);
+    await _applyScripts(document, [...script_wrapper.children]);
     target.disconnected = false;
     let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
