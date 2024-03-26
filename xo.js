@@ -9434,8 +9434,8 @@ xover.dom.combine = async function (target, new_node) {
                     }
                     targetDocument.head.appendChild(new_element);
                 }
-            } else if (!script.getAttribute("src") && script.textContent) {
-                script.textContent = xover.string.htmlDecode(script.textContent); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
+            } else if (!script.getAttribute("src") && script.innerHTML) {
+                script.innerHTML = xover.string.htmlDecode(script.innerHTML); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
                 if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
                     if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
                         targetDocument.documentElement.appendChild(script);
