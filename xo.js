@@ -3087,7 +3087,9 @@ Object.defineProperty(URL.prototype, 'fetch', {
             }
         }
         url.settings = xover.json.combine(url.settings, settings, this.hasOwnProperty("settings") ? this.settings : {});
-
+        if (url.settings.body) {
+            payload = payload.concat(url.settings.body);
+        }
         payload = payload.concat(args);
         if (payload.length) {
             if (url.method === 'POST' || payload.some(item => [Document, File, Blob, FormData].includes(item.constructor))) {
@@ -3645,6 +3647,8 @@ Object.defineProperty(xover.server, 'uploadFile', {
                                     source.setAttribute("xo-slot", "x:value");
                                 }
                                 source = source.scope;
+                                source.set(file_name)
+                            } else if (source instanceof Attr || source instanceof Text) {
                                 source.set(file_name)
                             }
                             //}
@@ -8848,7 +8852,9 @@ xover.fetch = async function (url, ...args) {
         }
     }
     url.settings = xover.json.combine(url.settings, settings, this.hasOwnProperty("settings") ? this.settings : {});
-
+    if (url.settings.body) {
+        payload = payload.concat(url.settings.body);
+    }
     payload = payload.concat(args);
     if (payload.length) {
         if (url.method === 'POST' || payload.some(item => [Document, File, Blob, FormData].includes(item.constructor))) {
