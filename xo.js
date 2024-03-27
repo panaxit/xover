@@ -4472,7 +4472,8 @@ xover.modernize = async function (targetWindow) {
                 });
             }
 
-            if (!Object.prototype.hasOwnProperty('render')) {
+            Object.render = Object.render || Object.prototype.render;
+            if ((Object.getPropertyDescriptor(Object.prototype, 'render') || { writable: true })["writable"]) {
                 Object.defineProperty(Object.prototype, 'render', {
                     value: function (...args) {
                         let source = this.message && typeof (this.message) === 'string' && new String(this.message) || this;
@@ -4487,9 +4488,12 @@ xover.modernize = async function (targetWindow) {
                             ul.append(...this.map(el => { let li = document.createElement("li"); li.textContent = el; return li }))
                             xover.dom.createDialog(ul)
                         }
+                        if (Object.render) {
+                            return Object.render.apply(this, args)
+                        }
                     },
                     writable: true, enumerable: false, configurable: false
-                });
+                })
             }
 
             if (!Response.prototype.hasOwnProperty('render')) {
@@ -5901,7 +5905,7 @@ xover.modernize = async function (targetWindow) {
                         } else {
                             //let ref = this.parentElement && this.closest && this || this.parentNode || this
                             let ref = this instanceof Element ? this : this.parentNode;
-                            let node_by_id = !ref.hasAttribute("xo-scope") && (((ref.hasAttribute("xo-source") || ref.hasAttribute("xo-stylesheet")) && source) || source.selectFirst(`//*[@xo:id="${ref.id}"]`));
+                            let node_by_id = !ref.hasAttribute("xo-scope") && (((ref.hasAttribute("xo-source") || ref.hasAttribute("xo-stylesheet")) && source) || source.selectFirst(`//*[@xo:id="${ref.getAttributeNode("xo:id") || ref.id}"]`));
                             let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("slot,[xo-scope],[xo-source],[xo-stylesheet]")].filter(el => el).map(el => [el, el.hasAttribute("xo-scope") ? source.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`) : el.name ? source.documentElement && source.documentElement.get(el.name) : source.documentElement]).pop() || [];
                             let attribute = ref.closest("slot,[xo-slot],[xo-source],[xo-stylesheet]");
                             if (!dom_scope) {
