@@ -747,6 +747,28 @@ xover.init.Observer = function (target_node = window.document) {
     observer.observe(target_node, config);
 }
 
+xover.initializeDOM = function() {
+    for (let iframe of [...document.querySelectorAll("iframe:not([src])")]) {
+        let el = iframe.firstChild;
+        if (!(el instanceof Text)) continue;
+        let url = xover.dom.getGeneratedPageURL({
+            html: el.textContent
+        });
+        iframe.src = url;
+        el.remove();
+        //TODO: Implementar como método para obtener contenido del archivo
+        //file = await fetch(url).then(r => r.blob()).then(blobFile => new File([blobFile], "fileNameGoesHere", { type: blobFile.type }))
+        //await file.text()
+        //var reader = new FileReader();
+        //reader.readAsText(file, "UTF-8");
+        //reader.onload = function (evt) {
+        //    console.log(evt.target.result);
+        //}
+    }
+
+    xover.subscribeReferencers()
+}
+
 xover.initializeElementListeners = function (document = window.document) {
     const event_handler = function (event, el) {
         window.top.dispatchEvent(new xover.listener.Event(event.type, { event: event }, el));
@@ -3661,57 +3683,9 @@ Object.defineProperty(xover.server, 'uploadFile', {
                             progress_bar.className = progress_bar.className.replace(/\progress-bar-\w+/ig, '');
                         }
                         resolve(file_name);
-                        //console.log(request.responseText)
                         //let res = new xover.Response(response, request);;
                         //let document = await res.processBody();
-                        //console.log(document);
                     })
-                    //request.onreadystatechange = function (oEvent) {
-                    //    if (request.readyState === 4) {
-                    //        delete xover.dom.intervals[file.id];
-                    //        let progress_bar = document.getElementById('_progress_bar_' + file.id);
-                    //        if (request.status === 200) {
-                    //            if (source && source instanceof Node) {
-                    //                source.selectSingleNode('..').setAttribute(source.name, `${file.parentFolder && '//' || ''}${file.saveAs}`)
-                    //            }
-                    //            if (progress_bar) {
-                    //                progress_bar.style.width = '100%';
-                    //                progress_bar.className = progress_bar.className.replace(/\bbg-\w+/ig, 'bg-success');
-                    //                progress_bar.className = progress_bar.className.replace(/\progress-bar-\w+/ig, '');
-                    //            }
-                    //            //if (control.source) {
-                    //            //    control.source.setAttribute('@value', control.value);
-                    //            //    control.source.setAttribute('@state:progress', '100%');
-                    //            //}
-                    //            //console.log(request.responseText)
-                    //        } else {
-                    //            let message = request.statusText
-                    //            if (progress_bar) {
-                    //                progress_bar.style.width = '100%';
-                    //                progress_bar.className = progress_bar.className.replace(/\bbg-\w+/ig, 'bg-danger');
-                    //            }
-                    //            switch (request.status) {
-                    //                case 413:
-                    //                    message = "El archivo es demasiado grande. Por favor suba un archivo más chico.";
-                    //                    break;
-                    //                default:
-                    //                    message = request.statusText;
-                    //            }
-                    //            alert("Error " + request.status + ': ' + message);
-                    //        }
-                    //    }
-                    //};
-                    //request.send(formData);
-
-
-                    ////xhr.post(formData);//e.target.result
-                    ////xhr.post(e.target.result);
-                    //try {
-                    //    document.querySelector('#' + target).setAttribute('src', e.target.result);
-                    //} catch (e) {
-                    //    console.log(e.message)
-                    //}
-                    ////target.src=e.target.result;
                 }
                 reader.readAsDataURL(file);
             })
@@ -3852,29 +3826,8 @@ document.addEventListener("DOMContentLoaded", function (event) {
     //    }
     //}
     //customElements.define("xo-value", xo_value);
-    xover.subscribeReferencers()
+    xover.initializeDOM()
 });
-
-//xover.listener.on("render", function ({ dom }) {
-//    for (let element of xover.site.getScrollableElements(dom)) {
-//        element.addEventListener('scroll', xover.dom.onscroll);
-//    }
-//});
-
-//window.addEventListener("focusin", function (event) {
-//    xover.site.save(event.target.selector);
-//});
-
-//window.addEventListener("input", function (event) {
-//    xover.site.save(event.target.selector);
-//});
-
-//document.addEventListener("selectionchange", function (event) {
-//    let target = document.getSelection().focusNode;
-//    if (target && target.nodeName == '#text') {
-//        xover.site.save(target.selector);
-//    }
-//});
 
 var content_type = {}
 content_type["json"] = "application/json";
@@ -3916,21 +3869,6 @@ content_type["xml"] = "text/xml";
 //        //if (storage_enabled) {
 //        //    xover.storage.enable();
 //        //}
-//    },
-//    writable: true, enumerable: false
-//});
-
-//Object.defineProperty(xover.sources, 'reset', {
-//    value: function (file_name_or_array) {
-//        let _file_name_or_array = (file_name_or_array || Object.keys(xover.sources));
-//        if (typeof (_file_name_or_array) == 'string') {
-//            _file_name_or_array = [_file_name_or_array];
-//        }
-//        _file_name_or_array.map((file_name) => {
-//            if (file_name in xover.sources) {
-//                xover.sources[file_name] = undefined;
-//            }
-//        });
 //    },
 //    writable: true, enumerable: false
 //});
@@ -4642,7 +4580,6 @@ xover.modernize = async function (targetWindow) {
                             ////} catch (e) {
                             if (!xover.browser.isIOS()) {
                                 xpath = xpath.replace(RegExp("(?<=::|@|\\/|\\[|^|\\()([\\w-_]+):([\\w-_]+|\\*)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
-                                //console.log(xpath)
                             }
                             aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         } else {
@@ -7344,7 +7281,6 @@ xover.modernize = async function (targetWindow) {
 
                             for (let prop in current_source) {
                                 let prop_desc = Object.getPropertyDescriptor(current_source, prop);
-                                //console.log(`Copied ${prop}`)
                                 if (!prop_desc) {
                                     continue;
                                 } else if (prop_desc.value) {
@@ -8358,6 +8294,17 @@ xover.Response = function (response, request) {
     Object.defineProperty(self, 'request', {
         get: function () {
             return request;
+        }
+    });
+    Object.defineProperty(response, 'url', {
+        get: function () {
+            return url;
+        }
+    });
+
+    Object.defineProperty(response, 'href', {
+        get: function () {
+            return url.href;
         }
     });
     Object.defineProperty(self, 'settings', {
