@@ -1668,8 +1668,10 @@ xover.server = new Proxy({}, {
                 writable: true, enumerable: false, configurable: false
             });
             return self[key];
-        } else if (!(xover.manifest.server && xover.manifest.server[key])) {
+        } else if (!(xover.manifest.server && key in xover.manifest.server)) {
             throw (new Error(`Endpoint "${key}" not configured`));
+        } else if (!xover.manifest.server[key]) {
+            return null
         } else {
             return handler;
         }
@@ -2327,7 +2329,7 @@ Object.defineProperty(xover.site, 'position', {
 
 Object.defineProperty(xover.site, 'active', {
     get: function () {
-        if (xover.session.getKey("status") != 'authorized' && 'login' in xover.server) {
+        if (xover.session.getKey("status") != 'authorized' && 'login' in xover.server && xover.server['login']) {
             return "#login";
         } else {
             return (history.state || {}).active || this.seed;
