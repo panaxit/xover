@@ -9962,6 +9962,14 @@ xover.Store = function (xml, ...args) {
         });
     }
 
+    if (!this.hasOwnProperty('definition')) {
+        Object.defineProperty(this, 'definition', {
+            get: function () {
+                return this.source.definition;
+            }
+        });
+    }
+
     if (!this.hasOwnProperty('get')) {
         Object.defineProperty(this, 'get', {
             value: function (name) {
@@ -10572,7 +10580,9 @@ xover.Store = function (xml, ...args) {
     });
 
     Object.defineProperty(this, 'fetch', {
-        value: async function () {
+        value: async function (...args) {
+            __document.settings.merge(...args);
+            __document.replaceChildren()
             await xover.storehouse.read('sources', store.tag).then((stored_document) => {
                 if (stored_document && stored_document.firstChild) {
                     //__document.disconnect();
