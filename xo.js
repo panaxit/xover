@@ -5530,7 +5530,6 @@ xover.modernize = async function (targetWindow) {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
-                    xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)))
                     return xsl;
                 }
 
@@ -7908,6 +7907,10 @@ xover.modernize = async function (targetWindow) {
                                 target.tag = data.tag;
                                 let dom;
                                 if (xsl) {
+                                    if (!xsl.selectFirst(`/*/comment()[.='ack:optimized']`)) {
+                                        xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
+                                        xsl.documentElement.prepend(new Comment("ack:optimized"))
+                                    }
                                     data.tag = /*'#' + */xsl.href.split(/[\?#]/)[0];
                                     dom = await data.transform(xsl);
                                     dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove()
