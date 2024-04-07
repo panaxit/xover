@@ -747,7 +747,7 @@ xover.init.Observer = function (target_node = window.document) {
     observer.observe(target_node, config);
 }
 
-xover.initializeDOM = function() {
+xover.initializeDOM = function () {
     for (let iframe of [...document.querySelectorAll("iframe:not([src])")]) {
         let el = iframe.firstChild;
         if (!(el instanceof Text)) continue;
@@ -1608,6 +1608,14 @@ xover.server = new Proxy({}, {
             }
             //let settings = this.settings || {};
             //this.settings = settings.merge(Object.fromEntries(xover.manifest.getSettings(`server:${key}`) || []));
+            let endpoint = xover.manifest.server[key];
+            if (endpoint.constructor === {}.constructor) {
+                for (let [key, value] of Object.entries(endpoint)) {
+                    if (key.indexOf("server:") == 0) {
+                        return key.replace(/^server:/, '') in xover.server && xover.server[key.replace(/^server:/, '')].call(this, value.merge(payload)) || null
+                    }
+                }
+            }
             let url = new xover.URL(xover.manifest.server[key], undefined, { payload, ...settings });
             url.hash = `server:${key}`;
             if (this instanceof Node) {
