@@ -9016,7 +9016,7 @@ file="${new xover.URL(url).href}"
 ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
-                } else if (debug_node.selectSingleNode('self::xsl:attribute') || el.selectSingleNode('self::html:*')) {
+                } else if (debug_node.selectSingleNode('self::xsl:attribute') && el.selectSingleNode('self::html:*')) {
                     el.prepend(debug_node)
                 } else {
                     el.before(debug_node)
@@ -9069,7 +9069,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
 
             for (let el of return_value.select(`//xsl:template[not(@match="/")]//xsl:element`)) {
                 el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
-                el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
+                //el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
             }
         }
         if (location.host == url.host) {
