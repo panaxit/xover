@@ -2805,18 +2805,28 @@ xover.Source = function (tag) {
                 let source = sources.shift();
                 if (!source) continue;
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
+                parameters = evaluate_json(parameters);
+
                 source = typeof (source) == 'string' && source.indexOf('${') !== -1 ? eval("`" + source + "`") : source;
                 //parameters = parameters.concat(args);
 
                 if (typeof (source) == 'string' && source.replace(/^server:/, '') in xover.server || existsFunction(source)) {
                     if (parameters.constructor === {}.constructor) {
+                        let url = new xover.URL(tag_string.replace(/^#/, ''));
+                        for (let [key, value] of url.searchParams.entries()) {
+                            if (key in parameters) {
+                                parameters[key] = value
+                            }
+                        }
+                        let current_url = xover.URL(xover.site.seed.replace(/^#/, ''));
+                        if (location.searchParams && current_url.pathname === xover.URL(url).pathname) {
+                            for (let [key, value] of location.searchParams.entries()) {
+                                if (key in parameters) {
+                                    parameters[key] = value
+                                }
+                            }
+                        }
                         parameters = Object.entries(parameters) || parameters
-                    }
-                    let url = new xover.URL(tag_string.replace(/^#/, ''));
-                    parameters = parameters.concat([...url.searchParams.entries()]);
-                    let current_url = xover.URL(xover.site.seed.replace(/^#/, ''));
-                    if (location.searchParams && current_url.pathname === xover.URL(url).pathname) {
-                        parameters = parameters.concat([...location.searchParams.entries()])
                     }
                 }
 
@@ -2824,7 +2834,6 @@ xover.Source = function (tag) {
                 if (typeof (source) != 'object') url = xover.URL(source);
                 if (tag_string[0] == '#' && url instanceof URL && !['.', '^', '~', '#'].includes(tag_string)) url.hash = tag_string;
 
-                parameters = evaluate_json(parameters);
 
                 if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
                     parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
@@ -2956,6 +2965,72 @@ xover.Source = function (tag) {
             }
         },
         writable: false, enumerable: false, configurable: false
+    });
+
+    let store = this;
+    let _store_stylesheets = [];
+    let render_manager = new Map()
+    Object.defineProperty(this, 'render', {
+        value: async function (target) {
+            await xover.ready;
+            let progress;
+            let tag = self.tag;
+            render_manager.set(target, render_manager.get(target) || xover.delay(1).then(async () => {
+                //if (xover.stores.seed === self && !xover.site.sections[tag].length) {
+                //    progress = xover.sources['loading.xslt'].render({ action: "append" });
+                //}
+                let active_store = xover.stores.active
+                if (active_store instanceof xover.Store && active_store === self) {
+                    xover.site.hash = self.hash;
+                }
+                if (!__document.firstChild) {
+                    await store.fetch();
+                }
+                let document = __document.cloneNode(true);
+                window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
+                let renders = [];
+                let sections = !target && xover.site.sections.filter(el => el.store && el.store === self) || [];
+                let stylesheets = [..._store_stylesheets, ...document.stylesheets].distinct();
+                if (sections.length) {
+                    renders = renders.concat(sections.map(el => el.render()));
+                }
+                if (stylesheets.length) {
+                    stylesheets = stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)).concat([["document", stylesheet.document], ["store", tag]])));
+                    if (target) {
+                        for (let stylesheet of stylesheets) {
+                            stylesheet.srcElement = target;
+                        }
+                    }
+                    renders = renders.concat(document.render(stylesheets))
+                }
+                renders = await Promise.all(renders);
+                if (!renders.length && (target || active_store === self)) document.render({ target: target || window.document.body, store: self });
+                return renders;
+            }).then((renders) => {
+                window.top.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
+                return renders.flat().filter(el => el)
+            }).catch((e) => {
+                let tag = self.tag;
+                e = e || {}
+                if (e instanceof Response || e instanceof Node || e instanceof Error || typeof (e) === 'string') {
+                    if ([401].includes(e.status) && e.statusText) {
+                        console.error(e.statusText)
+                    } else {
+                        return Promise.reject(e);
+                    }
+                } else {
+                    //e = e instanceof Error && e || e.message || e || `Couldn't render store ${tag}`
+                    return Promise.reject();
+                }
+            }).finally(async () => {
+                //xover.site.restore();
+                render_manager.delete(target);
+                progress = await progress || [];
+                progress.forEach(item => item.remove());
+            }));
+            return render_manager.get(target);
+        },
+        writable: true, enumerable: false, configurable: false
     });
     return this
 }
@@ -10644,7 +10719,7 @@ xover.Store = function (xml, ...args) {
                 //    progress = xover.sources['loading.xslt'].render({ action: "append" });
                 //}
                 let active_store = xover.stores.active
-                if (active_store === self) {
+                if (active_store instanceof xover.Store && active_store === self) {
                     xover.site.hash = self.hash;
                 }
                 if (!__document.firstChild) {
@@ -11543,6 +11618,12 @@ xover.listener.on('dialog::iframe', function () {
     }
 })
 
+xover.listener.on(['append::dialog[open]'], function () {
+    // fixes browser's behavior that won't show backdrop unless it is closed and reopened again
+    this.close()
+    this.showModal()
+})
+
 xover.listener.on('importFailure::~.xslt', function ({ response = {}, request = {} }) {
     let document = response.document;
     let source = request
@@ -12299,8 +12380,9 @@ xover.listener.on('Response:reject', function ({ response, request = {} }) {
 xover.listener.on('ErrorEvent', function () {
     if (!event.lineno) return;
     let args = { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno }
-    xover.dom.alert(args);
     console.error(event.message, args)
+    if (!xover.session.debug) return;
+    xover.dom.alert(args);
     event.preventDefault();
 })
 
