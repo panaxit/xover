@@ -1185,6 +1185,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                     context = window[arg]
                 }
                 for (let [ix, prop] of Object.entries(props)) {
+                    if (!context) continue;
                     context = context[prop] != null ? context[prop] : props.length - 1 != ix ? {} : null;
                 }
                 if (context instanceof Document) {
