@@ -8427,7 +8427,7 @@ xover.Response = function (response, request) {
                 //await response.json().then(json => body = json);
                 await response.text().then(text => body = text);
                 responseContent = body;
-            } else if (contentType.toLowerCase().indexOf("json") != -1) {
+            } else if (contentType.toLowerCase().indexOf("json") != -1 && charset.indexOf("iso-8859-1") == -1) {
                 responseContent = await response.json();
                 body = JSON.stringify(responseContent);
             } else if (contentType.toLowerCase().split("/")[0].includes("image", "video", "audio") && ((((this.settings || {}).headers || new Headers({})).get("accept") || contentType).split(/\s*,\s*/ig)).includes(contentType)) {
