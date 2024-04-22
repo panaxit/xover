@@ -1641,10 +1641,10 @@ xover.server = new Proxy({}, {
                 return_value.addStylesheet(stylesheet);
             });
             response.response_value = return_value;
-            for (let handler of handlers) {
-                return_value = handler(return_value, request, response) || return_value
-            }
             if (response.ok) {
+                for (let handler of handlers) {
+                    return_value = handler(return_value, request, response) || return_value
+                }
                 window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.settings.body, request, status: response.status, statusText: response.statusText, tag: `#server:${key}` }, response));
                 return Promise.resolve(return_value);
             } else {
@@ -8943,6 +8943,7 @@ xover.fetch = async function (url, ...args) {
         stored_document = null;
         const signal = controller.signal;
         try {
+            window.top.dispatchEvent(new xover.listener.Event(`beforeFetch`, { url: request.url, request }, this));
             original_response = await fetch(request.clone(), { signal })
         } catch (e) {
             //try {
@@ -9191,7 +9192,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                     }
                     return_value = return_value.consolidate();
                 } catch (e) {
-                    window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), response: e, request: url }, this));
+                    window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, this));
                     return Promise.reject(e);
                 }
             }
@@ -11625,7 +11626,7 @@ xover.listener.on(['append::dialog[open]'], function () {
     this.showModal()
 })
 
-xover.listener.on('importFailure::~.xslt', function ({ response = {}, request = {} }) {
+xover.listener.on('importFailure?url.href=~.xslt', function ({ response = {}, request = {} }) {
     let document = response.document;
     let source = request
     if (document instanceof Document) {
