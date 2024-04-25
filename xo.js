@@ -633,40 +633,46 @@ xover.init.Observer = function (target_node = window.document) {
                 let replace_event = new xover.listener.Event('replaceChildren', { addedNodes: mutation.addedNodes, removedNodes: mutation.removedNodes }, target);
                 window.top.dispatchEvent(replace_event);
             }
-            for (let node of [...mutation.reallocatedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
-                let remove_event = new xover.listener.Event('reallocate', { nextSibling: node.formerNextSibling, previousSibling: node.formerPreviousSibling, parentNode: target }, node);
-                window.top.dispatchEvent(remove_event);
-                if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
-            }
-            for (let node of mutation.removedNodes) {
-                if (target.contains(node)
-                    || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)
-                ) {
-                    continue
-                };
-                node.formerParentNode = target;
-                let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
-                window.top.dispatchEvent(remove_event);
-                if (target.contains(node)) continue;
-                if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
-            }
-            for (let node of mutation.addedNodes) {
-                if (!target.contains(node)
-                    || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)) {
-                    //mutation.addedNodes.delete(node);
-                    continue;
+            if (xo.listener.has('reallocate')) {
+                for (let node of [...mutation.reallocatedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
+                    let remove_event = new xover.listener.Event('reallocate', { nextSibling: node.formerNextSibling, previousSibling: node.formerPreviousSibling, parentNode: target }, node);
+                    window.top.dispatchEvent(remove_event);
+                    if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
                 }
-                let append_event = new xover.listener.Event('append', { target }, node);
-                window.top.dispatchEvent(append_event);
-                if (!target.contains(node)) continue;
-                const elementsToObserve = typeof (node.querySelectorAll) == 'function' && node.querySelectorAll('[xo-suspense*="Intersection"]') || [];
-                elementsToObserve.forEach(element => {
-                    intersection_observer.observe(element);
-                });
-                //dependants = [...node.querySelectorAll('[xo-source],[xo-stylesheet]')];
-                //if (target.hasAttribute("xo-source") && node.hasAttribute("xo-source")) dependants = dependants.concat([node]);
-                //&& `[${target.getAttribute("xo-source") || ''}].[${target.getAttribute("xo-stylesheet") || ''}]` != `[${node.getAttribute("xo-source") || ''}].[${node.getAttribute("xo-stylesheet") || ''}]` && /*!node.context && */node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
-                //dependants.forEach(el => el.render());
+            }
+            if (xo.listener.has('remove')) {
+                for (let node of mutation.removedNodes) {
+                    if (target.contains(node)
+                        || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)
+                    ) {
+                        continue
+                    };
+                    node.formerParentNode = target;
+                    let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
+                    window.top.dispatchEvent(remove_event);
+                    if (target.contains(node)) continue;
+                    if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
+                }
+            }
+            if (xo.listener.has('append')) {
+                for (let node of mutation.addedNodes) {
+                    if (!target.contains(node)
+                        || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)) {
+                        //mutation.addedNodes.delete(node);
+                        continue;
+                    }
+                    let append_event = new xover.listener.Event('append', { target }, node);
+                    window.top.dispatchEvent(append_event);
+                    if (!target.contains(node)) continue;
+                    const elementsToObserve = typeof (node.querySelectorAll) == 'function' && node.querySelectorAll('[xo-suspense*="Intersection"]') || [];
+                    elementsToObserve.forEach(element => {
+                        intersection_observer.observe(element);
+                    });
+                    //dependants = [...node.querySelectorAll('[xo-source],[xo-stylesheet]')];
+                    //if (target.hasAttribute("xo-source") && node.hasAttribute("xo-source")) dependants = dependants.concat([node]);
+                    //&& `[${target.getAttribute("xo-source") || ''}].[${target.getAttribute("xo-stylesheet") || ''}]` != `[${node.getAttribute("xo-source") || ''}].[${node.getAttribute("xo-stylesheet") || ''}]` && /*!node.context && */node.matches('[xo-source],[xo-stylesheet]')) dependants = dependants.concat([node]);
+                    //dependants.forEach(el => el.render());
+                }
             }
         }
         for (let section of [...mutations].filter(([node, mutations]) =>
@@ -1509,7 +1515,7 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
         this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
             try {
                 await xover.modernize();
-                for (let link of [...document.querySelectorAll('link[rel="xover-manifest"]')].filter(manifest => (manifest.getAttribute("href") || {}).indexOf('.manifest') != -1 || (manifest.getAttribute("href") || {}).indexOf('manifest.json') != -1)) {
+                for (let link of [...document.querySelectorAll('link[rel="xover-manifest"]')]) {
                     let url = xover.URL(link.getAttribute("href"));
                     try {
                         let manifest = await xover.fetch.json(url, { headers: { Accept: "*/*" } }).catch(e => console.log(e));
@@ -2454,7 +2460,7 @@ xover.xml.getDifferences = function (node1, node2) {
         return [new Map([[node1, node2]])];
     }
     if (node1 instanceof Element && (node1.hasAttribute("xo-source") && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") || node1.hasAttribute("xo-stylesheet") && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-source"))) {
-        node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].map(attr => `@${attr.name}`);
+        node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].filter(attr => !["xo-source", "xo-stylesheet"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
@@ -8006,7 +8012,7 @@ xover.modernize = async function (targetWindow) {
                                 dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                                 let stylesheet_href = stylesheet.href;
-                                let target_source = target.getAttributeNode("xo-source");
+                                let target_source = target.getAttributeNode("xo-source") || {};
                                 for (let el of dom.children) {
                                     el.document = this;
                                     el.context = data;
@@ -8014,7 +8020,7 @@ xover.modernize = async function (targetWindow) {
                                     if (![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(el.constructor)) {
                                         let current_scope = el.getAttributeNode("xo-scope");
                                         current_scope && el.setAttributeNS(null, "xo-scope", current_scope.value);
-                                        let store_tag = el.getAttributeNode("xo-source") || target_source || tag || '';
+                                        let store_tag = el.getAttributeNode("xo-source") || ["active"].includes(target_source.value) && target_source || tag || '';
                                         store_tag && el.setAttributeNS(null, "xo-source", store_tag.value || store_tag);
                                         stylesheet_href && el.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
                                     }
@@ -9335,7 +9341,7 @@ xover.xml.combine = function (target, new_node) {
         || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-stylesheet"))
     )
     ) {
-        target.staticAttributes = [...target.attributes || []].map(attr => `@${attr.name}`);
+        target.staticAttributes = [...target.attributes || []].filter(attr => !["xo-source","xo-stylesheet"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let swap = document.firstElementChild.cloneNode().classList;
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
@@ -9379,6 +9385,8 @@ xover.xml.combine = function (target, new_node) {
         || target.constructor == new_node.constructor && (
             !(target instanceof Element)
             || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)
+            || target.hasAttribute("xo-source") && new_node.hasAttribute("xo-source") && target.getAttribute("xo-source") != new_node.getAttribute("xo-source")
+            || target.hasAttribute("xo-stylesheet") && new_node.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") != new_node.getAttribute("xo-stylesheet")
         )
         || target instanceof SVGElement && !(new_node instanceof SVGElement)
     ) {
@@ -11809,29 +11817,29 @@ xover.listener.on('change::@xo-source', function ({ element }) {
     section && section.render()
 });
 
-xover.listener.on('change::@state:busy', function ({ target, value }) {
-    if (event.defaultPrevented) return;
-    let store = target.store;
-    if (store instanceof xover.Store && store.isActive) {
-        if (value && JSON.parse(value)) {
-            //targetDocument = ((document.activeElement || {}).contentDocument || document);
-            //xover.sources["loading.xslt"].render({ target: , action: "append" });
-            let last_stylesheet = store.stylesheets.pop();
-            let document = store.document;
-            document.render(document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: "loading.xslt", target: last_stylesheet && last_stylesheet.target || 'body', action: "append" }));
-        } else {
-            let attrib = target.getAttributeNode("state:busy");
-            attrib && attrib.remove();
-        }
-    }
-});
+//xover.listener.on('change::@state:busy', function ({ target, value }) {
+//    if (event.defaultPrevented) return;
+//    let store = target.store;
+//    if (store instanceof xover.Store && store.isActive) {
+//        if (value && JSON.parse(value)) {
+//            //targetDocument = ((document.activeElement || {}).contentDocument || document);
+//            //xover.sources["loading.xslt"].render({ target: , action: "append" });
+//            let last_stylesheet = store.stylesheets.pop();
+//            let document = store.document;
+//            document.render(document.createProcessingInstruction('xml-stylesheet', { type: 'text/xsl', href: "loading.xslt", target: last_stylesheet && last_stylesheet.target || 'body', action: "append" }));
+//        } else {
+//            let attrib = target.getAttributeNode("state:busy");
+//            attrib && attrib.remove();
+//        }
+//    }
+//});
 
-xover.listener.on('remove::@state:busy', function ({ target, value }) {
-    let store = target.store;
-    if (store instanceof xover.Store && store.isActive) {
-        [...document.querySelectorAll(`[xo-source="${store.tag}"][xo-stylesheet='loading.xslt']`)].removeAll();
-    }
-});
+//xover.listener.on('remove::@state:busy', function ({ target, value }) {
+//    let store = target.store;
+//    if (store instanceof xover.Store && store.isActive) {
+//        [...document.querySelectorAll(`[xo-source="${store.tag}"][xo-stylesheet='loading.xslt']`)].removeAll();
+//    }
+//});
 
 //xover.listener.on("focusout", function (event) {
 //    if (event.defaultPrevented) return;
