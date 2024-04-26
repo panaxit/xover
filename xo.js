@@ -9341,7 +9341,7 @@ xover.xml.combine = function (target, new_node) {
         || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-stylesheet"))
     )
     ) {
-        target.staticAttributes = [...target.attributes || []].filter(attr => !["xo-source","xo-stylesheet"].includes(attr.name)).map(attr => `@${attr.name}`);
+        target.staticAttributes = [...target.attributes || []].filter(attr => !["xo-source", "xo-stylesheet"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let swap = document.firstElementChild.cloneNode().classList;
     swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
@@ -9491,34 +9491,37 @@ xover.dom.combine = async function (target, new_node) {
                 }
             } else if (!script.getAttribute("src") && script.innerHTML) {
                 script.innerHTML = xover.string.htmlDecode(script.innerHTML); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
-                if (script.hasAttribute("defer") || script.hasAttribute("async") || script.selectSingleNode(`self::html:style`)) {
+                if (script.selectSingleNode(`self::html:style`)) {
                     if (![...targetDocument.documentElement.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
                         targetDocument.documentElement.appendChild(script);
+                        //let new_element = targetDocument.createElement(script.tagName); /*script.cloneNode(); won't work properly*/
+                        //[...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
+                        //new_element.innerHTML = script.textContent;
+                        //targetDocument.documentElement.appendChild(new_element);
                     }
                 } else {
                     try {
-                        //function evalInScope(js, scope) {
-                        //    return function () {
-                        //        with (this) { return eval(js) }
-                        //    }.call(scope)
-                        //}
                         //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
-                        let result = (function () {
-                            xover.context = script.original || script;
-                            if (window.document.contains(xover.context)) {
-                                return eval.apply(this, arguments)
+                        promise = new Promise(async (resolve, reject) => {
+                            if (script.hasAttribute("defer") || script.hasAttribute("async")) await xover.delay(1);
+                            let result = (function () {
+                                xover.context = script.original || script;
+                                if (window.document.contains(xover.context)) {
+                                    return eval.apply(this, arguments)
+                                }
+                            }(`/*${target.getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; ${script.textContent};xover.context = undefined;`));
+                            if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
+                                let target = document.getElementById(script.id);
+                                target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
                             }
-                        }(`/*${target.getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; ${script.textContent};xover.context = undefined;`));
-                        if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
-                            let target = document.getElementById(script.id);
-                            target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
-                        }
+                            resolve()
+                        })
                     } catch (message) {
                         console.error(message)
                     }
                 }
             } else {
-                throw (new Error(`A script couldn't be loaded.`));
+                console.warn(`Empty tag`);
             }
             if (script.hasAttribute("defer")) await promise;
         }
