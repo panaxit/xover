@@ -1170,78 +1170,86 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         //context.eventHistory = context.eventHistory || new Map();
         let returnValue;
-        for (let handler of [...handlers.values()].reverse()) {
-            if (event.propagationStopped || event.cancelBubble) break;
-            if (xover.listener.history.overflowed(handler, context)) {
-                console.warn(`Listener dispatcher overflown`, [handler, context])
-                continue;
-            }
-            if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
-                let operator = "="
-                if (["*", "!"].includes(key[key.length - 1])) {
-                    operator = key[key.length - 1];
-                    key = key.slice(0, -1);
-                } else if (!condition && ["*", "!"].includes(key[0])) {
-                    operator = key[0];
-                    key = key.slice(1);
+        try {
+            for (let handler of [...handlers.values()].reverse()) {
+                if (event.propagationStopped || event.cancelBubble) break;
+                if (xover.listener.history.overflowed(handler, context)) {
+                    console.warn(`Listener dispatcher overflown`, [handler, context])
+                    continue;
                 }
-                let [arg, ...props] = key.split(/\./g);
-                let context = event.detail[arg];
-                if (context === undefined && arg in window) {
-                    context = window[arg]
-                }
-                for (let [ix, prop] of Object.entries(props)) {
-                    if (!context) continue;
-                    context = context[prop] != null ? context[prop] : props.length - 1 != ix ? {} : null;
-                }
-                if (context instanceof Document) {
-                    context = (context.href || '').replace(/^\//, '')
-                }
-                if (!condition) {
-                    switch (operator) {
-                        case "!":
-                            return !context
-                        default:
-                            return context
+                if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
+                    let operator = "="
+                    if (["*", "!"].includes(key[key.length - 1])) {
+                        operator = key[key.length - 1];
+                        key = key.slice(0, -1);
+                    } else if (!condition && ["*", "!"].includes(key[0])) {
+                        operator = key[0];
+                        key = key.slice(1);
                     }
-                } else {
-                    switch (operator) {
-                        case "!":
-                            return !`${context}`.matches(`${condition}`)
-                        case "*":
-                            return `${context}`.indexOf(`${condition}`) != -1
-                        default:
-                            return `${context}`.matches(`${condition}`)
+                    let [arg, ...props] = key.split(/\./g);
+                    let context = event.detail[arg];
+                    if (context === undefined && arg in window) {
+                        context = window[arg]
+                    }
+                    for (let [ix, prop] of Object.entries(props)) {
+                        if (!context) continue;
+                        context = context[prop] != null ? context[prop] : props.length - 1 != ix ? {} : null;
+                    }
+                    if (context instanceof Document) {
+                        context = (context.href || '').replace(/^\//, '')
+                    }
+                    if (!condition) {
+                        switch (operator) {
+                            case "!":
+                                return !context
+                            default:
+                                return context
+                        }
+                    } else {
+                        switch (operator) {
+                            case "!":
+                                return !`${context}`.matches(`${condition}`)
+                            case "*":
+                                return `${context}`.indexOf(`${condition}`) != -1
+                            default:
+                                return `${context}`.matches(`${condition}`)
+                        }
+                    }
+                }))) continue;
+                //if (context.eventHistory.get(handler)) {
+                //    console.warn(`Event ${event.type} recursed`)
+                //}
+                xover.listener.history.set(handler, context);
+                if (returnValue !== undefined && !(returnValue instanceof Promise) && event.detail && event.detail.value) {
+                    event.detail.value = returnValue;
+                }
+                if (xover.listener.debug.matches.call(context, handler, xover.listener.debugger) && !xover.listener.debug.matches.call(context, handler, xover.listener.debuggerExceptions)) {
+                    debugger;
+                }
+                returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event.srcEvent || event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event.srcEvent || event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
+                if (returnValue !== undefined) {
+                    //event.returnValue = returnValue; //deprecated
+                    if (event.detail) {
+                        event.detail.returnValue = returnValue;
                     }
                 }
-            }))) continue;
-            //if (context.eventHistory.get(handler)) {
-            //    console.warn(`Event ${event.type} recursed`)
-            //}
-            xover.listener.history.set(handler, context);
-            if (returnValue !== undefined && !(returnValue instanceof Promise) && event.detail && event.detail.value) {
-                event.detail.value = returnValue;
-            }
-            if (xover.listener.debug.matches.call(context, handler, xover.listener.debugger) && !xover.listener.debug.matches.call(context, handler, xover.listener.debuggerExceptions)) {
-                debugger;
-            }
-            returnValue = /*await */handler.apply(context, event instanceof CustomEvent && (event.detail instanceof Array && [...event.detail, event] || event.detail && handler.toString().replace(/^[^\{\)]+/g, '')[0] == '{' && [{ event: event.srcEvent || event, ...event.detail }, event] || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event' && [event.srcEvent || event] || []) || arguments); /*Events shouldn't be called with await, but can return a promise*/
-            if (returnValue !== undefined) {
-                //event.returnValue = returnValue; //deprecated
-                if (event.detail) {
-                    event.detail.returnValue = returnValue;
+                //if (event.srcEvent) {
+                //    event.srcEvent.returnValue = event.returnValue;
+                //}
+                if (event.srcEvent && event.defaultPrevented) {
+                    event.srcEvent.preventDefault();
                 }
+                if (event.srcEvent && event.cancelBubble) {
+                    event.srcEvent.stopPropagation();
+                }
+                //xover.listener.history.delete(handler, context);
             }
-            //if (event.srcEvent) {
-            //    event.srcEvent.returnValue = event.returnValue;
-            //}
-            if (event.srcEvent && event.defaultPrevented) {
-                event.srcEvent.preventDefault();
+        } catch (e) {
+            if (event.detail) {
+                event.detail.returnValue = e;
+            } else {
+                throw e;
             }
-            if (event.srcEvent && event.cancelBubble) {
-                event.srcEvent.stopPropagation();
-            }
-            //xover.listener.history.delete(handler, context);
         }
     },
     writable: true, enumerable: false, configurable: false
@@ -2949,7 +2957,11 @@ xover.Source = function (tag) {
                     if (response instanceof Document) {
                         this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => typeof (response.addStylesheet) == 'function' && response.addStylesheet(stylesheet));
                     }
-                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { document: response, tag: tag_string, settings: this.settings }, self));
+                    let fetch_event = new xover.listener.Event(`fetch`, { document: response, tag: tag_string, settings: this.settings }, self);
+                    window.top.dispatchEvent(fetch_event);
+                    if (fetch_event.detail.returnValue instanceof Error) {
+                        return Promise.reject(fetch_event.detail.returnValue);
+                    }
                     return Promise.resolve(response);
                 } catch (e) {
                     if (sources.length && e instanceof Response && e.status === 404) continue;
