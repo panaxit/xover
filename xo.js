@@ -969,22 +969,26 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             _event.detail["attribute"] = _event.detail["attribute"] || context;
             _event.detail["value"] = _event.detail.hasOwnProperty("value") ? _event.detail["value"] : context.value;
             _event.detail["store"] = _event.detail["store"] || context.ownerDocument.store;
+            _event.detail["source"] = _event.detail["source"] || context.ownerDocument.source;
             node = context
         } else if (context instanceof Element) {
             _event.detail["element"] = _event.detail["element"] || context;
             _event.detail["value"] = _event.detail.hasOwnProperty("value") ? _event.detail["value"] : context.textContent;
             _event.detail["store"] = _event.detail["store"] || context.ownerDocument.store;
+            _event.detail["source"] = _event.detail["source"] || context.ownerDocument.source;
             node = context
         } else if (context instanceof Document) {
             _event.detail["stylesheets"] = _event.detail.hasOwnProperty("stylesheets") ? _event.detail["stylesheets"] : context.stylesheets;
             _event.detail["document"] = _event.detail["document"] || context;
             _event.detail["element"] = _event.detail["element"] || context.firstElementChild;
             _event.detail["store"] = _event.detail["store"] || context.store;
+            _event.detail["source"] = _event.detail["source"] || context.source;
             _event.detail["target"] = _event.detail["target"] || context.documentElement;
         } else if (context instanceof xover.Store) {
             //_event.detail["tag"] = _event.detail["tag"] || context.tag;
             _event.detail["stylesheets"] = _event.detail.hasOwnProperty("stylesheets") ? _event.detail["stylesheets"] : context.stylesheets;
             _event.detail["store"] = _event.detail["store"] || context;
+            _event.detail["source"] = _event.detail["source"] || context;
             _event.detail["target"] = _event.detail["target"] || context.documentElement;
         } else if (context instanceof xover.Source) {
             //_event.detail["tag"] = _event.detail["tag"] || context.tag;
@@ -1017,6 +1021,19 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
     return _event;
 }
 xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
+
+Event.srcElement = Event.srcElement || Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement'); 
+CustomEvent.srcElement = CustomEvent.srcElement || Object.getOwnPropertyDescriptor(CustomEvent.prototype, 'srcElement');
+Object.defineProperty(CustomEvent.prototype, 'srcElement', {
+    get: function () {
+        let current_event = this;
+        while (current_event.srcEvent) {
+            current_event = current_event.srcEvent
+        }
+        return Event.srcElement.get.call(this);
+    }
+});
+
 
 Object.defineProperty(xover.listener, 'matches', {
     value: function (context, event_type, event_tag) {
@@ -2145,7 +2162,7 @@ Object.defineProperty(xover.site, 'sections', {
                 } else {
                     let [stylesheet_href, store_name] = key.split(/#/);
                     let store = store_name && xover.stores['#' + store_name];
-                    return self.filter(section => (store && section.store == store || !store) && section.getAttribute("xo-stylesheet") == stylesheet_href)
+                    return self.filter(section => (store && section.store == store || !store) && (!stylesheet_href || section.getAttribute("xo-stylesheet") == stylesheet_href))
                 }
             }
         });
@@ -2957,7 +2974,7 @@ xover.Source = function (tag) {
                     if (response instanceof Document) {
                         this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => typeof (response.addStylesheet) == 'function' && response.addStylesheet(stylesheet));
                     }
-                    let fetch_event = new xover.listener.Event(`fetch`, { document: response, tag: tag_string, settings: this.settings }, self);
+                    let fetch_event = new xover.listener.Event('fetch', { source: self, document: response, tag: tag_string, settings: this.settings }, self);
                     window.top.dispatchEvent(fetch_event);
                     if (fetch_event.detail.returnValue instanceof Error) {
                         return Promise.reject(fetch_event.detail.returnValue);
@@ -6002,22 +6019,6 @@ xover.modernize = async function (targetWindow) {
                     }
                 }
 
-                if (!Text.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Text.prototype, 'store', source_handler);
-                }
-                if (!Attr.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Attr.prototype, 'store', source_handler);
-                }
-                if (!Element.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Element.prototype, 'store', source_handler);
-                }
-                if (!Comment.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Comment.prototype, 'store', source_handler);
-                }
-                if (!ProcessingInstruction.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(ProcessingInstruction.prototype, 'store', source_handler);
-                }
-
                 if (!Text.prototype.hasOwnProperty('source')) {
                     Object.defineProperty(Text.prototype, 'source', source_handler);
                 }
@@ -6032,6 +6033,29 @@ xover.modernize = async function (targetWindow) {
                 }
                 if (!ProcessingInstruction.prototype.hasOwnProperty('source')) {
                     Object.defineProperty(ProcessingInstruction.prototype, 'source', source_handler);
+                }
+
+                const store_handler = {
+                    get: function () {
+                        let store = source_handler.get.call(this);
+                        return store instanceof xover.Store ? store : null;
+                    }
+                }
+
+                if (!Text.prototype.hasOwnProperty('store')) {
+                    Object.defineProperty(Text.prototype, 'store', store_handler);
+                }
+                if (!Attr.prototype.hasOwnProperty('store')) {
+                    Object.defineProperty(Attr.prototype, 'store', store_handler);
+                }
+                if (!Element.prototype.hasOwnProperty('store')) {
+                    Object.defineProperty(Element.prototype, 'store', store_handler);
+                }
+                if (!Comment.prototype.hasOwnProperty('store')) {
+                    Object.defineProperty(Comment.prototype, 'store', store_handler);
+                }
+                if (!ProcessingInstruction.prototype.hasOwnProperty('store')) {
+                    Object.defineProperty(ProcessingInstruction.prototype, 'store', store_handler);
                 }
 
                 if (!Node.prototype.hasOwnProperty('stylesheet')) {
@@ -9318,7 +9342,8 @@ xover.xml.staticMerge = function (node1, node2) {
     node1.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
     if (node1.classList && node2.classList && node1.classList.contains("xo-working")) node2.classList.add("xo-working");
-    if (!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working")) || node1.nodeName.toLowerCase() !== node2.nodeName.toLowerCase() || node1.isEqualNode(node2)) return;
+    if (node1.classList && node2.classList && node1.classList.contains("xo-fetching")) node2.classList.add("xo-fetching");
+    if (!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working,.xo-fetching")) || node1.nodeName.toLowerCase() !== node2.nodeName.toLowerCase() || node1.isEqualNode(node2)) return;
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
 
