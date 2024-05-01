@@ -1022,7 +1022,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
 }
 xover.listener.Event.prototype = Object.create(CustomEvent.prototype);
 
-Event.srcElement = Event.srcElement || Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement'); 
+Event.srcElement = Event.srcElement || Object.getOwnPropertyDescriptor(Event.prototype, 'srcElement');
 CustomEvent.srcElement = CustomEvent.srcElement || Object.getOwnPropertyDescriptor(CustomEvent.prototype, 'srcElement');
 Object.defineProperty(CustomEvent.prototype, 'srcElement', {
     get: function () {
@@ -3254,7 +3254,9 @@ Object.defineProperty(URL.prototype, 'fetch', {
                     item.select(".//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
                 }
             }
-            await Promise.all(pending);
+            if (pending.length) {
+                await Promise.all(pending);
+            }
         }
 
         if (settings.progress instanceof HTMLElement) {
@@ -4297,7 +4299,7 @@ xover.modernize = async function (targetWindow) {
 
             if (typeof (Intersection) == 'undefined') Intersection = function () { return this.isIntersecting || null };
 
-            if (typeof (Avg) == 'undefined') Avg = function (x) { return ((this.Count * this.Value) + x) / ((this.Count || 0) + 1) }
+            if (typeof (Avg) == 'undefined') Avg = (result, value, ix, array) => (+result + +value) / (ix == array.length - 1 ? array.length : 1);
 
             if (typeof (Money) == 'undefined') Money = function (x, format = xover.site.locale) {
                 let money = new Intl.NumberFormat(format, {
@@ -6035,27 +6037,27 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(ProcessingInstruction.prototype, 'source', source_handler);
                 }
 
-                const store_handler = {
-                    get: function () {
-                        let store = source_handler.get.call(this);
-                        return store instanceof xover.Store ? store : null;
-                    }
-                }
+                //const store_handler = {
+                //    get: function () {
+                //        let store = source_handler.get.call(this);
+                //        return store instanceof xover.Store ? store : null;
+                //    }
+                //}
 
                 if (!Text.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Text.prototype, 'store', store_handler);
+                    Object.defineProperty(Text.prototype, 'store', source_handler);
                 }
                 if (!Attr.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Attr.prototype, 'store', store_handler);
+                    Object.defineProperty(Attr.prototype, 'store', source_handler);
                 }
                 if (!Element.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Element.prototype, 'store', store_handler);
+                    Object.defineProperty(Element.prototype, 'store', source_handler);
                 }
                 if (!Comment.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(Comment.prototype, 'store', store_handler);
+                    Object.defineProperty(Comment.prototype, 'store', source_handler);
                 }
                 if (!ProcessingInstruction.prototype.hasOwnProperty('store')) {
-                    Object.defineProperty(ProcessingInstruction.prototype, 'store', store_handler);
+                    Object.defineProperty(ProcessingInstruction.prototype, 'store', source_handler);
                 }
 
                 if (!Node.prototype.hasOwnProperty('stylesheet')) {
@@ -7431,7 +7433,7 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Node.prototype, 'transform', {
                         value: function (xml_document) {
                             let self = this;
-                            if (xml_document instanceof Document && !xml_document.documentElement && xml_document.source) {
+                            if (xml_document instanceof Document && !xml_document.firstChild && xml_document.source) {
                                 return new Promise(async (resolve, reject) => {
                                     try {
                                         let result = self.transform(await xml_document.source.fetch().catch(e => Promise.reject(e)))
@@ -7518,8 +7520,11 @@ xover.modernize = async function (targetWindow) {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             if (param.value != undefined) {
                                                 let source = xover.sources[param.value];
-                                                source.ready;
-                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="text()[.='${name.value}']|@*[.='${name.value}']"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
+                                                if (!(source.childNodes.length)) {
+                                                    let ready = source.ready;
+                                                    return ready.then(() => self.transform(xsl));
+                                                }
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value[0] == '@' ? name.value: `text()[.='${name.value}']|@*[.='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
                                             }
                                         } catch (e) {
@@ -8958,7 +8963,9 @@ xover.fetch = async function (url, ...args) {
                 item.select(".//@*[starts-with(.,'blob:')]").filter(node => node && (!node.namespaceURI || node.namespaceURI.indexOf('http://panax.io/state') == -1)).map(node => { pending.push(xover.server.uploadFile(node)) })
             }
         }
-        await Promise.all(pending);
+        if (pending.length) {
+            await Promise.all(pending);
+        }
     }
 
     if (settings.progress instanceof HTMLElement) {
