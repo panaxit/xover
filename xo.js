@@ -2878,8 +2878,9 @@ xover.Source = function (tag) {
                 try {
                     let settings = Object.entries(xover.json.merge({}, Object.fromEntries(xover.manifest.getSettings(url)), self.settings));
                     this.settings = xover.json.merge(Object.fromEntries(settings), this.settings);
-                    let before_event = new xover.listener.Event('beforeFetch', { tag: tag_string, settings: settings }, this);
+                    let before_event = new xover.listener.Event('beforeFetch', { tag: tag_string, settings: this.settings }, self);
                     window.top.dispatchEvent(before_event);
+                    await before_event.detail.returnValue;
                     if (before_event.cancelBubble || before_event.defaultPrevented) return;
                     if (source instanceof Node) {
                         response = source
@@ -3517,6 +3518,7 @@ xover.spaces["initial"] = "http://panax.io/state/initial"
 xover.spaces["search"] = "http://panax.io/state/search"
 xover.spaces["filter"] = "http://panax.io/state/filter"
 xover.spaces["prev"] = "http://panax.io/state/previous"
+xover.spaces["sort"] = "http://panax.io/state/sort"
 xover.spaces["fixed"] = "http://panax.io/state/fixed"
 xover.spaces["draft"] = "http://panax.io/state/draft"
 xover.spaces["text"] = "http://panax.io/state/text"
@@ -5106,7 +5108,7 @@ xover.modernize = async function (targetWindow) {
                             if (args[0].match(/\/|@/)) {
                                 throw new DOMException('not a valid selector');
                             }
-                            if (event && ['click'].includes(event.type)) {
+                            if (event instanceof CustomEvent && ['click'].includes(event.type)) {
                                 matches = Element.closest && Element.closest.value.apply(node, args);
                             } else {
                                 matches = Element.matches && Element.matches.value.apply(node, args);
