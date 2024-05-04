@@ -2838,8 +2838,11 @@ xover.Source = function (tag) {
                         for (let key in value) {
                             result[key] = evaluate_json(value[key]);
                         }
+                    } else if (value.indexOf && value.indexOf('${') !== -1) {
+                        //result = value.indexOf && value.indexOf('${') !== -1 && eval(`(${value.replace(/^\$\{(.*)\}$/, '$1')})`) || value;
+                        result = eval("`" + value + "`");
                     } else {
-                        result = value.indexOf && value.indexOf('${') !== -1 && eval(`(${value.replace(/^\$\{(.*)\}$/, '$1')})`) || value;
+                        result = value;
                     }
                     return result;
                 }
