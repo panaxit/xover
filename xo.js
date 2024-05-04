@@ -2524,6 +2524,15 @@ xover.string.htmlDecode = function (string) {
     return txt.value;
 }
 
+xover.string.toHTML = function (string) {
+    string = xover.string.htmlDecode(string);
+    let frag = window.document.createDocumentFragment();
+    let p = window.document.createElement('p');
+    p.innerHTML = string;
+    frag.append(...p.childNodes);
+    return frag;
+}
+
 xover.string.getFileParts = function (file_name = '') {
     let parts = {}
     parts["extension"] = file_name.lastIndexOf('.') != -1 && file_name.substring(file_name.lastIndexOf('.') + 1) || undefined;
@@ -3533,6 +3542,7 @@ xover.dom.alert = async function (message) {
         await xMessage.addStylesheet({ href: "message.xslt", role: "modal" });
         try {
             dom = await xMessage.transform();
+            dom.documentElement.select('//text()').forEach(text => text.replaceWith(xover.string.toHTML(text)))
             document.body && document.body.appendChild(dom.documentElement)
             return dom.documentElement;
         } catch (e) {
