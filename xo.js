@@ -1059,7 +1059,7 @@ xover.listener.debugger = new Map()
 
 Object.defineProperty(xover.listener, 'debug', {
     value: function (...args) {
-        let reference
+        let reference, subreference
         for (let arg of args) {
             if (arg instanceof Object) {
                 xover.listener.debugger.set(arg, (xover.listener.debugger.get(arg) || true))
@@ -1985,8 +1985,14 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             xover.site[key];
             self[key] = new_value;
             history.state[key] = new_value;
-            let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), location.hash, self['active'], ''].coalesce();
-            history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
+            if (['active', 'seed'].includes(key)) {
+                let current_hash = location.hash;
+                let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], location.hash, ''].coalesce();
+                history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
+                if (current_hash != location.hash) {
+                    window.dispatchEvent(new Event('hashchange'));
+                }
+            }
             if (key === 'seed') self['active'] = new_value
             for (let [subscriber] of xover.subscribers.site[key]) {
                 subscriber.evaluate()
@@ -2848,6 +2854,11 @@ xover.Source = function (tag) {
                 }
                 let source = sources.shift();
                 if (!source) continue;
+                let url;
+                if (typeof (source) != 'object') url = xover.URL(source);
+                if (tag_string[0] == '#' && url instanceof URL && !['.', '^', '~', '#'].includes(tag_string)) url.hash = tag_string;
+
+                let settings = xover.json.merge({}, xover.manifest.getSettings(url), self.settings, this.settings);
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
                 parameters = evaluate_json(parameters);
 
@@ -2858,9 +2869,7 @@ xover.Source = function (tag) {
                     if (parameters.constructor === {}.constructor) {
                         let url = new xover.URL(tag_string.replace(/^#/, ''));
                         for (let [key, value] of url.searchParams.entries()) {
-                            if (key in parameters) {
-                                parameters[key] = value
-                            }
+                            parameters[key] = value
                         }
                         let current_url = xover.URL(xover.site.seed.replace(/^#/, ''));
                         if (location.searchParams && current_url.pathname === xover.URL(url).pathname) {
@@ -2870,14 +2879,13 @@ xover.Source = function (tag) {
                                 }
                             }
                         }
+                        for (let [key, value] of Object.entries(parameters).filter(([key]) => key[0] == '^')) {
+                            settings.headers[key] = value;
+                            delete parameters[key]
+                        }
                         parameters = Object.entries(parameters) || parameters
                     }
                 }
-
-                let url;
-                if (typeof (source) != 'object') url = xover.URL(source);
-                if (tag_string[0] == '#' && url instanceof URL && !['.', '^', '~', '#'].includes(tag_string)) url.hash = tag_string;
-
 
                 if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
                     parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
@@ -2888,9 +2896,7 @@ xover.Source = function (tag) {
                 }
 
                 try {
-                    let settings = Object.entries(xover.json.merge({}, Object.fromEntries(xover.manifest.getSettings(url)), self.settings));
-                    this.settings = xover.json.merge(Object.fromEntries(settings), this.settings);
-                    let before_event = new xover.listener.Event('beforeFetch', { tag: tag_string, settings: this.settings }, self);
+                    let before_event = new xover.listener.Event('beforeFetch', { tag: tag_string, settings, parameters }, self);
                     window.top.dispatchEvent(before_event);
                     await before_event.detail.returnValue;
                     if (before_event.cancelBubble || before_event.defaultPrevented) return;
@@ -7539,7 +7545,7 @@ xover.modernize = async function (targetWindow) {
                                                     let ready = source.ready;
                                                     return ready.then(() => self.transform(xsl));
                                                 }
-                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value[0] == '@' ? name.value: `text()[.='${name.value}']|@*[.='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value[0] == '@' ? name.value : `text()[.='${name.value}']|@*[.='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
                                             }
                                         } catch (e) {
@@ -8076,7 +8082,7 @@ xover.modernize = async function (targetWindow) {
                                     if (![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(el.constructor)) {
                                         let current_scope = el.getAttributeNode("xo-scope");
                                         current_scope && el.setAttributeNS(null, "xo-scope", current_scope.value);
-                                        let store_tag = el.getAttributeNode("xo-source") || ["active"].includes(target_source.value) && target_source || tag || '';
+                                        let store_tag = el.getAttributeNode("xo-source") || ["active", "seed", "#"].includes(target_source.value) && target_source || tag || '';
                                         store_tag && el.setAttributeNS(null, "xo-source", store_tag.value || store_tag);
                                         stylesheet_href && el.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
                                     }
@@ -9162,8 +9168,10 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                     el.replaceWith(debug_node)
                 } else if (debug_node.selectSingleNode('self::xsl:attribute') && el.selectSingleNode('self::html:*')) {
                     el.prepend(debug_node)
+                } else if (el.selectSingleNode('self::xsl:attribute')) {
+                    el.select('following-sibling::xsl:attribute').concat(el).forEach(attr => attr.before(debug_node.cloneNode(true).setAttribute("name", `xo-debug-${attr.getAttribute("name")}`)))
                 } else {
-                    el.before(debug_node)
+                    el.before(debug_node);
                 }
             }
         }
@@ -9938,7 +9946,7 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
      indent="yes" standalone="no"/>
 
   <xsl:template match="/*">
-    <dialog open="open" style="width: fit-content; max-width: 600px; margin: 0 auto; top: 25vh; padding: 1rem; overflow: auto; position: fixed; z-index: var(--zindex-modal, 1055);" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
+    <dialog open="open" style="width: fit-content; max-width: 600px; margin: 0 auto; top: 25vh; padding: 1rem; overflow: auto; position: fixed; z-index: var(--zindex-modal, 1055); min-width: fit-content; max-width: 90%;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><h4 style="margin-left: 3rem !important;"><xsl:apply-templates/></h4></form></dialog>
   </xsl:template>
 
   <xsl:template match="html:*"><xsl:copy-of select="."/></xsl:template>
@@ -11939,7 +11947,7 @@ xover.listener.on('input', function (event) {
     }
 })
 
-xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
+xover.listener.on('click::ancestor-or-self::a[@href="#"]', function (event) {
     if (event.defaultPrevented) return;
     if (!this.closest("menu,.autoscroll-disabled")) {
         window.scrollTo({ top: 0 });
@@ -11947,7 +11955,7 @@ xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
     event.preventDefault();
 })
 
-xover.listener.on('click::*[ancestor-or-self::a[@scroll-restoration]]', function (event) {
+xover.listener.on('click::ancestor-or-self::a[@scroll-restoration]', function (event) {
     let scrollRestoration = this.closest("a[scroll-restoration]").getAttribute("scroll-restoration");
     xover.delay(100).then(() => {
         let meta = window.document.querySelector(`head meta[name=scroll-restoration]`) || window.document.head.appendChild(xover.xml.createNode(`<meta name="scroll-restoration" content="${scrollRestoration}"/>`));
@@ -11965,12 +11973,18 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     if (!hashtag.match(/^#./)) {
         return;
     }
+
     custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash])
     if (hashtag !== undefined && hashtag != (window.top || window).location.hash) {
         window.top.dispatchEvent(custom_event);
     }
     if (custom_event.defaultPrevented) {
         return event.preventDefault();
+    }
+
+    if (this.getAttribute("target") == "_self") {
+        xo.site.active = hashtag
+        event.preventDefault();
     }
 });
 
