@@ -894,8 +894,10 @@ xover.subscribers = new Structure(new Map(), {
                         let [variable, ...else_value] = prefixed_name.split(/\s*\|\|\s*/g);
                         let [name, prefix] = variable.split(/:/).reverse();
                         else_value = else_value.concat(match);
-                        if (!prefix && scope instanceof Node) {
-                            return name && scope.get(name) || evaluate(else_value)
+                        if (!prefix) {
+                            if (scope instanceof Node) {
+                                return name && scope.get(name) || evaluate(else_value)
+                            }
                         } else {
                             return xover[prefix][name] || evaluate(else_value)
                         }
@@ -1367,6 +1369,13 @@ Object.defineProperty(xover.listener, 'on', {
 xover.listener.on('hashchange', function () {
     xover.site.active = location.hash;
 });
+
+xover.listener.on('render', function () {
+    let target = this.querySelector(location.hash);
+    if (target) {
+        target.scrollIntoView() 
+    }
+})
 
 xover.listener.on('pushstate', function ({ state }) {
     if (typeof HashChangeEvent !== "undefined") {
@@ -11963,7 +11972,7 @@ xover.listener.on('click::ancestor-or-self::a[@scroll-restoration]', function (e
     })
 })
 
-xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
+xover.listener.on('click::ancestor-or-self::a', function (event) {
     if (event.defaultPrevented) return;
     xover.listener.click.target = event.target;
     xover.delay(250).then(() => xover.listener.click.target = undefined)
