@@ -2500,14 +2500,18 @@ xover.xml.getDifferences = function (node1, node2) {
         return [new Map([[node1, node2]])];
     }
     if (node1 instanceof Element && (node1.hasAttribute("xo-source") && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") || node1.hasAttribute("xo-stylesheet") && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-source"))) {
-        node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].filter(attr => !["xo-source", "xo-stylesheet"].includes(attr.name)).map(attr => `@${attr.name}`);
+        node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].filter(attr => !["xo-source", "xo-stylesheet", "xo-swap"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
-    node1.constructor === node2.constructor && static.add(...node1.staticAttributes || []);
+    let swap_rules = (node2.getAttribute("xo-swap") || '').split(/\s+/g);
+    node1.constructor === node2.constructor && static.add(...(node1.staticAttributes || []).filter(attr => !swap_rules.includes(attr)));
     for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
         let static_attribute = node1.getAttributeNode(item.substring(1));
         static_attribute && node2.setAttributeNode(static_attribute.cloneNode(), { silent: true })
+    }
+    if (node2.parentNode && !(node2.parentNode instanceof Document || node2.parentNode instanceof DocumentFragment) && (node1 instanceof HTMLElement || node1 instanceof SVGElement) && /*node1 !== target && */node1.hasAttribute("xo-stylesheet")) {
+        node2.replaceChildren(...node1.cloneNode(true).childNodes)
     }
     if (node1.cloneNode().isEqualNode(node2.cloneNode()) || [...xover.listener.skip_selectors.keys()].find(rule => node1.matches(rule))) {
         if (node1.childNodes.length && node1.childNodes.length == node2.childNodes.length) {
@@ -9417,13 +9421,14 @@ xover.xml.combine = function (target, new_node) {
         || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-stylesheet"))
     )
     ) {
-        target.staticAttributes = [...target.attributes || []].filter(attr => !["xo-source", "xo-stylesheet"].includes(attr.name)).map(attr => `@${attr.name}`);
+        target.staticAttributes = [...target.attributes || []].filter(attr => !["xo-source", "xo-stylesheet", "xo-swap"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let swap = document.firstElementChild.cloneNode().classList;
-    swap.value = target instanceof Element && target.getAttribute("xo-swap") || "";
+    swap.value = target instanceof Element && (new_node.getAttribute("xo-swap") || target.getAttribute("xo-swap")) || "";
     let static = document.firstElementChild.cloneNode().classList;
     static.value = target instanceof Element && target.getAttribute("xo-static") || "";
-    (target.staticAttributes instanceof Array && (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase())) && static.add(...target.staticAttributes);
+    let swap_rules = (new_node.getAttribute("xo-swap") || '').split(/\s+/g);
+    (target.staticAttributes instanceof Array && (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase())) && static.add(...(target.staticAttributes || []).filter(attr => !swap_rules.includes(attr)));
     if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
@@ -9668,9 +9673,9 @@ xover.dom.combine = async function (target, new_node) {
         //target.observer && target.observer.disconnect();
         [...target.querySelectorAll("input[type=text][value]")].filter(input => input !== document.activeElement && input.value != input.getAttribute("value")).forEach(input => input.value = input.getAttribute("value"));
         for (let [[curr_node, new_node]] of changes) {
-            if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
-                continue;
-            }
+            //if ((curr_node instanceof HTMLElement || curr_node instanceof SVGElement) && curr_node !== target && curr_node.hasAttribute("xo-stylesheet")) {
+            //    continue;
+            //}
             if (!curr_node.parentNode) continue;
             if (!curr_node.ownerDocument.contains(curr_node)) continue;
             let target_preceding_siblings = [];
