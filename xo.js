@@ -7467,15 +7467,9 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Node.prototype, 'transform', {
                         value: function (xml_document) {
                             let self = this;
-                            if (xml_document instanceof Document && !xml_document.firstChild && xml_document.source) {
-                                return new Promise(async (resolve, reject) => {
-                                    try {
-                                        let result = self.transform(await xml_document.source.fetch().catch(e => Promise.reject(e)))
-                                        return resolve(result);
-                                    } catch (e) {
-                                        return reject(e)
-                                    }
-                                })
+                            if (xml_document instanceof Document && !xml_document.childNodes.length) {
+                                let ready = xml_document.ready;
+                                return ready.then(() => self.transform(xml_document));
                             }
                             if (xml_document instanceof Promise) {
                                 return xml_document.then((document) => self.transform(document));
