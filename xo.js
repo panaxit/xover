@@ -7558,7 +7558,7 @@ xover.modernize = async function (targetWindow) {
                                                     let ready = source.ready;
                                                     return ready.then(() => self.transform(xsl));
                                                 }
-                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value[0] == '@' ? name.value : `text()[.='${name.value}']|@*[.='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value[0] == '@' ? name.value : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
                                             }
                                         } catch (e) {
@@ -9654,7 +9654,7 @@ xover.dom.combine = async function (target, new_node) {
                 //stylesheet_href && iframe.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
                 iframe.style.backgroundColor = 'white';
                 xover.xml.combine(target, iframe);
-                Object.entries(xover.listener).forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
+                Object.entries(xover.listener).filter(([, handler]) => typeof(handler) == 'function').forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
                 //iframe.addEventListener('focusout', xover.listeners.dom.onfocusout);
                 //iframe.addEventListener('change', xover.listeners.dom.onchange);
             }
