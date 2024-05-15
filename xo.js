@@ -2504,7 +2504,7 @@ xover.xml.getDifferences = function (node1, node2) {
     }
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
-    let swap_rules = (node2.getAttribute("xo-swap") || '').split(/\s+/g);
+    let swap_rules = (node2 instanceof Element && node2.getAttribute("xo-swap") || '').split(/\s+/g);
     node1.constructor === node2.constructor && static.add(...(node1.staticAttributes || []).filter(attr => !swap_rules.includes(attr)));
     for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
         let static_attribute = node1.getAttributeNode(item.substring(1));
@@ -9421,7 +9421,7 @@ xover.xml.combine = function (target, new_node) {
     swap.value = target instanceof Element && (new_node.getAttribute("xo-swap") || target.getAttribute("xo-swap")) || "";
     let static = document.firstElementChild.cloneNode().classList;
     static.value = target instanceof Element && target.getAttribute("xo-static") || "";
-    let swap_rules = (new_node.getAttribute("xo-swap") || '').split(/\s+/g);
+    let swap_rules = (new_node instanceof Element && new_node.getAttribute("xo-swap") || '').split(/\s+/g);
     (target.staticAttributes instanceof Array && (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase())) && static.add(...(target.staticAttributes || []).filter(attr => !swap_rules.includes(attr)));
     if (target instanceof HTMLElement && new_node instanceof Element && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
