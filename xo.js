@@ -1373,7 +1373,7 @@ xover.listener.on('hashchange', function () {
 xover.listener.on('render', function () {
     let target = this.querySelector(location.hash);
     if (target) {
-        target.scrollIntoView() 
+        target.scrollIntoView()
     }
 })
 
@@ -4736,7 +4736,7 @@ xover.modernize = async function (targetWindow) {
                             ////    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                             ////} catch (e) {
                             if (!xover.browser.isIOS()) {
-                                xpath = xpath.replace(RegExp("(?<=::|@|\\/|\\[|^|\\()([\\w-_]+):([\\w-_]+|\\*)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
+                                xpath = xpath.replace(RegExp("(?<=::|@|\\/|\||\\[|^|\\()([\\w-_]+):([\\w-_]+|\\*)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
                             }
                             aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
                         } else {
@@ -5191,7 +5191,8 @@ xover.modernize = async function (targetWindow) {
                             return false;
                         }
                         return !["appendTo"].includes((event || {}).type) && document.childElementCount && [...document.childNodes].some(node => typeof (node.matches) == 'function' && node.matches(predicate));
-                    }
+                    },
+                    writable: true, enumerable: false, configurable: true
                 })
 
                 Attr.matches = Attr.matches || Object.getOwnPropertyDescriptor(Attr.prototype, 'matches');
@@ -9648,7 +9649,7 @@ xover.dom.combine = async function (target, new_node) {
                 //stylesheet_href && iframe.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
                 iframe.style.backgroundColor = 'white';
                 xover.xml.combine(target, iframe);
-                Object.entries(xover.listener).filter(([, handler]) => typeof(handler) == 'function').forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
+                Object.entries(xover.listener).filter(([, handler]) => typeof (handler) == 'function').forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
                 //iframe.addEventListener('focusout', xover.listeners.dom.onfocusout);
                 //iframe.addEventListener('change', xover.listeners.dom.onchange);
             }
