@@ -5626,13 +5626,14 @@ xover.modernize = async function (targetWindow) {
                     while (imports.length) {
                         for (let node of imports) {
                             let href = node.getAttribute("href");
+                            let source = xover.sources[href];
                             if (xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${href}" ===')]`)) {
                                 node.remove();
-                            } else if (xover.sources[href]) {
-                                //xsltProcessor.importStylesheet(xover.sources[href]);
+                            } else if (source && source.documentElement && source.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
+                                //xsltProcessor.importStylesheet(source);
                                 let fragment = document.createDocumentFragment();
                                 fragment.append(xsl.createComment(`ack:imported-from "${href}" ===>>>>>>>>>>>>>>> `));
-                                let sources = xover.sources[href].cloneNode(true);
+                                let sources = source.cloneNode(true);
                                 Object.entries(xover.json.difference(xover.xml.getNamespaces(sources), xover.xml.getNamespaces(xsl))).map(([prefix, namespace]) => {
                                     xsl.documentElement.setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, namespace)
                                 });
@@ -5642,7 +5643,7 @@ xover.modernize = async function (targetWindow) {
                                 Element.replaceChild.apply(node.parentNode, [fragment, node]); //node.replace(fragment);
                                 xsl.documentElement.selectNodes(`xsl:import[@href="${href}"]|xsl:include[@href="${href}"]`).remove(); //Si en algún caso hay más de un nodo con el mismo href, quitamos los que quedaron (sino es posible que no se quite)
                             } else {
-                                console.warn(`Import "${href}" not available.`)
+                                return Promise.reject(`Import "${href}" not available or invalid.`);
                             }
                             processed[href] = true;
                         }
