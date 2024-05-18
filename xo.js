@@ -535,7 +535,7 @@ xover.delay = function (ms) {
 
 
 xover.init = async function () {
-    let progress;
+    let progress_renders = [];
     this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
         try {
             await xover.modernize();
@@ -545,7 +545,7 @@ xover.init = async function () {
             if (history.state) delete history.state.active;
             xover.site.seed = (history.state || {}).seed || top.location.hash || '#';
             this.init.status = 'initialized';
-            progress = xover.sources['loading.xslt'].render({ action: "append" });
+            window.top.dispatchEvent(new xover.listener.Event('xover-initialized', { progress_renders }, this));
             if (xover.session.status == 'authorized' && 'session' in xover.server) {
                 await xover.session.checkStatus();
             }
@@ -567,8 +567,8 @@ xover.init = async function () {
         /*return*/ Promise.reject(e); // Ommited return to prevent hitting multiple times unhandled rejection
     }).finally(async () => {
         this.init.initializing = 'done';
-        progress = await progress || [];
-        progress.forEach(item => item.remove());
+        progress_renders = await progress_renders || [];
+        progress_renders.forEach(item => item.remove());
     });
     return this.init.initializing;
 }
