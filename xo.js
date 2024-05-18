@@ -2872,6 +2872,8 @@ xover.Source = function (tag) {
                 if (tag_string[0] == '#' && url instanceof URL && !['.', '^', '~', '#'].includes(tag_string)) url.hash = tag_string;
 
                 let settings = xover.json.merge({}, xover.manifest.getSettings(url), self.settings, this.settings);
+                let before_event = new xover.listener.Event('beforeFetch', { tag: tag_string, settings }, self);
+                window.top.dispatchEvent(before_event);
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
                 parameters = evaluate_json(parameters);
 
@@ -2909,8 +2911,6 @@ xover.Source = function (tag) {
                 }
 
                 try {
-                    let before_event = new xover.listener.Event('beforeFetch', { tag: tag_string, settings, parameters }, self);
-                    window.top.dispatchEvent(before_event);
                     await before_event.detail.returnValue;
                     if (before_event.cancelBubble || before_event.defaultPrevented) return;
                     if (source instanceof Node) {
