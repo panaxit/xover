@@ -1503,6 +1503,19 @@ xover.Manifest = function (manifest = {}) {
         return true;
     }
 
+    manifest["sources"] = new Proxy(manifest["sources"] || {}, {
+        get: function (self, key) {
+            return self[key]
+        },
+        set: function (self, key, value) {
+            self[key] = value;
+            return true;
+        },
+        has: function (self, key) {
+            return Object.keys(self || {}).some(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key);
+        }
+    });
+
     let base_manifest = {
         "server": {},
         "session": {},
@@ -8497,58 +8510,57 @@ xover.Response = function (response, request) {
                 Object.fromEntries([...new URLSearchParams((request.headers.get('Accept') || '').toLowerCase().replace(/;\s*/g, '&'))])
                 , Object.fromEntries([...new URLSearchParams((response.headers.get('Content-Type') || '').toLowerCase().replace(/;\s*/g, '&'))])
             )["charset"] || '';
-            let contentType = response.headers.get('Content-Type') || 'text/plain';
+            let content_type = (response.headers.get('Content-Type') || 'text/plain').toLowerCase();
+            let request_headers = ((this.settings || {}).headers || new Headers({}));
 
-            let responseContent;
-            if (contentType.toLowerCase().indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) {
+            let response_content;
+            if (content_type.indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) {
                 //await response.json().then(json => body = json);
                 await response.text().then(text => body = text);
-                responseContent = body;
-            } else if (contentType.toLowerCase().indexOf("json") != -1 && charset.indexOf("iso-8859-1") == -1) {
-                responseContent = await response.json();
-                body = JSON.stringify(responseContent);
-            } else if (contentType.toLowerCase().split("/")[0].includes("image", "video", "audio") && ((((this.settings || {}).headers || new Headers({})).get("accept") || contentType).split(/\s*,\s*/ig)).includes(contentType)) {
-                responseContent = await response.blob();
+                response_content = body;
+            } else if (content_type.indexOf("json") != -1 && charset.indexOf("iso-8859-1") == -1) {
+                response_content = await response.json();
+                body = JSON.stringify(response_content);
+            } else if (content_type.split("/")[0].includes("image", "video", "audio") && ((request_headers.get("accept") || content_type).split(/\s*,\s*/ig)).includes(content_type)) {
+                response_content = await response.blob();
             } else {
                 const clonedResponse = response.clone();
-                responseContent = charset.indexOf("iso-8859-1") == -1 && await response.text() || "";
-                if (charset.indexOf("iso-8859-1") != -1 || responseContent.indexOf('�', 2) != -1) {
+                response_content = charset.indexOf("iso-8859-1") == -1 && await response.text() || "";
+                if (charset.indexOf("iso-8859-1") != -1 || response_content.indexOf('�', 2) != -1) {
                     const buffer = await clonedResponse.arrayBuffer();
                     const decoder = new TextDecoder('iso-8859-1');
                     const text = decoder.decode(buffer);
-                    responseContent = text;
+                    response_content = text;
                 }
-                if (responseContent.substr(0, 2) === 'ÿþ') { //Removes BOM mark
-                    responseContent = responseContent.replace(/\x00/ig, '');
-                    responseContent = responseContent.substr(2);
+                if (response_content.substr(0, 2) === 'ÿþ') { //Removes BOM mark
+                    response_content = response_content.replace(/\x00/ig, '');
+                    response_content = response_content.substr(2);
                 }
             }
-
             let cache_control = response.headers.get("Cache-Control") || request.headers.get("Cache-Control");
             expiry = (new URLSearchParams(cache_control || {}).get("max-age") || 0) * 1000;
             if (expiry && !["no-store"].includes(cache_control)) {
-                xover.storehouse.write('sources', request.url.href, responseContent, contentType);
+                xover.storehouse.write('sources', request.url.href, response_content, content_type);
             }
 
             Object.defineProperty(response, 'responseText', {
                 get: function () {
-                    return responseContent;
+                    return response_content;
                 }
             });
 
             let _body_type;
             Object.defineProperty(response, 'bodyType', {
                 get: function () {
-                    let contentType = response.headers.get('Content-Type') || '*/*';
                     if (_body_type) {
                         return _body_type;
-                    } else if (responseContent instanceof Blob) {
+                    } else if (response_content instanceof Blob) {
                         return 'blob';
-                    } else if (contentType.toLowerCase().indexOf("html") != -1) {
+                    } else if (content_type.indexOf("html") != -1) {
                         return "html";
-                    } else if ((contentType.toLowerCase().indexOf("json") != -1 || contentType.toLowerCase().indexOf("manifest") != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) && xover.json.isValid(xover.json.tryParse(responseContent))) {
+                    } else if (content_type.indexOf("json") != -1 || ((content_type.indexOf('application/octet-stream') != -1 || content_type.indexOf('text/plain') != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) && response_content.trimStart().toLowerCase().indexOf("{") == 0 && xover.json.isValid(xover.json.tryParse(response_content)))) {
                         return "json";
-                    } else if ((contentType.toLowerCase().indexOf("xml") != -1 || contentType.toLowerCase().indexOf("xsl") != -1 || responseContent.toLowerCase().indexOf("<?xml ") != -1 || contentType.toLowerCase().indexOf('application/octet-stream') != -1) && xover.xml.isValid(xover.xml.tryParse(responseContent))) {
+                    } else if (content_type.indexOf("xml") != -1 || content_type.indexOf("xsl") != -1 || ((content_type.indexOf('application/octet-stream') != -1 || content_type.indexOf('text/plain') != -1) && response_content.trimStart().toLowerCase().indexOf("<") == 0 && xover.xml.isValid(xover.xml.tryParse(response_content)))) {
                         return "xml"
                     } else {
                         return "text";
@@ -8560,7 +8572,7 @@ xover.Response = function (response, request) {
 
             switch (response.bodyType) {
                 case "html":
-                    let html_doc = new DOMParser().parseFromString(responseContent, 'text/html');
+                    let html_doc = new DOMParser().parseFromString(response_content, 'text/html');
                     if (!html_doc.head.childNodes.length) {
                         if (html_doc.body.childNodes.length == 1) {
                             body = html_doc.body.firstChild;
@@ -8582,7 +8594,7 @@ xover.Response = function (response, request) {
                     });
                     break;
                 case "xml":
-                    body = xover.xml.createDocument(responseContent, { autotransform: false });
+                    body = xover.xml.createDocument(response_content, { autotransform: false });
                     Object.defineProperty(response, 'json', {
                         value: null
                     });
@@ -8594,7 +8606,7 @@ xover.Response = function (response, request) {
                     break;
                 case "json":
                 case "manifest":
-                    body = xover.json.tryParse(responseContent);
+                    body = xover.json.tryParse(response_content);
                     Object.defineProperty(response, 'json', {
                         get: function () {
                             return body;
@@ -8616,8 +8628,8 @@ xover.Response = function (response, request) {
                     break;
                 case "blob":
                     let obj;
-                    let type = responseContent.type;
-                    const url = URL.createObjectURL(responseContent);
+                    let type = response_content.type;
+                    const url = URL.createObjectURL(response_content);
                     if (type.startsWith('image/')) {
                         obj = document.createElement('img');
                     } else if (type.startsWith('video/')) {
@@ -8627,7 +8639,7 @@ xover.Response = function (response, request) {
                         obj = document.createElement('audio');
                         obj.controls = true;
                     } else {
-                        body = responseContent;
+                        body = response_content;
                         break;
                     }
                     obj.src = url;
@@ -8635,7 +8647,7 @@ xover.Response = function (response, request) {
                     body = obj;
                     break;
                 default:
-                    body = responseContent;
+                    body = response_content;
                     Object.defineProperty(response, 'json', {
                         value: null
                     });
