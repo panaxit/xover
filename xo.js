@@ -2885,7 +2885,7 @@ xover.Source = function (tag) {
                 if (tag_string[0] == '#' && url instanceof URL && !['.', '^', '~', '#'].includes(tag_string)) url.hash = tag_string;
 
                 let settings = xover.json.merge({}, xover.manifest.getSettings(url), self.settings, this.settings);
-                let before_event = new xover.listener.Event('beforeFetch', { tag: tag_string, settings }, self);
+                let before_event = new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, settings }, self);
                 window.top.dispatchEvent(before_event);
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
                 parameters = evaluate_json(parameters);
@@ -10770,14 +10770,14 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(this, 'fetch', {
         value: async function (...args) {
             __document.settings.merge(...args);
-            __document.replaceChildren()
+            //__document.replaceChildren()
             await xover.storehouse.read('sources', store.tag).then((stored_document) => {
-                if (stored_document && stored_document.firstChild) {
+                //if (stored_document && stored_document.firstChild) {
                     //__document.disconnect();
                     __document.replaceContent(...stored_document.childNodes)
-                }
+                //}
             })
-            await __document.ready;
+            await __document.fetch();
             await this.initialize();
         },
         writable: false, enumerable: false, configurable: false
