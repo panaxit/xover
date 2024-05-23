@@ -2718,14 +2718,14 @@ xover.Source = function (tag) {
                         definition = source;
                         return definition
                     }
-                    //source = JSON.parse(JSON.stringify(source));
-                    source = manifest_key && manifest_key[0] === '^' && [...tag_string.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
-                        if (typeof (source) == 'string') {
-                            source = tag_string.replace(new RegExp(manifest_key, "i"), source)
-                        } else {
-                            Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = typeof (value) == 'string' ? value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")]) : value) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
-                        }
-                    }) || source;
+                    ////source = JSON.parse(JSON.stringify(source));
+                    //source = manifest_key && manifest_key[0] === '^' && [...tag_string.matchAll(new RegExp(manifest_key, "ig"))].forEach(([...groups]) => {
+                    //    if (typeof (source) == 'string') {
+                    //        source = tag_string.replace(new RegExp(manifest_key, "i"), source)
+                    //    } else {
+                    //        Object.keys(source).forEach(fn => source[fn].constructor === [].constructor && source[fn].forEach((value, ix) => source[fn][ix] = typeof (value) == 'string' ? value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")]) : value) || source[fn].constructor === {}.constructor && Object.entries(source[fn]).forEach(([el, value]) => source[fn][el] = !value ? value : value.replace(/\{\$(\d+|&)\}/g, (...args) => groups[args[1].replace("&", "0")])))
+                    //    }
+                    //}) || source;
                     if (source && source.constructor !== {}.constructor) {
                         source = JSON.parse(JSON.stringify(source));
                     }
@@ -2845,7 +2845,37 @@ xover.Source = function (tag) {
             if (tag_string[0] == '#' && xover.manifest.init.status != 'initialized') {
                 await xover.manifest.init();
             }
+            let evaluate_source = (value) => {
+                let result;
+                if (value == null) {
+                    result = value
+                } else if ([].constructor === value.constructor) {
+                    result = [];
+                    for (let item of value) {
+                        result.push(evaluate_source(item))
+                    }
+                } else if ({}.constructor === value.constructor) {
+                    result = {}
+                    for (let key in value) {
+                        result[evaluate_source(key)] = evaluate_source(value[key]);
+                    }
+                } else if (typeof (value) == 'string') {
+                    if (/\$[\d&<]/.test(value)) {
+                        value = tag_string.replace(new RegExp(manifest_key, "gi"), value)
+                    }
+                    if (typeof (value) == 'string' && value.indexOf('${') !== -1) {
+                        //result = value.indexOf && value.indexOf('${') !== -1 && eval(`(${value.replace(/^\$\{(.*)\}$/, '$1')})`) || value;
+                        value = eval("`" + value + "`");
+                    }
+                    result = value;
+                } else {
+                    result = value;
+                }
+                return result;
+            }
             let definition = self.definition;
+            definition = evaluate_source(definition);
+
             let sources;
             if (definition instanceof Array) {
                 sources = definition
@@ -2856,28 +2886,6 @@ xover.Source = function (tag) {
             }
             let response;
             while (!response && sources.length) {
-                let evaluate_json = (value) => {
-                    let result;
-                    if (value == null) {
-                        result = value
-                    } else if ([].constructor === value.constructor) {
-                        result = [];
-                        for (let item of value) {
-                            result.push(evaluate_json(item))
-                        }
-                    } else if ({}.constructor === value.constructor) {
-                        result = {}
-                        for (let key in value) {
-                            result[key] = evaluate_json(value[key]);
-                        }
-                    } else if (value.indexOf && value.indexOf('${') !== -1) {
-                        //result = value.indexOf && value.indexOf('${') !== -1 && eval(`(${value.replace(/^\$\{(.*)\}$/, '$1')})`) || value;
-                        result = eval("`" + value + "`");
-                    } else {
-                        result = value;
-                    }
-                    return result;
-                }
                 let source = sources.shift();
                 if (!source) continue;
                 let url;
@@ -2885,12 +2893,9 @@ xover.Source = function (tag) {
                 if (tag_string[0] == '#' && url instanceof URL && !['.', '^', '~', '#'].includes(tag_string)) url.hash = tag_string;
 
                 let settings = xover.json.merge({}, xover.manifest.getSettings(url), self.settings, this.settings);
-                let before_event = new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, settings }, self);
-                window.top.dispatchEvent(before_event);
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
-                parameters = evaluate_json(parameters);
-
-                source = typeof (source) == 'string' && source.indexOf('${') !== -1 ? eval("`" + source + "`") : source;
+                let before_event = new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, parameters, settings }, self);
+                window.top.dispatchEvent(before_event);
                 //parameters = parameters.concat(args);
 
                 if (typeof (source) == 'string' && source.replace(/^server:/, '') in xover.server || existsFunction(source)) {
@@ -7557,6 +7562,9 @@ xover.modernize = async function (targetWindow) {
                                     //if (navigator.userAgent.indexOf("iPhone") != -1 || xover.debug["xover.xml.consolidate"]) {
                                     //    xsl = xover.xml.consolidate(xsl); //Corregir casos cuando tiene apply-imports
                                     //}
+                                    let tag = xml.tag || `#${xsl.href || ""}`;
+                                    xml.tag = tag;
+                                    window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
 
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'globalization:')]`)) {
                                         try {
@@ -7657,9 +7665,6 @@ xover.modernize = async function (targetWindow) {
                                     ////if (!xml.documentElement) {
                                     ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                     ////}
-                                    let tag = xml.tag || `#${xsl.href || ""}`;
-                                    xml.tag = tag;
-                                    window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                     let timer_id = `${xsl.href || "Transform"}-${Date.now()}`;
                                     performance.mark(`${timer_id} - Transform start`);
                                     if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
@@ -8558,7 +8563,7 @@ xover.Response = function (response, request) {
                         return 'blob';
                     } else if (content_type.indexOf("html") != -1) {
                         return "html";
-                    } else if (content_type.indexOf("json") != -1 || ((content_type.indexOf('application/octet-stream') != -1 || content_type.indexOf('text/plain') != -1 || (request.url.href || '').match(/(\.manifest|\.json)$/i)) && response_content.trimStart().toLowerCase().indexOf("{") == 0 && xover.json.isValid(xover.json.tryParse(response_content)))) {
+                    } else if (content_type.indexOf("json") != -1 || ((content_type.indexOf('application/octet-stream') != -1 || content_type.indexOf('text/plain') != -1 || content_type.indexOf('manifest') != -1 || (request.url.href || '').match(/(\.json)$/i)) && response_content.trimStart().toLowerCase().indexOf("{") == 0 && xover.json.isValid(xover.json.tryParse(response_content)))) {
                         return "json";
                     } else if (content_type.indexOf("xml") != -1 || content_type.indexOf("xsl") != -1 || ((content_type.indexOf('application/octet-stream') != -1 || content_type.indexOf('text/plain') != -1) && response_content.trimStart().toLowerCase().indexOf("<") == 0 && xover.xml.isValid(xover.xml.tryParse(response_content)))) {
                         return "xml"
@@ -10772,10 +10777,10 @@ xover.Store = function (xml, ...args) {
             __document.settings.merge(...args);
             //__document.replaceChildren()
             await xover.storehouse.read('sources', store.tag).then((stored_document) => {
-                //if (stored_document && stored_document.firstChild) {
+                if (stored_document && stored_document.firstChild) {
                     //__document.disconnect();
                     __document.replaceContent(...stored_document.childNodes)
-                //}
+                }
             })
             await __document.fetch();
             await this.initialize();
@@ -11717,6 +11722,7 @@ xover.listener.on('dialog::iframe', function () {
         iframe.style.minWidth = '80vw'
         iframe.style.height = (iframe.contentDocument.firstElementChild.offsetHeight + 0) + 'px';
         iframe.style.width = (iframe.contentDocument.firstElementChild.scrollWidth + 100) + 'px';
+        iframe.style.maxWidth = `100%`
     }
 })
 
