@@ -11975,7 +11975,7 @@ xover.listener.on('input', function (event) {
     }
 })
 
-xover.listener.on('click::ancestor-or-self::a[@href="#"]', function (event) {
+xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
     if (event.defaultPrevented) return;
     if (!this.closest("menu,.autoscroll-disabled")) {
         window.scrollTo({ top: 0 });
@@ -11983,7 +11983,7 @@ xover.listener.on('click::ancestor-or-self::a[@href="#"]', function (event) {
     event.preventDefault();
 })
 
-xover.listener.on('click::ancestor-or-self::a[@scroll-restoration]', function (event) {
+xover.listener.on('click::*[ancestor-or-self::a[@scroll-restoration]]', function (event) {
     let scrollRestoration = this.closest("a[scroll-restoration]").getAttribute("scroll-restoration");
     xover.delay(100).then(() => {
         let meta = window.document.querySelector(`head meta[name=scroll-restoration]`) || window.document.head.appendChild(xover.xml.createNode(`<meta name="scroll-restoration" content="${scrollRestoration}"/>`));
@@ -11991,7 +11991,7 @@ xover.listener.on('click::ancestor-or-self::a[@scroll-restoration]', function (e
     })
 })
 
-xover.listener.on('click::ancestor-or-self::a', function (event) {
+xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     if (event.defaultPrevented) return;
     xover.listener.click.target = event.target;
     xover.delay(250).then(() => xover.listener.click.target = undefined)
