@@ -2398,6 +2398,7 @@ Object.defineProperty(xover.site, 'position', {
 Object.defineProperty(xover.site, 'active', {
     get: function () {
         if (xover.session.getKey("status") != 'authorized' && 'login' in xover.server && xover.server['login']) {
+            delete (history.state || {}).active;
             return "#login";
         } else {
             return (history.state || {}).active || this.seed;
@@ -3526,6 +3527,7 @@ xover.spaces["debug"] = "http://panax.io/debug"
 xover.spaces["height"] = "http://panax.io/state/height"
 xover.spaces["html"] = "http://www.w3.org/1999/xhtml"
 xover.spaces["js"] = "http://panax.io/xover/javascript"
+xover.spaces["data"] = "http://panax.io/data"
 xover.spaces["meta"] = "http://panax.io/metadata"
 xover.spaces["metadata"] = "http://panax.io/metadata"
 xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
@@ -6038,8 +6040,12 @@ xover.modernize = async function (targetWindow) {
                                 } else {
                                     let attribute_node;
                                     attribute_node = node.getAttributeNode(attribute);
-                                    attribute_node = attribute_node || node.createAttribute(attribute, null);
-                                    this.scopeNode = attribute_node;
+                                    try {
+                                        attribute_node = attribute_node || node.createAttribute(attribute, null);
+                                        this.scopeNode = attribute_node;
+                                    } catch (e) {
+                                        console.error(e, this)
+                                    }
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 }
                             }
@@ -12500,7 +12506,11 @@ xover.listener.on('ErrorEvent', function () {
     event.preventDefault();
 })
 
-xover.listener.on('Response:failure?status=499', function ({ statusText }) {
+xover.listener.on('Response:failure?status=499', function ({  }) {
+    event.preventDefault()
+})
+
+xover.listener.on('Response:failure?status=401', function ({  }) {
     event.preventDefault()
 })
 
