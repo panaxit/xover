@@ -1002,6 +1002,8 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             _event.detail["target"] = _event.detail["target"] || context.documentElement;
             _event.detail["document"] = _event.detail["document"] || context.document;
             _event.detail["body"] = _event.detail["body"] || context.body;
+            _event.detail["bodyType"] = _event.detail["bodyType"] || context.bodyType;
+            _event.detail["status"] = _event.detail["status"] || context.status;
             //_event.detail["tag"] = _event.detail["tag"] || context.tag;
             node = _event.detail["return_value"] || context.document;
             node = node instanceof Document && node.documentElement || node;
@@ -12506,11 +12508,7 @@ xover.listener.on('ErrorEvent', function () {
     event.preventDefault();
 })
 
-xover.listener.on('Response:failure?status=499', function ({  }) {
-    event.preventDefault()
-})
-
-xover.listener.on('Response:failure?status=401', function ({  }) {
+xover.listener.on('Response:failure?status=499', function ({ }) {
     event.preventDefault()
 })
 
@@ -12528,11 +12526,14 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     try {
         let reason = event.message || event.reason;
         if (!reason || reason == 'Script error.') return;
-        if (!(/*typeof (reason) == 'string' || */reason instanceof Error)) {
-            let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
-            window.top.dispatchEvent(unhandledrejection_event);
-            if (unhandledrejection_event.defaultPrevented) return;
+        //if (!(/*typeof (reason) == 'string' || */reason instanceof Error)) {
+        let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
+        window.top.dispatchEvent(unhandledrejection_event);
+        if (unhandledrejection_event.defaultPrevented) return;
+        if ((unhandledrejection_event.detail || {}).returnValue) {
+            reason = unhandledrejection_event.detail.returnValue;
         }
+        //}
         if (reason && reason.stack) console.error(reason.stack)
         if (reason instanceof TypeError || reason instanceof DOMException) {
             String(reason).alert()
