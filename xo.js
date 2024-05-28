@@ -553,7 +553,7 @@ xover.init = async function () {
             await Promise.all(xover.manifest.start.map(async href => await xover.sources[href].ready && xover.sources[href])).catch(e => e && e.render && e.render() || console.error(e));
 
             await xover.stores.restore();
-            xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || "";
+            //xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || ""; //causes troubles at firefox
             xover.dom.updateTitle();
             xover.site.sections.forEach(section => section.render());
             let active = xover.stores.active;
@@ -2626,21 +2626,33 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                 }), "text/xml");
             }
             if (sXML && result.getElementsByTagName && (result.getElementsByTagName('parsererror').length || 0) > 0) {
-                for (let message of [...result.querySelectorAll('parsererror div')]) {
-                    if (String(message.textContent).match(/prefix|prefijo/)) {
-                        let prefix = (message.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
+                for (let parsererror of [...result.querySelectorAll('parsererror div, parsererror sourcetext')]) {
+                    let message = parsererror.nodeName == 'sourcetext' ? parsererror.previousSibling.textContent : parsererror.textContent;
+                    if (parsererror.nodeName == 'sourcetext') {
+                        let new_node = parsererror.textContent.replace(/(?<=\<|\s)(\w+):([^\s]+)/g, function (match, prefix, name) {
+                            let xmlns = xover.spaces[prefix.replace(/:/, '')];
+                            if (xmlns) {
+                                return `${prefix}:${name} xmlns:${prefix}="${xmlns}"`;
+                            } else {
+                                return match;
+                            }
+                        })
+                        new_node = new_node.replace(/\^/g, '');
+                        result = xover.xml.createDocument(new_node, options);
+                    } else if (String(message).match(/prefix|prefijo/)) {
+                        let prefix = (parsererror.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
                         if (!xover.spaces[prefix] || sXML.indexOf(` xmlns:${prefix}=`) != -1) {
                             //xml.documentElement.appendChild(message.documentElement);
-                            return Promise.reject(message.textContent.match("(error [^:]+):(.+)"));
+                            return Promise.reject(message.match("(error [^:]+):(.+)"));
                         }
                         //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
                         sXML = sXML.replace(new RegExp(`(<[^\\s\/\!\?>]+)`), `$1 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
                         result = xover.xml.createDocument(sXML, options);
                         return result;
-                    } else if (message.closest("html") && String(message.textContent).match(/Extra content at the end of the document/)) {
+                    } else if (message.closest("html") && String(message).match(/Extra content at the end of the document/)) {
                         message.closest("html").remove();
                         //result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
-                    } else if (String(message.textContent).match(/Extra content at the end of the document/)) {
+                    } else if (String(message).match(/Extra content at the end of the document/)) {
                         let frag = window.document.createDocumentFragment();
                         let p = window.document.createElement('p');
                         p.innerHTML = xml;
@@ -2650,9 +2662,9 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                         if (options["silent"] !== true) {
                             xover.dom.createDialog(message.closest("html"));
                         }
-                        throw (new Error(message.textContent));
+                        throw (new Error(message));
                     } else {
-                        return Promise.reject(message.textContent.match("(error [^:]+):(.+)").pop())
+                        return Promise.reject(message.match("(error [^:]+):(.+)").pop())
                     }
                 }
             }
@@ -3641,7 +3653,7 @@ xover.dom.createDialog = function (message) {
 
     dialog.querySelector("section").append(message);
     document.querySelector(`#${dialog_id}`);
-    dialog.showModal();
+    typeof (dialog.showModal) == 'function' && dialog.showModal();
     xover.messages.set(original_message, dialog);
     return dialog;
 }
@@ -7872,7 +7884,7 @@ xover.modernize = async function (targetWindow) {
                                     let document = xover.sources[stylesheet];
                                     await document.render({ target: self });
                                 }
-                            } else if (source_document instanceof xover.Store) {
+                            } else if (source_document instanceof xover.Store || source_document instanceof xover.Source) {
                                 await source_document.render(self)
                             } else {
                                 let body = source_document.cloneNode(true);
@@ -8087,7 +8099,7 @@ xover.modernize = async function (targetWindow) {
                                 let dom;
                                 if (xsl) {
                                     if (!xsl.selectFirst(`/*/comment()[.='ack:optimized']`)) {
-                                        xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
+                                        xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
                                         xsl.documentElement.prepend(new Comment("ack:optimized"))
                                     }
                                     data.tag = /*'#' + */xsl.href.split(/[\?#]/)[0];
@@ -9242,11 +9254,11 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
 
             for (let el of return_value.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
-                el.prepend(xover.xml.createNode(`<xsl:param name="xo:context" select="."/>`));
+                el.prepend(xover.xml.createNode(`<xsl:param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="."/>`));
             }
 
             for (let el of return_value.select(`//xsl:template[xsl:param/@name="xo:context"]//xsl:apply-templates[not(xsl:with-param/@name="xo:context")]|//xsl:template[xsl:param/@name="xo:context"]//xsl:call-template[not(xsl:with-param/@name="xo:context")]`)) {
-                el.prepend(xover.xml.createNode(`<xsl:with-param name="xo:context" select="$xo:context"/>`));
+                el.prepend(xover.xml.createNode(`<xsl:with-param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="$xo:context"/>`));
             }
 
             for (let el of return_value.select(`(//xsl:*[not(@match="/")]/html:*[not(self::html:script or self::html:style or self::html:link)]|//xsl:*/svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
@@ -9254,7 +9266,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
 
             for (let el of return_value.select(`//xsl:template[not(@match="/")]//xsl:element`)) {
-                el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
+                el.prepend(xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
                 //el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
             }
         }
@@ -9379,7 +9391,7 @@ xover.xml.createFragment = function (xml_string) {
 
 xover.xml.createNode = function (xml_string, options) {
     let result = xover.xml.createDocument(xml_string, options);
-    result.disconnect();
+    //result.disconnect();
     result = result.firstElementChild || result
     if (!result.prefix && result.namespaceURI && !result.attributes.xmlns) {
         result.setAttributeNS(xover.spaces["xmlns"], "xmlns", result.namespaceURI)
@@ -9405,6 +9417,13 @@ xover.xml.parseValue = function (value) {
 xover.xml.staticMerge = function (node1, node2) {
     node1.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
+    for (let text of node2.select(`.//text()[starts-with(., '<') and substring(.,string-length(.),1)='>']`)) {
+        try {
+            text.replaceWith(xover.xml.createNode(text.value))
+        } catch (e) {
+
+        }
+    }
     if (node1.classList && node2.classList && node1.classList.contains("xo-working")) node2.classList.add("xo-working");
     if (node1.classList && node2.classList && node1.classList.contains("xo-fetching")) node2.classList.add("xo-fetching");
     if (!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working,.xo-fetching")) || node1.nodeName.toLowerCase() !== node2.nodeName.toLowerCase() || node1.isEqualNode(node2)) return;
