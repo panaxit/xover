@@ -1992,6 +1992,7 @@ Object.defineProperty(xover.session, 'clearCache', {
 
 xover.site = new Proxy(Object.assign({}, history.state), {
     get: function (self, key) {
+        if (typeof (key) !== 'string') return self[key]
         if (!history.state) {
             with ((window.top || window)) {
                 //history.replaceState({}, {}, location.pathname + location.search + (location.hash || ''));
@@ -2092,7 +2093,7 @@ class SearchParams {
         }
         let searchText = this.params.toString();
         history[`${action}State`](current_state, {}, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
-        window.top.dispatchEvent(new xover.listener.Event(`searchParams`, { param }, this));
+        window.top.dispatchEvent(new xover.listener.Event(`searchParams`, { param, params: { ...Object.fromEntries([...this.params.entries()]) } }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
     }
 
@@ -2165,7 +2166,7 @@ Object.defineProperty(xover.site, 'state', {
                 self[key] = input;
                 if (old_value != input && key[0] != '#') {
                     window.top.dispatchEvent(new xover.listener.Event(`change::#state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
-                    xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
+                    xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site-state:${key}')]`)).forEach(([el]) => el.render());
                     for (let subscriber of Object.keys(xover.subscribers.state[key])) {
                         subscriber.evaluate()
                     }
@@ -2649,7 +2650,7 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                         sXML = sXML.replace(new RegExp(`(<[^\\s\/\!\?>]+)`), `$1 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
                         result = xover.xml.createDocument(sXML, options);
                         return result;
-                    } else if (message.closest("html") && String(message).match(/Extra content at the end of the document/)) {
+                    } else if (parsererror.closest("html") && String(message).match(/Extra content at the end of the document/)) {
                         message.closest("html").remove();
                         //result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
                     } else if (String(message).match(/Extra content at the end of the document/)) {
@@ -2658,7 +2659,7 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                         p.innerHTML = xml;
                         frag.append(...p.childNodes);
                         return frag;
-                    } else if (message.closest("html")) {
+                    } else if (parsererror.closest("html")) {
                         if (options["silent"] !== true) {
                             xover.dom.createDialog(message.closest("html"));
                         }
@@ -3547,8 +3548,9 @@ xover.spaces["metadata"] = "http://panax.io/metadata"
 xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["session"] = "http://panax.io/session"
 xover.spaces["shell"] = "http://panax.io/shell"
-xover.spaces["searchParams"] = "http://panax.io/site/searchParams"
 xover.spaces["site"] = "http://panax.io/site"
+xover.spaces["site-state"] = "http://panax.io/site/state"
+xover.spaces["searchParams"] = "http://panax.io/site/searchParams"
 xover.spaces["state"] = "http://panax.io/state"
 xover.spaces["svg"] = "http://www.w3.org/2000/svg"
 xover.spaces["temp"] = "http://panax.io/temp"
@@ -5387,7 +5389,7 @@ xover.modernize = async function (targetWindow) {
                                 detail.args = detail.args || []
                                 detail.args.concat(arg)
                             } else if (arg && arg.constructor === {}.constructor) {
-                                detail.assign(arg)
+                                detail = { ...detail, ...arg }
                             } else {
                                 detail.args = detail.args || []
                                 detail.args.push(arg)
@@ -6052,7 +6054,7 @@ xover.modernize = async function (targetWindow) {
                                     this.scopeNode = textNode;
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 } else {
-                                    let attribute_node;
+                                     let attribute_node;
                                     attribute_node = node.getAttributeNode(attribute);
                                     try {
                                         attribute_node = attribute_node || node.createAttribute(attribute, null);
@@ -7617,6 +7619,9 @@ xover.modernize = async function (targetWindow) {
                                             let param_name = param.getAttribute("name").split(":").pop();
                                             //if (!(param_name in xover.session)) xover.session[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
                                             let session_value = xover.session[param.getAttribute("name").split(/:/).pop()];
+                                            if (session_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                session_value = eval(`\`${param.value}\``)
+                                            }
                                             if (session_value != undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), session_value);
                                             }
@@ -7629,9 +7634,27 @@ xover.modernize = async function (targetWindow) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop();
                                             //if (!(param_name in xover.state)) xover.state[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
-                                            let state_value = [xover.state[param_name], xover.stores.active.state[param_name], xover.site[param_name]].coalesce();
+                                            let state_value = this.store instanceof xover.Store && this.store.state[param_name] || undefined;/*, xover.site[param_name] removed to avoid unwanted behavior*/
+                                            if (state_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                state_value = eval(`\`${param.value}\``)
+                                            }
                                             if (state_value != undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), state_value);
+                                            }
+                                        } catch (e) {
+                                            //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
+                                            Promise.reject(e.message);
+                                        }
+                                    };
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site-state')]`)) {
+                                        try {
+                                            let param_name = param.getAttribute("name").split(/:/).pop()
+                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.state.${param_name.replace(/-/g, '.')})`) : xover.site.state[param_name];
+                                            if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                param_value = eval(`\`${param.value}\``)
+                                            }
+                                            if (param_value != undefined) {
+                                                xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
@@ -7641,7 +7664,10 @@ xover.modernize = async function (targetWindow) {
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
-                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`) : xover.site[param_name];
+                                            let param_value = xover.site[param_name];
+                                            if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                param_value = eval(`\`${param.value}\``)
+                                            }
                                             if (param_value != undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
@@ -7655,11 +7681,14 @@ xover.modernize = async function (targetWindow) {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             let param_value = xover.site.searchParams.get(param_name);
                                             if (!xover.site.searchParams.has(param_name)) {
-                                                let default_value = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
-                                                if (typeof (default_value) === 'function') {
-                                                    param_value = default_value(param_value)
-                                                } else {
-                                                    param_value = default_value !== undefined ? default_value : '';
+                                                //let default_value = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
+                                                //if (typeof (default_value) === 'function') {
+                                                //    param_value = default_value(param_value)
+                                                //} else {
+                                                //    param_value = default_value !== undefined ? default_value : '';
+                                                //}
+                                                if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                    param_value = eval(`\`${param.value}\``)
                                                 }
                                             }
                                             if (param_value !== undefined) {
@@ -7676,10 +7705,13 @@ xover.modernize = async function (targetWindow) {
                                     };
                                     for (let param_name of xsl.selectNodes(`//xsl:stylesheet/xsl:param/@name`).filter(name => this.target && this.target.getAttribute(name.value))) {
                                         let param = param_name.parentNode;
-                                        let prefix = param_name.prefix || '';
-                                        param_name = param_name.value;
-
-                                        xsltProcessor.setParameter(null, param_name, this.target.getAttribute(param_name))
+                                        let param_value = this.target.getAttribute(param_name)
+                                        if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                            param_value = eval(`\`${param.value}\``)
+                                        }
+                                        if (param_value != undefined) {
+                                            xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
+                                        }
                                     }
 
                                     ////if (!xml.documentElement) {
@@ -9324,7 +9356,14 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 }
             }
             if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
-                return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "))
+                return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "));
+                for (let attr of [...return_value.documentElement.attributes].filter(attr => attr.prefix && attr.namespaceURI === 'http://www.w3.org/2000/xmlns/')) {
+                    if (attr.localName in xover.spaces && xover.spaces[attr.localName] != attr.value) {
+                        console.warn(`Prefix ${attr.localName} can't be redefined to "${attr.value} because it is already assigned to ${xover.spaces[attr.localName]} `)
+                        continue;
+                    }
+                    xover.spaces[attr.localName] = attr.value
+                }
             }
         }
         return return_value;
@@ -10345,22 +10384,25 @@ xover.Store = function (xml, ...args) {
 
     this.state = new Proxy({}, {
         get: function (target, name) {
-            if (!__document.documentElement) return target[name];
-            try {
-                return JSON.parse(__document.documentElement.getAttribute(`state:${name}`)) //name in target && target[name];
-            } catch (e) {
-                return (__document.documentElement.getAttribute(`state:${name}`));
-            }
+            return (xover.site.state[_tag] || {})[name];
+            //if (!__document.documentElement) return target[name];
+            //try {
+            //    return JSON.parse(__document.documentElement.getAttribute(`state:${name}`)) //name in target && target[name];
+            //} catch (e) {
+            //    return (__document.documentElement.getAttribute(`state:${name}`));
+            //}
         },
         set: function (target, name, value) {
             if (value && ['function'].includes(typeof (value))) {
                 throw (new Error('State value is not valid type'));
             }
-            let old_value = store.state[name]
-            if (old_value == value) return;
-            target[name] = value;
-            if (!__document.documentElement) return;
-            __document.documentElement.setAttributeNS(xover.spaces["state"], `state:${name}`, value);
+            //let old_value = store.state[name]
+            //if (old_value == value) return;
+            //target[name] = value;
+            //if (!__document.documentElement) return;
+            //__document.documentElement.setAttributeNS(xover.spaces["state"], `state:${name}`, value);
+            xover.site.state[_tag] = xover.site.state[_tag] || {};
+            xover.site.state[_tag][name] = value;
         }
     })
 
