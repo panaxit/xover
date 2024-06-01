@@ -4212,7 +4212,8 @@ Object.defineProperty(xover.sources, 'xover/databind.xslt', {
 
 Object.defineProperty(xover.stores, '#', {
     get: function () {
-        return xover.manifest.sources["#"] && (this[xover.manifest.sources["#"]] || new xover.Store(xover.sources["#"], { tag: xover.manifest.sources["#"] })) || xover.sources["#"].source;
+        let manifest_source = xover.manifest.sources["#"];
+        return manifest_source && (this[manifest_source] || new xover.Store(xover.sources["#"], { tag: manifest_source })) || xover.sources["#"].source;
     }
 });
 
@@ -10417,7 +10418,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'tag', {
         get: function () {
-            return '#' + _tag.split(/^#/).pop();
+            return _tag;
         },
         set: function (input) {
             return _tag = input;
@@ -10426,7 +10427,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'hash', {
         get: function () {
-            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), config.tag/* && store.tag*/ || ''].coalesce();
+            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), config.tag[0] == '#' && config.tag || ''].coalesce();
             /*return '#' + Array.prototype.coalesce(_hash, __document.documentElement && Array.prototype.coalesce(__document.documentElement.getAttributeNS("http://panax.io/xover", "hash"), __document.documentElement.getAttributeNS("http://panax.io/xover", "tag"), __document.documentElement.localName.toLowerCase()), _tag).split(/^#/).pop();*/
         },
         set: function (input) {
