@@ -2166,7 +2166,7 @@ Object.defineProperty(xover.site, 'state', {
                 self[key] = input;
                 if (old_value != input && key[0] != '#') {
                     window.top.dispatchEvent(new xover.listener.Event(`change::#state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
-                    xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site-state:${key}')]`)).forEach(([el]) => el.render());
+                    xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
                     for (let subscriber of Object.keys(xover.subscribers.state[key])) {
                         subscriber.evaluate()
                     }
@@ -2527,9 +2527,9 @@ xover.xml.getDifferences = function (node1, node2) {
         let static_attribute = node1.getAttributeNode(item.substring(1));
         static_attribute && node2.setAttributeNode(static_attribute.cloneNode(), { silent: true })
     }
-    if (node2.parentNode && !(node2.parentNode instanceof Document || node2.parentNode instanceof DocumentFragment) && (node1 instanceof HTMLElement || node1 instanceof SVGElement) && /*node1 !== target && */node1.hasAttribute("xo-stylesheet")) {
-        node2.replaceChildren(...node1.cloneNode(true).childNodes)
-    }
+    //if (node2.parentNode && !(node2.parentNode instanceof Document || node2.parentNode instanceof DocumentFragment) && (node1 instanceof HTMLElement || node1 instanceof SVGElement) && /*node1 !== target && */node1.hasAttribute("xo-stylesheet")) {
+    //    node2.replaceChildren(...node1.cloneNode(true).childNodes)
+    //}
     if (node1.cloneNode().isEqualNode(node2.cloneNode()) || [...xover.listener.skip_selectors.keys()].find(rule => node1.matches(rule))) {
         if (node1.childNodes.length && node1.childNodes.length == node2.childNodes.length) {
             const node1_children = [...node1.childNodes];
@@ -3512,6 +3512,7 @@ xover.ProcessingInstruction = function (stylesheet) {
             get: function () {
                 //this.ownerDocument.store = this.ownerDocument.store || (xover.stores.find(this.ownerDocument).shift() || document.createElement('p')).store //Se pone esta solución pero debería tomar automáticamente el store. Ver si se puede solucionar este problema de raíz.
                 try {
+                    if (!this.href) return undefined;
                     let store = this.ownerDocument.store;
                     href = this.href;
                     let document = store && store.sources[href] || xover.sources[href];
@@ -7588,6 +7589,7 @@ xover.modernize = async function (targetWindow) {
                                     let tag = xml.tag || `#${xsl.href || ""}`;
                                     xml.tag = tag;
                                     window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
+                                    xsltProcessor.importStylesheet(xsl);
 
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'globalization:')]`)) {
                                         try {
@@ -7605,7 +7607,6 @@ xover.modernize = async function (targetWindow) {
                                             Promise.reject(e.message);
                                         }
                                     };
-                                    xsltProcessor.importStylesheet(xsl);
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:') or not(contains(@name,':'))][text()]`)) {
                                         try {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), eval(param.textContent))
@@ -7631,7 +7632,7 @@ xover.modernize = async function (targetWindow) {
                                             Promise.reject(e.message);
                                         }
                                     };
-                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:')]`)) {
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'store-state:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop();
                                             //if (!(param_name in xover.state)) xover.state[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
@@ -7647,7 +7648,7 @@ xover.modernize = async function (targetWindow) {
                                             Promise.reject(e.message);
                                         }
                                     };
-                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site-state')]`)) {
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.state.${param_name.replace(/-/g, '.')})`) : xover.site.state[param_name];
@@ -7692,7 +7693,7 @@ xover.modernize = async function (targetWindow) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
                                             }
-                                            if (param_value !== undefined) {
+                                            if (param_value != undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
                                         } catch (e) {
@@ -9540,14 +9541,14 @@ xover.xml.combine = function (target, new_node) {
         )
         || target.constructor !== new_node.constructor && (
             target.id && target.id === new_node.id
-            || target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source")
-            || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")
+            || (target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source")
+            && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet"))
         )
         || target.constructor == new_node.constructor && (
             !(target instanceof Element)
             || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)
-            || target.hasAttribute("xo-source") && new_node.hasAttribute("xo-source") && target.getAttribute("xo-source") != new_node.getAttribute("xo-source")
-            || target.hasAttribute("xo-stylesheet") && new_node.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") != new_node.getAttribute("xo-stylesheet")
+            || (target.hasAttribute("xo-source") && new_node.hasAttribute("xo-source") && target.getAttribute("xo-source") != new_node.getAttribute("xo-source")
+            && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && new_node.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") != new_node.getAttribute("xo-stylesheet"))
         )
         || target instanceof SVGElement && !(new_node instanceof SVGElement)
     ) {
