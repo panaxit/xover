@@ -2171,6 +2171,7 @@ Object.defineProperty(xover.site, 'state', {
                         subscriber.evaluate()
                     }
                 }
+                history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + location.hash);
             }
         });
     }
@@ -6055,7 +6056,7 @@ xover.modernize = async function (targetWindow) {
                                     this.scopeNode = textNode;
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 } else {
-                                     let attribute_node;
+                                    let attribute_node;
                                     attribute_node = node.getAttributeNode(attribute);
                                     try {
                                         attribute_node = attribute_node || node.createAttribute(attribute, null);
@@ -9541,13 +9542,13 @@ xover.xml.combine = function (target, new_node) {
         || target.constructor !== new_node.constructor && (
             target.id && target.id === new_node.id
             || (target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source")
-            && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet"))
+                && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet"))
         )
         || target.constructor == new_node.constructor && (
             !(target instanceof Element)
             || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)
             || (target.hasAttribute("xo-source") && new_node.hasAttribute("xo-source") && target.getAttribute("xo-source") != new_node.getAttribute("xo-source")
-            && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && new_node.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") != new_node.getAttribute("xo-stylesheet"))
+                && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && new_node.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") != new_node.getAttribute("xo-stylesheet"))
         )
         || target instanceof SVGElement && !(new_node instanceof SVGElement)
     ) {
@@ -10412,7 +10413,7 @@ xover.Store = function (xml, ...args) {
         get: function () {
             return state;
         }, set: function () {
-            throw("Store's state is static and can't be overwriten.")
+            throw ("Store's state is static and can't be overwriten.")
         }
     })
 
