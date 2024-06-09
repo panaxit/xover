@@ -2880,8 +2880,7 @@ xover.Source = function (tag) {
                         value = tag_string.replace(new RegExp(manifest_key, "gi"), value)
                     }
                     if (typeof (value) == 'string' && value.indexOf('${') !== -1) {
-                        //result = value.indexOf && value.indexOf('${') !== -1 && eval(`(${value.replace(/^\$\{(.*)\}$/, '$1')})`) || value;
-                        value = eval("`" + value + "`");
+                        value = typeof (value.indexOf) == 'function' && value.indexOf('${') == 0 && eval(`(${value.replace(/^\$\{(.*)\}$/, '$1')})`) || eval("`" + value + "`"); /* if value starts with ${ then it will evaluate in sucha a way that it might return an object, otherwise it will evaluate and return a string */
                     }
                     result = value;
                 } else {
