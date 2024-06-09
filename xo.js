@@ -568,7 +568,7 @@ xover.init = async function () {
     }).finally(async () => {
         this.init.initializing = 'done';
         progress_renders = await progress_renders || [];
-        progress_renders.forEach(item => item.remove());
+        progress_renders instanceof Array && await Promise.all(progress_renders).then(item => item.remove());
     });
     return this.init.initializing;
 }
