@@ -3550,7 +3550,7 @@ xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["session"] = "http://panax.io/session"
 xover.spaces["shell"] = "http://panax.io/shell"
 xover.spaces["site"] = "http://panax.io/site"
-xover.spaces["site-state"] = "http://panax.io/site/state"
+xover.spaces["store-state"] = "http://panax.io/store/state"
 xover.spaces["searchParams"] = "http://panax.io/site/searchParams"
 xover.spaces["state"] = "http://panax.io/state"
 xover.spaces["svg"] = "http://www.w3.org/2000/svg"
@@ -10384,27 +10384,36 @@ xover.Store = function (xml, ...args) {
 
     var _isActive = undefined;
 
-    this.state = new Proxy({}, {
-        get: function (target, name) {
-            return (xover.site.state[_tag] || {})[name];
-            //if (!__document.documentElement) return target[name];
+    let state = new Proxy({}, {
+        get: function (target, key) {
+            return (xover.site.state[_tag] || {})[key];
+            //if (!__document.documentElement) return target[key];
             //try {
-            //    return JSON.parse(__document.documentElement.getAttribute(`state:${name}`)) //name in target && target[name];
+            //    return JSON.parse(__document.documentElement.getAttribute(`state:${key}`)) //key in target && target[key];
             //} catch (e) {
-            //    return (__document.documentElement.getAttribute(`state:${name}`));
+            //    return (__document.documentElement.getAttribute(`state:${key}`));
             //}
         },
-        set: function (target, name, value) {
+        set: function (target, key, value) {
             if (value && ['function'].includes(typeof (value))) {
                 throw (new Error('State value is not valid type'));
             }
-            //let old_value = store.state[name]
+            //let old_value = store.state[key]
             //if (old_value == value) return;
-            //target[name] = value;
+            //target[key] = value;
             //if (!__document.documentElement) return;
-            //__document.documentElement.setAttributeNS(xover.spaces["state"], `state:${name}`, value);
+            //__document.documentElement.setAttributeNS(xover.spaces["state"], `state:${key}`, value);
             xover.site.state[_tag] = xover.site.state[_tag] || {};
-            xover.site.state[_tag][name] = value;
+            xover.site.state[_tag][key] = value;
+            xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'store-state:${key}')]`)).forEach(([el]) => el.render());
+        }
+    })
+
+    Object.defineProperty(this, 'state', {
+        get: function () {
+            return state;
+        }, set: function () {
+            throw("Store's state is static and can't be overwriten.")
         }
     })
 
