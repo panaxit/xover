@@ -2380,8 +2380,8 @@ Object.defineProperty(xover.site, 'seed', {
 });
 
 Object.defineProperty(xover.site, 'pushState', {
-    value: function (state = {}, hash = location.hash) {
-        history.pushState(Object.merge.call(history.state, { position: history.length - 1 }, state), {}, hash);
+    value: function (state = {}, href = location.hash) {
+        history.pushState(Object.merge.call(history.state, { position: history.length - 1 }, state), {}, href);
     }
     , enumerable: true, writable: false, configurable: false
 });
@@ -2647,7 +2647,7 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                             //xml.documentElement.appendChild(message.documentElement);
                             return Promise.reject(message.match("(error [^:]+):(.+)"));
                         }
-                        //(xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
+                        //(xml.documentElement || xml).setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:" + prefix, xover.spaces[prefix]);
                         sXML = sXML.replace(new RegExp(`(<[^\\s\/\!\?>]+)`), `$1 xmlns:${prefix}="${xover.spaces[prefix] || ''}"`);
                         result = xover.xml.createDocument(sXML, options);
                         return result;
@@ -3538,17 +3538,14 @@ xover.storage = {};
 xover.spaces = {};
 xover.xml.namespaces = xover.spaces;
 
-xover.spaces["context"] = "http://panax.io/context"
 xover.spaces["debug"] = "http://panax.io/debug"
-xover.spaces["height"] = "http://panax.io/state/height"
 xover.spaces["html"] = "http://www.w3.org/1999/xhtml"
-xover.spaces["js"] = "http://panax.io/xover/javascript"
+xover.spaces["js"] = "http://panax.io/languages/javascript"
 xover.spaces["data"] = "http://panax.io/data"
 xover.spaces["meta"] = "http://panax.io/metadata"
 xover.spaces["metadata"] = "http://panax.io/metadata"
 xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["session"] = "http://panax.io/session"
-xover.spaces["shell"] = "http://panax.io/shell"
 xover.spaces["site"] = "http://panax.io/site"
 xover.spaces["store-state"] = "http://panax.io/store/state"
 xover.spaces["searchParams"] = "http://panax.io/site/searchParams"
@@ -3556,41 +3553,17 @@ xover.spaces["state"] = "http://panax.io/state"
 xover.spaces["svg"] = "http://www.w3.org/2000/svg"
 xover.spaces["temp"] = "http://panax.io/temp"
 xover.spaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
-xover.spaces["width"] = "http://panax.io/state/width"
 xover.spaces["xhtml"] = "http://www.w3.org/1999/xhtml"
 xover.spaces["xlink"] = "http://www.w3.org/1999/xlink"
 xover.spaces["xmlns"] = "http://www.w3.org/2000/xmlns/"
-xover.spaces["x"] = "http://panax.io/xover"
 xover.spaces["xo"] = "http://panax.io/xover"
 xover.spaces["xml"] = "http://www.w3.org/XML/1998/namespace"
 xover.spaces["xsi"] = "http://www.w3.org/2001/XMLSchema-instance"
 xover.spaces["xson"] = "http://panax.io/xson"
 xover.spaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
-
-/* Binding */
-xover.spaces["request"] = "http://panax.io/fetch/request"
-xover.spaces["source"] = "http://panax.io/source"
-xover.spaces["binding"] = "http://panax.io/xover/binding"
-xover.spaces["changed"] = "http://panax.io/xover/binding/changed"
-xover.spaces["source_text"] = "http://panax.io/source/request/text"
-xover.spaces["source_prefix"] = "http://panax.io/source/request/prefix"
-xover.spaces["source_value"] = "http://panax.io/source/request/value"
-xover.spaces["source_filters"] = "http://panax.io/source/request/filters"
-xover.spaces["source_fields"] = "http://panax.io/source/request/fields"
-/* Values */
-xover.spaces["exception"] = "http://panax.io/state/exception"
-xover.spaces["confirmation"] = "http://panax.io/state/confirmation"
-xover.spaces["readonly"] = "http://panax.io/state/readonly"
-xover.spaces["suggested"] = "http://panax.io/state/suggested"
-xover.spaces["initial"] = "http://panax.io/state/initial"
-xover.spaces["search"] = "http://panax.io/state/search"
-xover.spaces["filter"] = "http://panax.io/state/filter"
-xover.spaces["prev"] = "http://panax.io/state/previous"
-xover.spaces["sort"] = "http://panax.io/state/sort"
-xover.spaces["fixed"] = "http://panax.io/state/fixed"
-xover.spaces["draft"] = "http://panax.io/state/draft"
-xover.spaces["text"] = "http://panax.io/state/text"
 xover.spaces["env"] = "http://panax.io/state/environment"
+xover.spaces["globalization"] = "http://xover.dev/globalization"
+xover.spaces["x"] = "urn:schemas-microsoft-com:office:excel"
 
 xover.timeouts = new Map();
 
@@ -4080,134 +4053,6 @@ Object.defineProperty(xover.sources, 'xover/normalize_namespaces.xslt', {
           </xsl:template>
         </xsl:stylesheet>
         `)
-    }
-})
-
-Object.defineProperty(xover.sources, 'xover/databind.xslt', {
-    get: function () {
-        return xover.xml.createDocument(`
-<xsl:stylesheet
-  xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
-  xmlns:xo="http://panax.io/xover"
-  xmlns:source="http://panax.io/source"
-  xmlns:prev="http://panax.io/state/previous"
-  xmlns:changed="http://panax.io/xover/binding/changed"
-  xmlns:fetch="http://panax.io/fetch"
-  xmlns:data="http://panax.io/fetch"
-  xmlns:request="http://panax.io/fetch/request"
-  xmlns:debug="http://panax.io/debug"
-  xmlns:state="http://panax.io/state" version="1.0">
-  <xsl:output method="xml" indent="no" omit-xml-declaration="yes"/>
-  <xsl:key name="datasource" match="source:*" use="concat(generate-id(..),'::',local-name(),'::')"/>
-  <xsl:key name="sourcedefinition" match="@source:*" use="concat(generate-id(..),'::',local-name(),'::')"/>
-
-  <xsl:template match="@* | text() | processing-instruction() | comment()" priority="-1">
-    <xsl:copy-of select="."/>
-  </xsl:template>
-
-  <xsl:template match="node()" priority="-1">
-    <xsl:copy>
-      <xsl:apply-templates select="@*"/>
-      <xsl:apply-templates select="@source:*" mode="sources">
-        <xsl:with-param name="mode">attributes</xsl:with-param>
-      </xsl:apply-templates>
-      <xsl:apply-templates select="@source:*" mode="sources">
-        <xsl:with-param name="mode">nodes</xsl:with-param>
-      </xsl:apply-templates>
-      <xsl:apply-templates/>
-    </xsl:copy>
-  </xsl:template>
-
-  <xsl:template match="source:*/*/@xo:id" priority="-1"/>
-
-  <xsl:template match="source:*[key('sourcedefinition',concat(generate-id(..),'::',local-name(),'::'))]"/>
-
-  <xsl:template match="@source:*" mode="sources">
-    <xsl:param name="ref" select=".."/>
-    <xsl:param name="mode">nodes</xsl:param>
-    <xsl:variable name="attribute_name" select="local-name()"/>
-    <xsl:variable name="curr_value" select="../@xo:*[local-name()=$attribute_name and .!='' and .!='NULL']"/>
-    <xsl:variable name="prev_value" select="../@prev:*[local-name()=$attribute_name]"/>
-    <xsl:variable name="curr_source" select="../@source:*[local-name()=$attribute_name]"/>
-    <xsl:variable name="prev_source" select="../@changed:*[local-name()=$attribute_name]"/>
-    <xsl:variable name="current_datasource" select="key('datasource',concat(generate-id($ref),'::',local-name(),'::'))"/>
-    <xsl:variable name="current_source_value">
-      <xsl:choose>
-        <xsl:when test="not(self::*)">
-          <xsl:value-of select="."/>
-        </xsl:when>
-        <xsl:otherwise>
-          <xsl:value-of select="../@*[local-name()=$attribute_name]"/>
-        </xsl:otherwise>
-      </xsl:choose>
-    </xsl:variable>
-    <xsl:variable name="selected_record" select="$current_datasource/xo:r[@xo:*[local-name()=$attribute_name]=$curr_value]"/>
-    <xsl:choose>
-      <xsl:when test="$mode='attributes'">
-        <!-- Sólo pueden ir atributos en esta sección -->
-        <xsl:if test="$curr_value and not($current_datasource)">
-          <xsl:attribute name="prev:{local-name()}">
-            <xsl:value-of select="$curr_value"/>
-          </xsl:attribute>
-        </xsl:if>
-        <!--<xsl:attribute name="debug:selected_record">
-          <xsl:value-of select="$selected_record/@xo:id"/>
-        </xsl:attribute>-->
-        <xsl:copy-of select="$selected_record/@*[not(namespace-uri()='http://panax.io/xover' and local-name()='id')]"/>
-        <xsl:choose>
-          <xsl:when test="$current_datasource and not($current_datasource[@command=$curr_source]) or contains($curr_source,'{{') and $curr_value">
-            <xsl:if test="$curr_value">
-              <xsl:attribute name="xo:{local-name()}"></xsl:attribute>
-              <xsl:attribute name="prev:{local-name()}">
-                <xsl:value-of select="$curr_value"/>
-              </xsl:attribute>
-            </xsl:if>
-            <xsl:attribute name="changed:{local-name()}">
-              <xsl:value-of select="$curr_source"/>
-            </xsl:attribute>
-            <xsl:attribute name="state:refresh">true</xsl:attribute>
-          </xsl:when>
-        </xsl:choose>
-      </xsl:when>
-      <xsl:when test="$mode='nodes'">
-        <!-- Sólo pueden ir nodos en esta sección -->
-        <xsl:choose>
-          <xsl:when test="contains($curr_source,'{{')"></xsl:when>
-          <xsl:when test="$current_datasource[@command=$curr_source]">
-            <xsl:copy-of select="($current_datasource[@command=$curr_source])[1]"/>
-          </xsl:when>
-          <xsl:otherwise>
-            <xsl:element name="{name()}" namespace="{namespace-uri()}">
-              <xsl:attribute name="xo:id">
-                <xsl:value-of select="concat('__request_',generate-id())"/>
-              </xsl:attribute>
-              <xsl:attribute name="changed:{local-name()}"></xsl:attribute>
-              <xsl:attribute name="command">
-                <xsl:value-of select="$curr_source"/>
-              </xsl:attribute>
-              <!--<xsl:if test="$curr_value">
-                <xsl:element name="xo:r">
-                  <xsl:attribute name="xo:{local-name()}">
-                    <xsl:value-of select="$curr_value"/>
-                  </xsl:attribute>
-                </xsl:element>
-              </xsl:if>-->
-            </xsl:element>
-          </xsl:otherwise>
-        </xsl:choose>
-      </xsl:when>
-    </xsl:choose>
-  </xsl:template>
-
-  <xsl:template match="@source:init[.='true']">
-  </xsl:template>
-
-  <xsl:template match="@source:init[.='true']" mode="sources">
-  </xsl:template>
-
-  <xsl:template match="@changed:*">
-  </xsl:template>
-</xsl:stylesheet>`);
     }
 })
 
@@ -4768,7 +4613,7 @@ xover.modernize = async function (targetWindow) {
                             ////prefixes = [...new Set(prefixes)];
                             ////for (let prefix of prefixes) {
                             ////    let target = (context.documentElement || context);
-                            ////    Element.setAttributeNS.call(target, 'http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, nsResolver(prefix));
+                            ////    Element.setAttributeNS.call(target, "http://www.w3.org/2000/xmlns/", `xmlns:${prefix}`, nsResolver(prefix));
                             ////}
                             ////try {
                             ////    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
@@ -5672,8 +5517,14 @@ xover.modernize = async function (targetWindow) {
                                 let fragment = document.createDocumentFragment();
                                 fragment.append(xsl.createComment(`ack:imported-from "${href}" ===>>>>>>>>>>>>>>> `));
                                 let sources = source.cloneNode(true);
+
+                                for (let attr of [...source.documentElement.attributes].filter(attr => attr.prefix && attr.namespaceURI === 'http://www.w3.org/2000/xmlns/').filter(attr => attr.value != (node.parentNode.getAttributeNodeNS("http://www.w3.org/2000/xmlns/", attr.localName) || attr).value)) {
+                                    console.warn(`Prefix ${attr.localName} was redefined from "${node.parentNode.getAttributeNS("http://www.w3.org/2000/xmlns/", attr.localName)}" at file "${xsl.href}" to "${attr.value}" at file "${source.href}" `)
+                                    if (xover.session.debug) debugger;
+                                }
+
                                 Object.entries(xover.json.difference(xover.xml.getNamespaces(sources), xover.xml.getNamespaces(xsl))).map(([prefix, namespace]) => {
-                                    xsl.documentElement.setAttributeNS('http://www.w3.org/2000/xmlns/', `xmlns:${prefix}`, namespace)
+                                    xsl.documentElement.setAttributeNS("http://www.w3.org/2000/xmlns/", `xmlns:${prefix}`, namespace)
                                 });
                                 fragment.append(...sources.documentElement.childNodes);
                                 fragment.append(xsl.createComment(` <<<<<<<<<<<<<<<=== ack:imported-from "${href}" === `));
@@ -7296,7 +7147,7 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Element.prototype.getNamespaces = function () {
-                    return Object.fromEntries([this, ...this.querySelectorAll("*")].map(el => [...el.attributes].filter(attr => attr.namespaceURI === 'http://www.w3.org/2000/xmlns/')).flat(Infinity).map(attr => [attr.localName, attr.value]));
+                    return Object.fromEntries([this, ...this.querySelectorAll("*")].map(el => [...el.attributes].filter(attr => attr.namespaceURI === "http://www.w3.org/2000/xmlns/")).flat(Infinity).map(attr => [attr.localName, attr.value]));
                 }
 
                 Element.insertBefore = Element.insertBefore || Element.prototype.insertBefore
@@ -7666,7 +7517,7 @@ xover.modernize = async function (targetWindow) {
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
-                                            let param_value = xover.site[param_name];
+                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`) : xover.site.state[param_name];
                                             if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                 param_value = eval(`\`${param.value}\``)
                                             }
@@ -7804,7 +7655,7 @@ xover.modernize = async function (targetWindow) {
                                             xml.documentElement.appendChild(message.documentElement);
                                             return xml;
                                         }
-                                        (xml.documentElement || xml).setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns:" + prefix, xover.spaces[prefix]);
+                                        (xml.documentElement || xml).setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:" + prefix, xover.spaces[prefix]);
                                         result = xml.transform(xsl);
                                         return result;
                                     } else if (String(message.textContent).match(/Extra content at the end of the document/)) {
@@ -8156,6 +8007,10 @@ xover.modernize = async function (targetWindow) {
 
                                 let stylesheet_href = stylesheet.href;
                                 let target_source = target.getAttributeNode("xo-source") || {};
+                                let set_id = xover.cryptography.encodeMD5(`${xsl.href}:${target.selector}`) || "";
+                                for (let el of dom.childNodes) {
+                                    el.set_id = set_id;
+                                }
                                 for (let el of dom.children) {
                                     el.document = this;
                                     el.context = data;
@@ -8166,6 +8021,7 @@ xover.modernize = async function (targetWindow) {
                                         let store_tag = el.getAttributeNode("xo-source") || ["active", "seed", "#"].includes(target_source.value) && target_source || tag || '';
                                         store_tag && el.setAttributeNS(null, "xo-source", store_tag.value || store_tag);
                                         stylesheet_href && el.setAttributeNS(null, "xo-stylesheet", stylesheet_href);
+                                        //set_id && el.setAttributeNS(null, "xo-set", set_id);
                                     }
                                 }
                                 //if (dom instanceof DocumentFragment) {
@@ -9262,7 +9118,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
 
             /*sets xhtml namespace by default */
             if (!return_value.documentElement.hasAttribute("xmlns")) {
-                return_value.documentElement.setAttributeNS('http://www.w3.org/2000/xmlns/', "xmlns", "http://www.w3.org/1999/xhtml");
+                return_value.documentElement.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns", "http://www.w3.org/1999/xhtml");
             }
             /*Fixes naamespace for svg with missing xmlns*/
             for (let svg of [...return_value.documentElement.querySelectorAll(`svg, svg > *`)].filter(svg => !svg.attributes.xmlns && svg.namespaceURI == 'http://www.w3.org/1999/xhtml')) {
@@ -9359,9 +9215,9 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             }
             if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
                 return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "));
-                for (let attr of [...return_value.documentElement.attributes].filter(attr => attr.prefix && attr.namespaceURI === 'http://www.w3.org/2000/xmlns/')) {
+                for (let attr of [...return_value.documentElement.attributes].filter(attr => attr.prefix && attr.namespaceURI === "http://www.w3.org/2000/xmlns/")) {
                     if (attr.localName in xover.spaces && xover.spaces[attr.localName] != attr.value) {
-                        console.warn(`Prefix ${attr.localName} can't be redefined to "${attr.value} because it is already assigned to ${xover.spaces[attr.localName]} `)
+                        console.warn(`Prefix ${attr.localName} can't be redefined to "${attr.value}" at file "${url.href}" because it is already assigned to ${xover.spaces[attr.localName]} `)
                         continue;
                     }
                     xover.spaces[attr.localName] = attr.value
@@ -9497,7 +9353,7 @@ xover.xml.staticMerge = function (node1, node2) {
 }
 
 xover.xml.combine = function (target, new_node) {
-    if (target instanceof Element && !target.staticAttributes && target.hasAttributes() && (
+    if (target instanceof Element && new_node instanceof Element && !target.staticAttributes && target.hasAttributes() && (
         target.hasAttribute("xo-source") && target.getAttribute("xo-source") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source"))
         || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == (new_node.getAttribute("xo-source") || target.getAttribute("xo-stylesheet"))
     )
@@ -9505,7 +9361,7 @@ xover.xml.combine = function (target, new_node) {
         target.staticAttributes = [...target.attributes || []].filter(attr => !["xo-source", "xo-stylesheet", "xo-swap"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let swap = document.firstElementChild.cloneNode().classList;
-    swap.value = target instanceof Element && (new_node.getAttribute("xo-swap") || target.getAttribute("xo-swap")) || "";
+    swap.value = target instanceof Element && (new_node instanceof Element && new_node.getAttribute("xo-swap") || target.getAttribute("xo-swap")) || "";
     let static = document.firstElementChild.cloneNode().classList;
     static.value = target instanceof Element && target.getAttribute("xo-static") || "";
     let swap_rules = (new_node instanceof Element && new_node.getAttribute("xo-swap") || '').split(/\s+/g);
@@ -9532,6 +9388,10 @@ xover.xml.combine = function (target, new_node) {
         }
     }
     if (![HTMLScriptElement].includes(target.constructor) && target.isEqualNode(new_node)) return target;
+    let target_source = target instanceof Element && target.getAttribute("xo-source")
+    let target_stylesheet = target instanceof Element && target.getAttribute("xo-stylesheet")
+    let new_source = new_node instanceof Element && new_node.getAttribute("xo-source")
+    let new_stylesheet = new_node instanceof Element && new_node.getAttribute("xo-stylesheet")
     if (
         target instanceof Element && (
             /*`${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope")
@@ -9541,14 +9401,14 @@ xover.xml.combine = function (target, new_node) {
         )
         || target.constructor !== new_node.constructor && (
             target.id && target.id === new_node.id
-            || (target.hasAttribute("xo-source") && target.getAttribute("xo-source") == new_node.getAttribute("xo-source")
-                && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet"))
+            || (target.hasAttribute("xo-source") && target_source == new_source
+                && target.hasAttribute("xo-stylesheet") && target_stylesheet && target_stylesheet == new_stylesheet)
         )
         || target.constructor == new_node.constructor && (
             !(target instanceof Element)
             || [HTMLScriptElement, HTMLSelectElement].includes(target.constructor)
-            || (target.hasAttribute("xo-source") && new_node.hasAttribute("xo-source") && target.getAttribute("xo-source") != new_node.getAttribute("xo-source")
-                && target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") && new_node.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") != new_node.getAttribute("xo-stylesheet"))
+            || (target.hasAttribute("xo-source") && new_node.hasAttribute("xo-source") && target_source != new_source
+                && target.hasAttribute("xo-stylesheet") && target_stylesheet && new_node.hasAttribute("xo-stylesheet") && target_stylesheet != new_stylesheet)
         )
         || target instanceof SVGElement && !(new_node instanceof SVGElement)
     ) {
@@ -9560,9 +9420,9 @@ xover.xml.combine = function (target, new_node) {
         restore_focus && new_node.focus()
         return new_node
     } else if (
-        (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase()) && (target.getAttribute("xo-source") || new_node.getAttribute("xo-source")) == (new_node.getAttribute("xo-source") || target.getAttribute("xo-source"))
+        (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase()) && (target_source || new_source) == (new_source || target_source)
         || new_node instanceof HTMLBodyElement
-        || target.hasAttribute("xo-stylesheet") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")
+        || target.hasAttribute("xo-stylesheet") && target_stylesheet == new_stylesheet
         || target.parentNode.matches(".xo-swap")
     ) {
         let remove_attributes = [...target.attributes].filter(attr => !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name));
@@ -9586,10 +9446,14 @@ xover.xml.combine = function (target, new_node) {
         //active_element && xover.delay(100).then(() => active_element.focus());
         return target
     } else {
+        [...target.childNodes].filter(el => el.set_id == new_node.set_id).remove();
         if (new_node instanceof Comment && new_node.data == 'ack:empty' && target.classList instanceof DOMTokenList) {
             target.classList.add("no-source")
             return target
-        } if (target.matches("[xo-source],[xo-stylesheet]")) {
+        } else if (new_node instanceof Document || new_node instanceof DocumentFragment) {
+            target.append(...new_node.childNodes);
+            return target
+        } else if (target.matches("[xo-source],[xo-stylesheet]")) {
             target.replaceChildren(new_node)
             return target
         } else {
@@ -12076,13 +11940,15 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     xover.listener.click.target = event.target;
     xover.delay(250).then(() => xover.listener.click.target = undefined)
     let srcElement = event.target.closest("[href]");
-    let hashtag = (srcElement ? srcElement.getAttribute("href") : "");
+    let href = (srcElement ? srcElement.getAttribute("href") : "");
 
-    if (!hashtag.match(/^#./)) {
+    if (!href.match(/^#.|^\?/)) {
         return;
     }
 
-    custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash])
+    let url = xover.URL(href);
+    hashtag = url.hash;
+    custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash], url)
     if (hashtag !== undefined && hashtag != (window.top || window).location.hash) {
         window.top.dispatchEvent(custom_event);
     }
@@ -12092,8 +11958,10 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
 
     if (this.getAttribute("target") == "_self") {
         xo.site.active = hashtag
-        event.preventDefault();
+    } else {
+        xover.site.pushState({ seed: hashtag }, url.toString())
     }
+    event.preventDefault();
 });
 
 //xover.listener.on(["change", "click"], function (event) {
