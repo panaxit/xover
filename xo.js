@@ -2381,7 +2381,7 @@ Object.defineProperty(xover.site, 'seed', {
 
 Object.defineProperty(xover.site, 'pushState', {
     value: function (state = {}, href = location.hash) {
-        history.pushState(Object.merge.call(history.state, { position: history.length - 1 }, state), {}, href);
+        history.pushState(Object.merge.call({} , { position: history.length - 1 }, state), {}, href);
     }
     , enumerable: true, writable: false, configurable: false
 });
@@ -7517,7 +7517,7 @@ xover.modernize = async function (targetWindow) {
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`)) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
-                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`) : xover.site.state[param_name];
+                                            let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`) : xover.site[param_name];
                                             if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                 param_value = eval(`\`${param.value}\``)
                                             }
