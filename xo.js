@@ -2136,6 +2136,10 @@ class SearchParams {
     has(param) {
         return this.params.has(param);
     }
+
+    toString() {
+        return this.params.toString();
+    }
 }
 
 Object.defineProperty(xover.site, 'searchParams', {
