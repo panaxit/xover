@@ -2916,7 +2916,7 @@ xover.Source = function (tag) {
                 let source = sources.shift();
                 if (!source) continue;
                 let url;
-                if (typeof (source) != 'object') url = xover.URL(source + tag_string);
+                if (typeof (source) != 'object') url = xover.URL(source + tag_string.replace(source, ''));
                 let source_url = xover.URL(url.protocol == 'server:' && url.pathname in xover.server ? xover.manifest.server[url.pathname] : tag_string);
                 source_url.hash = source_url.hash || url.hash;
                 source_url.searchText = source_url.searchText || url.searchText;
@@ -2947,15 +2947,18 @@ xover.Source = function (tag) {
                             }
                         }
                     }
-                    for (let [key, value] of Object.entries(parameters).filter(([key]) => key[0] == '^')) {
-                        settings.headers[key] = value;
-                        delete parameters[key]
+                    for (let [key, value] of Object.entries(parameters)) {
+                        if (key[0] == '^') {
+                            source_url.headers = source_url.headers || new Headers();
+                            source_url.headers[key.slice(1)] = value;
+                            delete parameters[key]
+                        } else {
+                            source_url.searchParams.set(key, value)
+                        }
                     }
-                    parameters = Object.entries(parameters) || parameters
-                }
-                //}
-                for (let [key, value] of parameters) {
-                    source_url.searchParams.set(key, value)
+                    parameters = [parameters]
+                } else if (parameters.length) {
+                    if (xover.session.debug) debugger;
                 }
 
                 //if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
@@ -3569,6 +3572,7 @@ xover.spaces["metadata"] = "http://panax.io/metadata"
 xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["session"] = "http://panax.io/session"
 xover.spaces["site"] = "http://panax.io/site"
+xover.spaces["store"] = "http://panax.io/store"
 xover.spaces["store-state"] = "http://panax.io/store/state"
 xover.spaces["searchParams"] = "http://panax.io/site/searchParams"
 xover.spaces["state"] = "http://panax.io/state"
@@ -7509,12 +7513,27 @@ xover.modernize = async function (targetWindow) {
                                         try {
                                             let param_name = param.getAttribute("name").split(/:/).pop();
                                             //if (!(param_name in xover.state)) xover.state[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
-                                            let state_value = this.store instanceof xover.Store && this.store.state[param_name] || undefined;/*, xover.site[param_name] removed to avoid unwanted behavior*/
-                                            if (state_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
-                                                state_value = eval(`\`${param.value}\``)
+                                            let param_value = this.store instanceof xover.Store && this.store.state[param_name] || undefined;/*, xover.site[param_name] removed to avoid unwanted behavior*/
+                                            if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                param_value = eval(`\`${param.value}\``)
                                             }
-                                            if (state_value != undefined) {
-                                                xsltProcessor.setParameter(null, param.getAttribute("name"), state_value);
+                                            if (param_value != undefined) {
+                                                xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
+                                            }
+                                        } catch (e) {
+                                            //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
+                                            Promise.reject(e.message);
+                                        }
+                                    };
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'store:')]`)) {
+                                        try {
+                                            let param_name = param.getAttribute("name").split(/:/).pop();
+                                            let param_value = !(this.store instanceof xover.Store) ? null : param_name.indexOf("-") != -1 ? eval(`(this.store.${param_name.replace(/-/g, '.')})`) : this.store[param_name];
+                                            if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                param_value = eval(`\`${param.value}\``)
+                                            }
+                                            if (param_value != undefined) {
+                                                xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
@@ -10072,6 +10091,11 @@ xover.Store = function (xml, ...args) {
     let config = args[0] && args[0].constructor === {}.constructor && args[0] || {};
     let _tag;
     let _hash = config && config['hash'] || undefined;
+    let _store_url = xover.URL(config['tag']);
+    let [hash, _searchParams = ''] = _store_url.hash.split("?");
+    _store_url.hash = hash;
+    _store_url.search = _searchParams || _store_url.search;
+
     let _initiator = config && config["initiator"] || undefined;
     let _store_stylesheets = [];
     let _sources = new Proxy({}, {
@@ -10331,7 +10355,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'hash', {
         get: function () {
-            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), config.tag[0] == '#' && config.tag || ''].coalesce();
+            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), _store_url.hash || ''].coalesce();
             /*return '#' + Array.prototype.coalesce(_hash, __document.documentElement && Array.prototype.coalesce(__document.documentElement.getAttributeNS("http://panax.io/xover", "hash"), __document.documentElement.getAttributeNS("http://panax.io/xover", "tag"), __document.documentElement.localName.toLowerCase()), _tag).split(/^#/).pop();*/
         },
         set: function (input) {
@@ -10340,6 +10364,18 @@ xover.Store = function (xml, ...args) {
             //}
             _hash = input;
             xover.site.hash = _hash;
+        }
+    });
+
+    Object.defineProperty(this, 'searchParams', {
+        get: function () {
+            return _store_url.searchParams;
+        }
+    });
+
+    Object.defineProperty(this, 'url', {
+        get: function () {
+            return _store_url;
         }
     });
 
@@ -10801,7 +10837,7 @@ xover.Store = function (xml, ...args) {
                 //}
                 let active_store = xover.stores.active
                 if (active_store instanceof xover.Store && active_store === self) {
-                    xover.site.hash = self.hash;
+                    xover.site.hash = self.hash + self.url.search;
                 }
                 if (!__document.firstChild) {
                     await store.fetch();
