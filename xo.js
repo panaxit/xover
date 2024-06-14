@@ -1673,28 +1673,29 @@ xover.server = new Proxy({}, {
             //let settings = this.settings || {};
             //this.settings = settings.merge(Object.fromEntries(xover.manifest.getSettings(`server:${key}`) || []));
             let endpoint = xover.manifest.server[key];
+            let url;
             if (endpoint.constructor === {}.constructor) {
+                // TODO: check supported params
+                url = new xover.URL(endpoint.href, undefined, { payload, ...settings });
                 for (let [key, value] of Object.entries(endpoint)) {
-                    if (key.indexOf("server:") == 0) {
-                        return key.replace(/^server:/, '') in xover.server && xover.server[key.replace(/^server:/, '')].call(this, value.merge(payload)) || null
-                    }
+                    url[key] = value;
                 }
+            } else if (typeof(endpoint) == 'string') {
+                url = new xover.URL(endpoint, undefined, { payload, ...settings })
             }
-            let server_url = new xover.URL(xover.manifest.server[key], undefined, { payload, ...settings })
-            let url = this instanceof URL && this || this instanceof Document && this.url || server_url;
-            if (!(server_url.origin == url.origin && server_url.pathname == url.pathname)) {
-                url = server_url
+            let local_url = this instanceof URL && this || this.hasOwnProperty("url") && this.url || url;
+            //if (!(url.origin == url.origin && url.pathname == url.pathname)) {
+            //    url = url
+            //}
+            if (local_url.resource == `server:${key}`) {
+                url.search = local_url.search;
+                url.hash = local_url.hash;
             }
             url.payload = payload;
             url.settings.merge(settings)
+            url.beforeFetch_event = url.beforeFetch_event || new xover.listener.Event('beforeFetch', { request, tag: `server:${key}`, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, url);
 
-            //if (this instanceof Node) {
-            //    this.url = url
-            //}
-            //settings = xover.json.combine(Object.fromEntries(xover.manifest.getSettings(url) || []), settings);
-            //url.settings = xover.json.combine(url.settings, settings);
-
-            window.top.dispatchEvent(new xover.listener.Event(`beforeFetch`, { url, request, href: url.href, tag: `server:${key}` }, url));
+            window.top.dispatchEvent(url.beforeFetch_event);
             try {
                 [return_value, request, response] = await xover.fetch.apply(url, [url, ...args]).then(response => [response.body, response.request, response]);
             } catch (e) {
@@ -2920,49 +2921,52 @@ xover.Source = function (tag) {
                 let source = sources.shift();
                 if (!source) continue;
                 let url;
-                if (typeof (source) != 'object') url = xover.URL(source + tag_string.replace(source, ''));
-                let source_url = xover.URL(url.protocol == 'server:' && url.pathname in xover.server ? xover.manifest.server[url.pathname] : tag_string);
-                source_url.hash = source_url.hash || url.hash;
-                source_url.searchText = source_url.searchText || url.searchText;
-                if (location.origin == source_url.origin) { //xover.URL automatically supports ?searchParams to come after or before hash;
-                    let [hash, searchParams = ''] = source_url.hash.split("?");
-                    source_url.hash = hash;
-                    source_url.search = searchParams || source_url.search;
-                }
-                this.url = source_url;
+                //if (typeof (source) != 'object')
+                url = xover.URL(source + tag_string.replace(source, '')); //(xover.manifest.server[source.replace(/^server:/, '')] || source)
+                //if (location.origin == url.origin) { //xover.URL automatically supports ?searchParams to come after or before hash;
+                    let [hash, searchParams = ''] = url.hash.split("?");
+                    url.hash = hash;
+                    for (let [key, value] of new URLSearchParams(searchParams).entries()) {
+                        url.searchParams.set(key, value)
+                    }
+                //}
+                this.url = url;
 
-                let settings = xover.json.merge({}, xover.manifest.getSettings(source_url), self.settings, this.settings);
+                let settings = xover.json.merge({}, xover.manifest.getSettings(url), self.settings, this.settings);
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
-                let before_event = new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, parameters, settings }, self);
+                let before_event = new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, parameters, settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, self);
                 window.top.dispatchEvent(before_event);
                 //parameters = parameters.concat(args);
 
                 //if (typeof (source) == 'string' && source.replace(/^server:/, '') in xover.server || existsFunction(source)) {
                 if (parameters.constructor === {}.constructor) {
-                    let url = new xover.URL(tag_string.replace(/^#/, ''));
+                    //let url = new xover.URL(tag_string.replace(/^#/, ''));
                     for (let [key, value] of url.searchParams.entries()) {
                         parameters[key] = value
                     }
+                    for (let [key, value] of Object.entries(parameters)) {
+                        if (key[0] == '^') {
+                            url.headers = source_url.headers || new Headers();
+                            url.headers[key.slice(1)] = value;
+                            //url.searchParams.delete(key) // remove on fetch
+                            delete parameters[key]
+                        } else if (!(url.searchParams.has(key))) {
+                            url.searchParams.set(key, value)
+                        }
+                    }
                     let current_url = xover.URL(xover.site.seed.replace(/^#/, ''));
-                    if (location.searchParams && current_url.pathname === xover.URL(url).pathname) {
+                    if (location.searchParams && current_url.origin === url.origin) {
                         for (let [key, value] of location.searchParams.entries()) {
                             if (key in parameters) {
                                 parameters[key] = value
                             }
                         }
                     }
-                    for (let [key, value] of Object.entries(parameters)) {
-                        if (key[0] == '^') {
-                            source_url.headers = source_url.headers || new Headers();
-                            source_url.headers[key.slice(1)] = value;
-                            delete parameters[key]
-                        } else {
-                            source_url.searchParams.set(key, value)
-                        }
-                    }
                     parameters = [parameters]
                 } else if (parameters.length) {
-                    if (xover.session.debug) debugger;
+                    for (let param of parameters) {
+                        url.searchParams.append("@", param)
+                    }
                 }
 
                 //if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
@@ -2978,15 +2982,15 @@ xover.Source = function (tag) {
                     if (before_event.cancelBubble || before_event.defaultPrevented) return;
                     if (source instanceof Node) {
                         response = source
-                    } else if (url.protocol == 'server:' || existsFunction(source)) {
+                    } else if (url.protocol == 'server:' || existsFunction(url.resource)) {
                         let promises = [];
-                        let endpoint = source;
+                        let endpoint = url.protocol == 'server:' ? url.pathname : url.resource;
 
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
-                                if (endpoint.replace(/^server:/, '') in xover.server) {
-                                    response = await xover.server[endpoint.replace(/^server:/, '')].call(this);
-                                } else if (existsFunction(endpoint)) {
+                                if (url.protocol == 'server:' && endpoint in xover.server) {
+                                    response = await xover.server[endpoint].call(this);
+                                } else if (existsFunction(url.resource)) {
                                     let fn = eval(endpoint);
                                     response = await fn.apply(this, args.length ? args : parameters);
                                 }
@@ -3069,7 +3073,8 @@ xover.Source = function (tag) {
                     if (response instanceof Document) {
                         this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => typeof (response.addStylesheet) == 'function' && response.addStylesheet(stylesheet));
                     }
-                    let fetch_event = new xover.listener.Event('fetch', { source: self, document: response, tag: tag_string, settings: this.settings }, self);
+                    let fetch_event = new xover.listener.Event('fetch', { source: self, document: response, tag: tag_string, settings: this.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, self);
+                    self.fetch_event = fetch_event;
                     window.top.dispatchEvent(fetch_event);
                     if (fetch_event.detail.returnValue instanceof Error) {
                         return Promise.reject(fetch_event.detail.returnValue);
@@ -3277,8 +3282,8 @@ xover.URL = function (url, base, settings = {}) {
 
 URL.href = URL.href || Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 Object.defineProperty(URL.prototype, 'href', {
-    get: function (...args) {
-        let href = URL.href.get.apply(this, args);
+    get: function () {
+        let href = URL.href.get.call(this);
         return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "")//.replace(/^\/+/, '');
     }
 });
@@ -3286,6 +3291,14 @@ Object.defineProperty(URL.prototype, 'href', {
 Object.defineProperty(URL.prototype, 'tag', {
     get: function () {
         return '#' + xover.URL(this.hash.replace(/^#/, '')).pathname.replace(/^\//, '')
+    }
+});
+
+Object.defineProperty(URL.prototype, 'resource', {
+    get: function () {
+        let href = URL.href.get.call(this);
+        href = href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "")//.replace(/^\/+/, '');
+        return href.split(/#|\?/)[0]
     }
 });
 
