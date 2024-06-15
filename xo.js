@@ -7891,6 +7891,14 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
+                if (!HTMLElement.prototype.hasOwnProperty('toXML')) {
+                    Object.defineProperty(HTMLElement.prototype, 'toXML', {
+                        value: function () {
+                            return xover.xml.fromHTML(this)
+                        }
+                    });
+                }
+
                 if (!HTMLElement.prototype.hasOwnProperty('render')) {
                     Object.defineProperty(HTMLElement.prototype, 'render', {
                         value: section_renderer_handler
