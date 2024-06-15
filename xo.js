@@ -2989,7 +2989,7 @@ xover.Source = function (tag) {
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
                                 if (url.protocol == 'server:' && endpoint in xover.server) {
-                                    response = await xover.server[endpoint].call(this);
+                                    response = await xover.server[endpoint].apply(this, args.length ? args : parameters);
                                 } else if (existsFunction(url.resource)) {
                                     let fn = eval(endpoint);
                                     response = await fn.apply(this, args.length ? args : parameters);
