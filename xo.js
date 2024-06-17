@@ -2922,7 +2922,8 @@ xover.Source = function (tag) {
                 if (!source) continue;
                 let url;
                 //if (typeof (source) != 'object')
-                url = xover.URL(source + tag_string.replace(source, '')); //(xover.manifest.server[source.replace(/^server:/, '')] || source)
+                url = xover.URL(source);
+                url.hash = tag_string.replace(source, '');//(xover.manifest.server[source.replace(/^server:/, '')] || source)
                 //if (location.origin == url.origin) { //xover.URL automatically supports ?searchParams to come after or before hash;
                     let [hash, searchParams = ''] = url.hash.split("?");
                     url.hash = hash;
