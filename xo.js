@@ -555,9 +555,10 @@ xover.init = async function () {
             await xover.stores.restore();
             //xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || ""; //causes troubles at firefox
             xover.dom.updateTitle();
+            let sections = xover.site.sections;
             xover.site.sections.forEach(section => section.render());
             let active = xover.stores.active;
-            active && await active.render();
+            active && !sections.find(section => section.store == active && !section.hasAttribute("xo-stylesheet"))  && await active.render(); // store will render only if there isn't any section requesting it and it doesn't have xo-stylesheet attribute
             return Promise.resolve();
         } catch (e) {
             return Promise.reject(e)
