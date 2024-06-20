@@ -6523,7 +6523,7 @@ xover.modernize = async function (targetWindow) {
                         if (typeof (args[args.length - 1]) === 'string') {
                             this.setAttributeNodeNS(args[args.length - 1], args[0])
                         } else {
-                            this.setAttributeNode(args[0])
+                            this.setAttributeNode(args[0].parentNode ? args[0].cloneNode() : args[0])
                         }
                     } else if (args[0] instanceof Node) {
                         this.append(args[0]);
@@ -9174,7 +9174,7 @@ xover.fetch.xml = async function (url, ...args) {
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
 file="${new xover.URL(url).href}"
 >${ancestor.localName == 'template' ? '' : `
-&lt;!- -${ancestor.nodeName} ${[...ancestor.attributes].filter(attr => !['xo:id'].includes(attr.nodeName)).map(attr => `${attr.nodeName}="${attr.value.replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/--/g, '- -')}"`)}- -&gt;`}
+&lt;!- -${ancestor.cloneNode().toString().replace(/ xmlns:(\w+)=(["'])([^\2]+?)\2/ig, '').replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/--/g, '- -')}- -&gt;`}
 ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
                 if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                     el.replaceWith(debug_node)
@@ -12557,7 +12557,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     }
     await xover.ready;
     try {
-        let reason = event.message || event.reason;
+        let reason = event.error || event.message || event.reason;
         if (!reason || reason == 'Script error.') return;
         //if (!(/*typeof (reason) == 'string' || */reason instanceof Error)) {
         let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
