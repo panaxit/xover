@@ -5912,14 +5912,16 @@ xover.modernize = async function (targetWindow) {
                     this.selectNodes(`processing-instruction('xml-stylesheet')`).forEach(node => node.isEqualNode(pi) && el.remove());
                 }
 
-                var toString_original = Node.prototype.toString;
+                xover.disablePolyfill = xover.disablePolyfill || {};
+                Node.toString = Node.hasOwnProperty("toString") ? Node.toString : Node.prototype.toString;
                 Node.prototype.toString = function () {
-                    //if (this instanceof HTMLElement) {
-                    //    return toString_original
-                    //} else {
-                    return new XMLSerializer().serializeToString(this);
-                    //}
+                    if (xover.disablePolyfill.hasOwnProperty("toString")) {
+                        return Node.toString.call(this)
+                    } else {
+                        return new XMLSerializer().serializeToString(this);
+                    }
                 }
+
                 if (!Node.prototype.hasOwnProperty('xml')) {
                     Object.defineProperty(Node.prototype, 'xml', {
                         get: function () {
@@ -6365,23 +6367,9 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Node.prototype, 'disconnect', {
                         value: function (reconnect = 1) {
                             if (this.disconnected) reconnect = 0;
-                            this.disconnected = true;
-                            //let observer;
-                            //if (this instanceof Document && this.observer) {
-                            //    observer = (this.ownerDocument || this).observer;
-                            //}
-                            //observer && observer.disconnect(reconnect);
-                            //if (reconnect) {
-                            //    xover.delay(reconnect).then(async () => {
-                            //        this.connect();
-                            //        observer && observer.connect();
-                            //    });
-                            //}
+                            //this.disconnected = true;
 
                             let document = (this.ownerDocument || this);
-                            //xover.delay(reconnect).then(() => {
-                            //    this.disconnected && this.connect();
-                            //});
 
                             for (let [observer, config] of document.observers || []) {
                                 let pending_records = observer.takeRecords();
@@ -7879,6 +7867,12 @@ xover.modernize = async function (targetWindow) {
                 if (!Node.prototype.hasOwnProperty('getClosestScroller')) {
                     Object.defineProperty(Node.prototype, 'getClosestScroller', {
                         value: function () {
+                            /* try if this method is better: let _getComputedStyle = getComputedStyle(element),
+      overflow = _getComputedStyle.overflow,
+      overflowX = _getComputedStyle.overflowX,
+      overflowY = _getComputedStyle.overflowY;
+
+  return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
                             if (this.scrollHeight > this.clientHeight && (this.scrollTop || this.scrollLeft)) {
                                 return this;
                             } else {
