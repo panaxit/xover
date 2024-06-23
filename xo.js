@@ -2044,6 +2044,24 @@ xover.site = new Proxy(Object.assign({}, history.state), {
     }
 })
 
+Object.defineProperty(xover.site, 'width', {
+    get() {
+        return window.innerWidth
+    }
+    , enumerable: true
+});
+
+Object.defineProperty(xover.site, 'height', {
+    get() {
+        return window.innerHeight
+    }
+    , enumerable: true
+});
+
+window.addEventListener('resize', function () {
+    xover.site.sections.map(el => [el, el.stylesheet]).filter(([, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:width') or starts-with(@name,'site:height')]`)).forEach(([el]) => el.render());
+});
+
 Object.defineProperty(xover.site, 'reference', {
     get() { return (history.state['reference'] || {}) }
     , set() { throw `State "reference" is readonly` }
