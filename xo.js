@@ -7463,7 +7463,7 @@ xover.modernize = async function (targetWindow) {
                             }
                             let before_listeners = xover.listener.matches(xml, 'beforeTransform')
                             let after_listeners = xover.listener.matches(xml, 'transform')
-                            xml.disconnect();
+                            //xml.disconnect();
                             //if (!(xml && xsl)) {
                             //    return xml;//false;
                             //}
@@ -7500,7 +7500,14 @@ xover.modernize = async function (targetWindow) {
                                                 let source = xover.sources[param.value];
                                                 if (!(source.childNodes.length)) {
                                                     let ready = source.ready;
-                                                    return ready.then(() => self.transform(xsl));
+                                                    return ready.then(() => self.transform(xsl)).catch(e => {
+                                                        if (e.status == 404) {
+                                                            source.append(document.createComment("ack:empty"))
+                                                            return self.transform(xsl);
+                                                        } else {
+                                                            throw (e)
+                                                        }
+                                                    });
                                                 }
                                                 let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value[0] == '@' ? name.value : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
@@ -9913,7 +9920,7 @@ xover.sources.defaults["empty.xslt"] = xover.xml.createDocument(`
 <xsl:stylesheet version="1.0"                                                                           
     xmlns:xo="http://panax.io/xover"
     xmlns:xsl="http://www.w3.org/1999/XSL/Transform"                                                    
-    xmlns:js="http://panax.io/xover/javascript"                                                    
+    xmlns:js="http://panax.io/languages/javascript"                                                    
     xmlns="http://www.w3.org/1999/xhtml">                                                               
     <xsl:output method="xml" indent="no" />
     <xsl:param name="js:snapshots"><![CDATA[self.store && self.store.snapshots.length || 0]]></xsl:param>
@@ -9969,7 +9976,7 @@ xover.sources.defaults["login.xslt"] = xover.xml.createDocument(`
 xover.sources.defaults["loading.xslt"] = xover.xml.createDocument(`
 <xsl:stylesheet version="1.0"                                                                           
     xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
-    xmlns:js="http://panax.io/xover/javascript"
+    xmlns:js="http://panax.io/languages/javascript"
     xmlns="http://www.w3.org/1999/xhtml" exclude-result-prefixes="js">
     <xsl:output method="xml" indent="no" />
     <xsl:param name="js:icon"><![CDATA[[...document.querySelectorAll('link[type = "image/x-icon"]')].map(el => el && el.getAttribute("href"))[0]]]></xsl:param>
