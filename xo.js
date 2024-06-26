@@ -2223,6 +2223,21 @@ Object.defineProperty(xover, 'state', {
     }, enumerable: true
 });
 
+Object.defineProperty(xover.site, 'stylesheets', {
+    get() {
+        let stylesheets = this.sections.map(section => section.stylesheet).filter(stylesheet => stylesheet);
+
+        Object.defineProperty(stylesheets, 'reload', {
+            value: function () {
+                this.forEach(stylesheet => stylesheet.source.clear());
+                xover.site.sections.render()
+            },
+            writable: false, enumerable: false, configurable: false
+        });
+        return stylesheets;
+    }, enumerable: true
+});
+
 Object.defineProperty(xover.site, 'sections', {
     get() {
         let sections = new Proxy([...top.window.document.querySelectorAll(`[xo-source],[xo-stylesheet]`)], {
@@ -6954,8 +6969,8 @@ xover.modernize = async function (targetWindow) {
                         let attributes = xover.json.fromAttributes(info.textContent);
                         let xpath = Object.entries(attributes).map(([key, value]) => `@${key}="${value}"`).join(' and ');
                         let source = xover.sources[info.getAttribute("file")].cloneNode(true);
-                        source.select(`//xsl:comment[contains(.,'<template')]`).remove();
                         let matches = source.selectNodes(`//xsl:template[${xpath}]`);
+                        source.select(`//xsl:comment[contains(.,'<template')]`).remove();
                         let node = matches.pop();
                         node.prepend(node.ownerDocument.createComment(`ack:source-file: ${info.getAttribute("file")}`));
                         return node;
@@ -9187,7 +9202,7 @@ xover.fetch.xml = async function (url, ...args) {
             return_value = xover.xml.fromJSON(return_value.body);
         }
         if (return_value instanceof Document && xover.session.debug) {
-            for (let el of return_value.select(`//xsl:template/*[not(self::xsl:*) or self::xsl:attribute[not(preceding-sibling::xsl:attribute)] or self::xsl:comment[not(preceding-sibling::xsl:comment)]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
+            for (let el of return_value.select(`//xsl:template/*[not(self::xsl:*) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute)] or self::xsl:comment[not(preceding-sibling::xsl:comment)]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
                 let ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
                 let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="http://panax.io/debug" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
