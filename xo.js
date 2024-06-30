@@ -5970,28 +5970,32 @@ xover.modernize = async function (targetWindow) {
                             let ref = this instanceof Element ? this : this.parentNode;
                             let scope = !ref.hasAttribute("xo-scope") && ref.getAttributeNode("xo:id") || ref.getAttributeNode("id") || (ref.closest('[xo-scope]') || window.document.createElement('p')).getAttributeNode("xo-scope");
                             if (!(scope instanceof Attr && section.contains(scope.parentNode))) return (this.ownerDocument || this).createComment("ack:no-scope");
-                            let slot = ref.closest('[xo-slot], slot');
+                            let slot = ref.closest('[xo-slot], slot') || '';
                             let attribute;
                             /*if (!dom_scope) {
                                 this.scopeNode = null;
                                 return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                             } else */if (self instanceof Element && scope.parentNode.contains(slot)) {
-                                attribute = slot.getAttribute("xo-slot");
+                                slot = slot.getAttributeNode("xo-slot");
                             } else {
-                                attribute = null;
+                                slot = '';
                             }
                             scope = source.selectFirst(`//*[@xo:id="${scope.value}"]`);
-                            //if (!attribute && this instanceof Text) attribute = 'text()';
-                            if (scope && attribute) {
-                                if (attribute === 'text()') {
+                            //if (!slot && this instanceof Text) slot = 'text()';
+                            if (scope && slot) {
+                                if (slot === 'text()') {
                                     let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
                                     this.scopeNode = textNode;
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
+                                } else if (slot.value.indexOf('::') != -1) {
+                                    let node = scope.selectFirst(slot);
+                                    this.scopeNode = node;
+                                    return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 } else {
                                     let attribute_node;
-                                    attribute_node = scope.getAttributeNode(attribute);
+                                    attribute_node = scope.getAttributeNode(slot);
                                     try {
-                                        attribute_node = attribute_node || scope.createAttribute(attribute, null);
+                                        attribute_node = attribute_node || scope.createAttribute(slot, null);
                                         this.scopeNode = attribute_node;
                                     } catch (e) {
                                         console.error(e, this)
