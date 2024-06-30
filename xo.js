@@ -558,7 +558,7 @@ xover.init = async function () {
             let sections = xover.site.sections;
             xover.site.sections.forEach(section => section.render());
             let active = xover.stores.active;
-            active && !sections.find(section => section.store == active && !section.hasAttribute("xo-stylesheet"))  && await active.render(); // store will render only if there isn't any section requesting it and it doesn't have xo-stylesheet attribute
+            active && !sections.find(section => section.store == active && !section.hasAttribute("xo-stylesheet")) && await active.render(); // store will render only if there isn't any section requesting it and it doesn't have xo-stylesheet attribute
             return Promise.resolve();
         } catch (e) {
             return Promise.reject(e)
@@ -1681,7 +1681,7 @@ xover.server = new Proxy({}, {
                 for (let [key, value] of Object.entries(endpoint)) {
                     url[key] = value;
                 }
-            } else if (typeof(endpoint) == 'string') {
+            } else if (typeof (endpoint) == 'string') {
                 url = new xover.URL(endpoint, undefined, { payload, ...settings })
             }
             let local_url = this instanceof URL && this || this.hasOwnProperty("url") && this.url || url;
@@ -2959,11 +2959,11 @@ xover.Source = function (tag) {
                 url = xover.URL(source);
                 url.hash = tag_string.replace(source, '');//(xover.manifest.server[source.replace(/^server:/, '')] || source)
                 //if (location.origin == url.origin) { //xover.URL automatically supports ?searchParams to come after or before hash;
-                    let [hash, searchParams = ''] = url.hash.split("?");
-                    url.hash = hash;
-                    for (let [key, value] of new URLSearchParams(searchParams).entries()) {
-                        url.searchParams.set(key, value)
-                    }
+                let [hash, searchParams = ''] = url.hash.split("?");
+                url.hash = hash;
+                for (let [key, value] of new URLSearchParams(searchParams).entries()) {
+                    url.searchParams.set(key, value)
+                }
                 //}
                 this.url = url;
 
@@ -5967,30 +5967,31 @@ xover.modernize = async function (targetWindow) {
                             this.scopeNode = null;
                             return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
                         } else {
-                            //let ref = this.parentElement && this.closest && this || this.parentNode || this
                             let ref = this instanceof Element ? this : this.parentNode;
-                            let node_by_id = !ref.hasAttribute("xo-scope") && (((ref.hasAttribute("xo-source") || ref.hasAttribute("xo-stylesheet")) && source) || source.selectFirst(`//*[@xo:id="${ref.getAttributeNode("xo:id") || ref.id}"]`));
-                            let [dom_scope, node] = node_by_id && [ref, node_by_id] || [ref.closest("slot,[xo-scope],[xo-source],[xo-stylesheet]")].filter(el => el).map(el => [el, el.hasAttribute("xo-scope") ? source.selectFirst(`//*[@xo:id="${el.getAttribute("xo-scope")}"]`) : el.name ? source.documentElement && source.documentElement.get(el.name) : source.documentElement]).pop() || [];
-                            let attribute = ref.closest("slot,[xo-slot],[xo-source],[xo-stylesheet]");
-                            if (!dom_scope) {
+                            let scope = !ref.hasAttribute("xo-scope") && ref.getAttributeNode("xo:id") || ref.getAttributeNode("id") || (ref.closest('[xo-scope]') || window.document.createElement('p')).getAttributeNode("xo-scope");
+                            if (!(scope instanceof Attr && section.contains(scope.parentNode))) return (this.ownerDocument || this).createComment("ack:no-scope");
+                            let slot = ref.closest('[xo-slot], slot');
+                            let attribute;
+                            /*if (!dom_scope) {
                                 this.scopeNode = null;
                                 return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                            } else if (!(node instanceof Attr) && dom_scope.contains(attribute)) {
-                                attribute = attribute.getAttribute("xo-slot");
+                            } else */if (self instanceof Element && scope.parentNode.contains(slot)) {
+                                attribute = slot.getAttribute("xo-slot");
                             } else {
                                 attribute = null;
                             }
+                            scope = source.selectFirst(`//*[@xo:id="${scope.value}"]`);
                             //if (!attribute && this instanceof Text) attribute = 'text()';
-                            if (node && attribute) {
+                            if (scope && attribute) {
                                 if (attribute === 'text()') {
-                                    let textNode = [...node.childNodes].filter(el => el instanceof Text).pop() || node.createTextNode(null);
+                                    let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
                                     this.scopeNode = textNode;
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 } else {
                                     let attribute_node;
-                                    attribute_node = node.getAttributeNode(attribute);
+                                    attribute_node = scope.getAttributeNode(attribute);
                                     try {
-                                        attribute_node = attribute_node || node.createAttribute(attribute, null);
+                                        attribute_node = attribute_node || scope.createAttribute(attribute, null);
                                         this.scopeNode = attribute_node;
                                     } catch (e) {
                                         console.error(e, this)
@@ -5999,7 +6000,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                             }
                             //Implementar para Text $0.select('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.selectFirst('self::xo:r')).pop().getAttributeNode($0.scope.value)
-                            this.scopeNode = node || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
+                            this.scopeNode = scope || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
                             return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                         }
                     }
@@ -6015,13 +6016,14 @@ xover.modernize = async function (targetWindow) {
 
                 const source_handler = {
                     get: function () {
-                        let section = this.section;
-                        if (!section) return null;
-                        let source = section && section.getAttribute("xo-source") || null;
+                        //let section = this.section || this;
+                        //if (!(section instanceof HTMLElement && (this.hasAttribute("xo-stylesheet")))) return null;
+                        let source = this.closest("[xo-source]");
                         if (source == 'inherit') {
-                            return (section.parentNode.section || {}).source
+                            return source.parentNode.source;
                         }
-                        if (!source) return null;
+                        if (!(source instanceof HTMLElement)) return null;
+                        source = source.getAttribute("xo-source");
                         if (source && source.indexOf("{$") != -1) {
                             source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
                         }
@@ -6086,7 +6088,8 @@ xover.modernize = async function (targetWindow) {
                             //if (this.ownerDocument instanceof XMLDocument) {
                             //    return undefined
                             //} else { /* Some nodes like processing-instructions have no closest method */
-                            return typeof (this.closest) === 'function' ? this.closest("[xo-source],[xo-stylesheet]") : null;
+                            let target = typeof (this.closest) === 'function' ? this.closest("[xo-source],[xo-stylesheet]") : null
+                            return target == this ? Object.getOwnPropertyDescriptor(Node.prototype, 'section').get.call(this.parentNode) : target;
                             //}
                         }
                     });
@@ -9576,7 +9579,7 @@ xover.xml.combine = function (target, new_node) {
 xover.dom.combine = async function (target, new_node) {
     let scripts;
     let script_wrapper = window.document.firstElementChild.cloneNode();
-    script_wrapper.append(...new_node.selectNodes(`html:script|html:style|.//*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
+    script_wrapper.append(...new_node.selectNodes(`html:style|descendant-or-self::*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
     if (target instanceof HTMLElement && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
         if (target.tagName != 'CODE' && !(new_node.firstElementChild instanceof HTMLElement)) {
             let named_slots = target.querySelectorAll("slot[name]");
@@ -9796,7 +9799,7 @@ xover.dom.combine = async function (target, new_node) {
         }
         //if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 
-        xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
+        post_render_scripts.length && xover.delay(1).then(() => _applyScripts(document, post_render_scripts));
         //if (other_scripts.length) {
         //    _applyScripts(document, other_scripts);
         //}
@@ -12480,7 +12483,7 @@ xover.listener.on(['change::*[xo-slot]:not([onchange])'], function () {
     let scope = this.scope;
     if (!scope) return;
     let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : (srcElement instanceof HTMLSelectElement ? srcElement.options[srcElement.selectedIndex].getAttribute("value") : srcElement.value);
+    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : ((srcElement instanceof HTMLSelectElement && srcElement.options[srcElement.selectedIndex].getAttributeNode("value") || srcElement.value));
     //if (srcElement.defaultPrevented) {
 
     //}
