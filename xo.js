@@ -7534,7 +7534,7 @@ xover.modernize = async function (targetWindow) {
                                             Promise.reject(e.message);
                                         }
                                     };
-                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:') or not(contains(@name,':'))][text()]`)) {
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:')][text()]`)) {
                                         try {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), eval(param.textContent))
                                         } catch (e) {
@@ -7547,12 +7547,12 @@ xover.modernize = async function (targetWindow) {
                                         try {
                                             let param_name = param.getAttribute("name").split(":").pop();
                                             //if (!(param_name in xover.session)) xover.session[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
-                                            let session_value = xover.session[param.getAttribute("name").split(/:/).pop()];
-                                            if (session_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
-                                                session_value = eval(`\`${param.value}\``)
+                                            let param_value = xover.session[param.getAttribute("name").split(/:/).pop()];
+                                            if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                param_value = eval(`\`${param.value}\``)
                                             }
-                                            if (session_value != undefined) {
-                                                xsltProcessor.setParameter(null, param.getAttribute("name"), session_value);
+                                            if (param_value != undefined) {
+                                                xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
@@ -7647,9 +7647,12 @@ xover.modernize = async function (targetWindow) {
                                             }
                                         }
                                     };
-                                    for (let param_name of xsl.selectNodes(`//xsl:stylesheet/xsl:param/@name`).filter(name => this.target && this.target.getAttribute(name.value))) {
+                                    for (let param_name of xsl.selectNodes(`//xsl:stylesheet/xsl:param/@name[not(contains(.,':'))]`)) {
+                                        let context = this.target;
+                                        let target = this.target;
+                                        let srcElement = this.target;
                                         let param = param_name.parentNode;
-                                        let param_value = this.target.getAttribute(param_name)
+                                        let param_value = this.target instanceof Element && this.target.getAttribute(param_name);
                                         if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                             param_value = eval(`\`${param.value}\``)
                                         }
