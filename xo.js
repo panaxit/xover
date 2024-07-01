@@ -5968,8 +5968,12 @@ xover.modernize = async function (targetWindow) {
                             return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
                         } else {
                             let ref = this instanceof Element ? this : this.parentNode;
-                            let scope = !ref.hasAttribute("xo-scope") && ref.getAttributeNode("xo:id") || ref.getAttributeNode("id") || (ref.closest('[xo-scope]') || window.document.createElement('p')).getAttributeNode("xo-scope");
-                            if (!(scope instanceof Attr && section.contains(scope.parentNode))) return (this.ownerDocument || this).createComment("ack:no-scope");
+                            let id = !ref.hasAttribute("xo-scope") && (ref.getAttributeNode("xo:id") || ref.getAttributeNode("id"));
+                            scope = source.selectFirst(`//*[@xo:id="${id}"]`);
+                            if (!scope) {
+                                scope = (ref.closest('[xo-scope]') || window.document.createElement('p')).getAttributeNode("xo-scope");
+                                if (!(scope instanceof Attr && section.contains(scope.parentNode))) return source;
+                            }
                             let slot = ref.closest('[xo-slot], slot') || '';
                             let attribute;
                             /*if (!dom_scope) {
@@ -12489,16 +12493,16 @@ xover.listener.on(['change::*[xo-slot]:not([onchange])'], function () {
     let srcElement = this;
     let scope = this.scope;
     if (!scope) return;
-    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
+    //let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
     let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : ((srcElement instanceof HTMLSelectElement && srcElement.options[srcElement.selectedIndex].getAttributeNode("value") || srcElement.value));
     //if (srcElement.defaultPrevented) {
 
     //}
-    if (scope instanceof Attr || scope instanceof Text) {
+    //if (scope instanceof Attr || scope instanceof Text) {
         scope.set(value);
-    } else if (scope instanceof Node) {
-        _attribute && scope.set(_attribute, value);
-    }
+    //} else if (scope instanceof Node) {
+    //    _attribute && scope.set(_attribute, value);
+    //}
 })
 
 //xover.listener.on(['change::input[type="file"]'], async function () {
