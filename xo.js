@@ -6082,10 +6082,8 @@ xover.modernize = async function (targetWindow) {
                 if (!Node.prototype.hasOwnProperty('stylesheet')) {
                     Object.defineProperty(Node.prototype, 'stylesheet', {
                         get: function () {
-                            let section = this.section;
-                            if (!section) return null;
-                            let stylesheet_name = section && section.getAttribute("xo-stylesheet") || null;
-                            return stylesheet_name && xover.sources[stylesheet_name] || null;
+                            let stylesheet = (this.closest("[xo-source],[xo-stylesheet]") || document.createElement("p")).getAttributeNode("xo-stylesheet");
+                            return stylesheet && xover.sources[stylesheet.value] || null;
                         }
                     });
                 }
@@ -9657,7 +9655,11 @@ xover.dom.combine = async function (target, new_node) {
                             let result = (function () {
                                 xover.context = script.original || script;
                                 if (window.document.contains(xover.context)) {
-                                    return eval.apply(this, arguments)
+                                    try {
+                                        return eval.apply(this, arguments)
+                                    } catch (e) {
+                                        console.error(e, arguments)
+                                    }
                                 }
                             }(`/*${target.getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; ${script.textContent};xover.context = undefined;`));
                             if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
