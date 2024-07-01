@@ -5987,11 +5987,12 @@ xover.modernize = async function (targetWindow) {
                             scope = source.selectFirst(`//*[@xo:id="${scope.value}"]`);
                             //if (!slot && this instanceof Text) slot = 'text()';
                             if (scope && slot) {
+                                slot = slot.value;
                                 if (slot === 'text()') {
                                     let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
                                     this.scopeNode = textNode;
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                                } else if (slot.value.indexOf('::') != -1) {
+                                } else if (slot.indexOf('::') != -1) {
                                     let node = scope.selectFirst(slot);
                                     this.scopeNode = node;
                                     return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
