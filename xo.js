@@ -5968,7 +5968,7 @@ xover.modernize = async function (targetWindow) {
                             return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
                         } else {
                             let ref = this instanceof Element ? this : this.parentNode;
-                            let id = !ref.hasAttribute("xo-scope") && (ref.getAttributeNode("xo:id") || ref.getAttributeNode("id"));
+                            let id = !ref.hasAttribute("xo-scope") && (ref.getAttributeNode("xo:id") || ref.getAttributeNode("id")) || null;
                             scope = source.selectFirst(`//*[@xo:id="${id}"]`);
                             if (!scope) {
                                 scope = (ref.closest('[xo-scope]') || window.document.createElement('p')).getAttributeNode("xo-scope");
@@ -5979,7 +5979,7 @@ xover.modernize = async function (targetWindow) {
                             /*if (!dom_scope) {
                                 this.scopeNode = null;
                                 return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                            } else */if (self instanceof Element && scope.parentNode.contains(slot)) {
+                            } else */if (scope.parentNode.contains(slot)) {
                                 slot = slot.getAttributeNode("xo-slot");
                             } else {
                                 slot = '';
