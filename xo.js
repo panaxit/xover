@@ -4727,7 +4727,7 @@ xover.modernize = async function (targetWindow) {
                     enumerable: false,
                     get: async function () {
                         try {
-                            if (!this.childNodes.length) {
+                            if (!this.firstChild) {
                                 if (this.source) {
                                     //this.observe();
                                     await this.fetch();
@@ -10254,21 +10254,6 @@ xover.Store = function (xml, ...args) {
         writable: false, enumerable: false, configurable: false
     })
 
-    Object.defineProperty(this, 'ready', {
-        enumerable: false,
-        get: async function () {
-            try {
-                let document = this.document;
-                if (!document.childNodes.length) {
-                    await this.fetch()
-                }
-                return document.hasChildNodes();
-            } catch (e) {
-                return Promise.reject(e)
-            }
-        }
-    })
-
     Object.defineProperty(_sources, 'load', {
         value: async function (list) {
             //store.state.loading = true;
@@ -10863,17 +10848,24 @@ xover.Store = function (xml, ...args) {
     Object.defineProperty(this, 'fetch', {
         value: async function (...args) {
             __document.settings.merge(...args);
+            await __document.fetch();
+            await this.initialize();
+        },
+        writable: false, enumerable: false, configurable: false
+    });
+
+    Object.defineProperty(this, 'ready', {
+        get: async function () {
             //__document.replaceChildren()
-            await xover.storehouse.read('sources', store.tag).then((stored_document) => {
+            !__document.firstChild && await xover.storehouse.read('sources', store.tag).then((stored_document) => {
                 if (stored_document && stored_document.firstChild) {
                     //__document.disconnect();
                     __document.replaceContent(...stored_document.childNodes)
                 }
             })
-            await __document.fetch();
+            await __document.ready;
             await this.initialize();
-        },
-        writable: false, enumerable: false, configurable: false
+        }
     });
 
     Object.defineProperty(this, 'initialize', {
@@ -10918,7 +10910,7 @@ xover.Store = function (xml, ...args) {
                     xover.site.hash = self.hash + self.url.search;
                 }
                 if (!__document.firstChild) {
-                    await store.fetch();
+                    await self.ready;
                 }
                 let document = __document.cloneNode(true);
                 window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
