@@ -2981,7 +2981,7 @@ xover.Source = function (tag) {
                     }
                     for (let [key, value] of Object.entries(parameters)) {
                         if (key[0] == '^') {
-                            url.headers = source_url.headers || new Headers();
+                            url.headers = url.headers || new Headers();
                             url.headers[key.slice(1)] = value;
                             //url.searchParams.delete(key) // remove on fetch
                             delete parameters[key]
