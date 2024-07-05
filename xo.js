@@ -7551,7 +7551,7 @@ xover.modernize = async function (targetWindow) {
                                                 param.replaceWith(...templates)
                                             }
                                         } catch (e) {
-                                            Promise.reject(e.message);
+                                            Promise.reject(e);
                                         }
                                     };
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:')][text()]`)) {
@@ -7559,7 +7559,7 @@ xover.modernize = async function (targetWindow) {
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), eval(param.textContent))
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                            Promise.reject(e.message);
+                                            Promise.reject(e);
                                             xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                         }
                                     };
@@ -7576,7 +7576,7 @@ xover.modernize = async function (targetWindow) {
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                            Promise.reject(e.message);
+                                            Promise.reject(e);
                                         }
                                     };
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'store-state:')]`)) {
@@ -7592,7 +7592,7 @@ xover.modernize = async function (targetWindow) {
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                            Promise.reject(e.message);
+                                            Promise.reject(e);
                                         }
                                     };
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'store:')]`)) {
@@ -7607,7 +7607,7 @@ xover.modernize = async function (targetWindow) {
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                            Promise.reject(e.message);
+                                            Promise.reject(e);
                                         }
                                     };
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state')]`)) {
@@ -7622,7 +7622,7 @@ xover.modernize = async function (targetWindow) {
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                            Promise.reject(e.message);
+                                            Promise.reject(e);
                                         }
                                     };
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`)) {
@@ -7637,7 +7637,7 @@ xover.modernize = async function (targetWindow) {
                                             }
                                         } catch (e) {
                                             //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
-                                            Promise.reject(e.message);
+                                            Promise.reject(e);
                                         }
                                     };
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)) {
@@ -7663,7 +7663,7 @@ xover.modernize = async function (targetWindow) {
                                                 param_value = param.textContent
                                                 //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
                                             } else {
-                                                Promise.reject(e.message);
+                                                Promise.reject(e);
                                             }
                                         }
                                     };
