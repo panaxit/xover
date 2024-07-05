@@ -1426,7 +1426,10 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (history.state) delete history.state.active;
-    xover.site.seed = (history.state || {}).seed || top.location.hash || '#';
+    let hash = top.location.hash;
+    if (hash && !document.querySelector(hash)) {
+        xover.site.seed = (history.state || {}).seed || hash || '#';
+    }
     xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
     if (event.defaultPrevented) return;
     (location.search || '').length > 1 && [...xover.site.sections].filter(section => section.store === xover.stores.seed).map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
@@ -2106,6 +2109,9 @@ Object.defineProperty(xover.site, 'navigate', {
 Object.defineProperty(xover.site, 'hash', {
     get() { return location.hash }
     , set(input) {
+        if (input[0] != '#') {
+            input = '#' + (input || '');
+        }
         input = input[input.length - 1] != '#' ? input : '';
         history.replaceState(Object.assign({ position: history.length - 1 }, history.state, { active: history.state.active }), ((event || {}).target || {}).textContent, location.pathname + location.search + (input || ''));
     }
@@ -5984,7 +5990,11 @@ xover.modernize = async function (targetWindow) {
                             } else {
                                 slot = '';
                             }
-                            scope = source.selectFirst(`//*[@xo:id="${scope.value}"]`);
+                            if (scope.value.indexOf('context:') == 0 && section.context) {
+                                scope = section.context.selectFirst(`//*[@xo:id="${scope.value}"]`);
+                            } else {
+                                scope = source.selectFirst(`//*[@xo:id="${scope.value}"]`);
+                            }
                             //if (!slot && this instanceof Text) slot = 'text()';
                             if (scope && slot) {
                                 slot = slot.value;
@@ -7336,8 +7346,8 @@ xover.modernize = async function (targetWindow) {
                     return new_node;
                 }
 
-                Document.prototype.seed = function () {
-                    this.documentElement && this.documentElement.seed();
+                Document.prototype.seed = function (...args) {
+                    this.documentElement && this.documentElement.seed.apply(this, args);
                     return this;
                 }
 
@@ -7351,18 +7361,21 @@ xover.modernize = async function (targetWindow) {
                     return cloned_element;
                 }
 
-                Element.prototype.seed = function (reseed) {
+                Element.prototype.seed = function (reseed_or_config = {}) {
                     ////if (navigator.userAgent.indexOf("Safari") == -1) {
                     ////    this = xover.xml.transform(this, "xover/normalize_namespaces.xslt");
                     ////}
                     ////try {
-                    if (reseed) {
+                    if (reseed_or_config instanceof Boolean) {
+                        reseed_or_config = {reseed: true}
+                    }
+                    if (reseed_or_config["reseed"] == true) {
                         this.selectNodes('.//@xo:id').remove()
                     }
                     //let observer = this.ownerDocument && this.ownerDocument.observer
                     //let reconnect = !document.disconnected;
                     //observer && observer.disconnect(0)
-                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => Element.setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
+                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => Element.setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return (reseed_or_config["prefix"] ? reseed_or_config["prefix"] + ':' : '')+`${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
                     //reconnect && observer && observer.connect();
                     ////} catch (e) {
                     ////    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
@@ -7778,6 +7791,10 @@ xover.modernize = async function (targetWindow) {
                         writable: false, enumerable: false, configurable: false
                     });
                 }
+
+                xover.listener.on(`beforeTransform`, function ({ document }) {
+                    document.seed({ prefix: 'context' })
+                })
 
                 //if (!XMLDocument.prototype.hasOwnProperty('tag')) {
                 //    Object.defineProperty(XMLDocument.prototype, 'tag', {
@@ -9856,7 +9873,7 @@ xover.dom.combine = async function (target, new_node) {
 xover.xml.createElement = function (tagName) {
     let { prefix } = xover.xml.getAttributeParts(tagName);
     let target_document = xover.stores.active.document;
-    let namespace = (target_document.documentElement || target_document).resolveNS(prefix)
+    let namespace = (target_document.documentElement || target_document).resolveNS(prefix) || xover.spaces[prefix];
     return document.implementation.createDocument(namespace || "", tagName, null).documentElement;
 }
 
@@ -12494,7 +12511,7 @@ xover.listener.on(['change::*[xo-slot]:not([onchange])'], function () {
 
     //}
     //if (scope instanceof Attr || scope instanceof Text) {
-        scope.set(value);
+    scope.set(value);
     //} else if (scope instanceof Node) {
     //    _attribute && scope.set(_attribute, value);
     //}
@@ -12565,6 +12582,7 @@ xover.dom.toExcel = (function (table, name) {
 //        event.preventDefault();
 //    }
 //});
+
 xover.listener.on(['load', 'change::meta[name=scroll-restoration]'], function () {
     xover.site.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
 });
