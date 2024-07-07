@@ -1427,6 +1427,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (history.state) delete history.state.active;
     let hash = top.location.hash;
+    hash = hash.split(/\?/)[0];
     if (hash && !document.querySelector(hash)) {
         xover.site.seed = (history.state || {}).seed || hash || '#';
     }
