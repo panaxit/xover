@@ -1426,9 +1426,9 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (history.state) delete history.state.active;
-    let hash = top.location.hash;
+    let hash = top.location.hash || '#';
     hash = hash.split(/\?/)[0];
-    if (hash && !document.querySelector(hash)) {
+    if (hash && !document.querySelector(`[id="${hash.split(/^#/)[1]}"]`)) {
         xover.site.seed = (history.state || {}).seed || hash || '#';
     }
     xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
