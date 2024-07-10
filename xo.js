@@ -1208,14 +1208,20 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                         operator = key[0];
                         key = key.slice(1);
                     }
-                    let [arg, ...props] = key.split(/\./g);
+                    let [arg, ...props] = key.split(/(?<=[\w\d])\./g);
                     let context = event.detail[arg];
                     if (context === undefined && arg in window) {
                         context = window[arg]
                     }
-                    for (let [ix, prop] of Object.entries(props)) {
-                        if (!context) continue;
-                        context = context[prop] != null ? context[prop] : props.length - 1 != ix ? {} : null;
+                    try {
+                        with (context) {
+                            context = eval(props.join('.'))
+                        }
+                    } catch (e) {
+                        for (let [ix, prop] of Object.entries(props)) {
+                            if (!context) continue;
+                            context = context[prop] != null ? context[prop] : props.length - 1 != ix ? {} : null;
+                        }
                     }
                     if (context instanceof Document) {
                         context = (context.href || '').replace(/^\//, '')
@@ -7374,7 +7380,7 @@ xover.modernize = async function (targetWindow) {
                     ////}
                     ////try {
                     if (reseed_or_config instanceof Boolean) {
-                        reseed_or_config = {reseed: true}
+                        reseed_or_config = { reseed: true }
                     }
                     if (reseed_or_config["reseed"] == true) {
                         this.selectNodes('.//@xo:id').remove()
@@ -7382,7 +7388,7 @@ xover.modernize = async function (targetWindow) {
                     //let observer = this.ownerDocument && this.ownerDocument.observer
                     //let reconnect = !document.disconnected;
                     //observer && observer.disconnect(0)
-                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => Element.setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return (reseed_or_config["prefix"] ? reseed_or_config["prefix"] + ':' : '')+`${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
+                    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).forEach(node => Element.setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return (reseed_or_config["prefix"] ? reseed_or_config["prefix"] + ':' : '') + `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
                     //reconnect && observer && observer.connect();
                     ////} catch (e) {
                     ////    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
