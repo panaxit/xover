@@ -9633,7 +9633,7 @@ xover.dom.combine = async function (target, new_node) {
                 return target;
             }
         }
-        if ((new_node.firstElementChild || new_node).matches("xson:*")) {
+        if ((new_node.firstElementChild || new_node).namespaceURI == xover.spaces["xson"]) {
             new_node = xover.xml.toJSON(new_node)
             new_node = JSON.stringify(new_node)
         }
