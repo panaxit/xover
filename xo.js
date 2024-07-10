@@ -5203,6 +5203,12 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
+                Object.defineProperty(ProcessingInstruction.prototype, 'closest', {
+                    value: function (...args) {
+                        return null
+                    }
+                })
+
                 Element.closest = Element.closest || Object.getOwnPropertyDescriptor(Element.prototype, 'closest');
                 Object.defineProperty(Element.prototype, 'closest', {
                     value: function (...args) {
