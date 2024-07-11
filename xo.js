@@ -1275,6 +1275,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         } catch (e) {
             if (event.detail) {
                 event.detail.returnValue = e;
+                console.error(e);
             } else {
                 throw e;
             }
@@ -3216,6 +3217,14 @@ xover.Source = function (tag) {
         },
         writable: true, enumerable: false, configurable: false
     });
+
+    for (let prop of ['$', '$$', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
+        Object.defineProperty(this, prop, {
+            get: function () {
+                return (__document || self.document)[prop];
+            }
+        })
+    }
     return this
 }
 
