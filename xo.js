@@ -1380,7 +1380,7 @@ xover.listener.on('hashchange', function () {
     xover.site.active = location.hash;
 });
 
-xover.listener.on('render', function () {
+xover.listener.on('render?location.hash', function () {
     let target = this.querySelector(location.hash);
     if (target) {
         target.scrollIntoView()
