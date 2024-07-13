@@ -2086,6 +2086,20 @@ Object.defineProperty(xover.site, 'location', {
     , enumerable: true
 });
 
+Object.defineProperty(xover.site, 'meta', {
+    get() {
+        return new Proxy({} , {
+            get: function (self, key) {
+                if (key in self) {
+                    return self[key]
+                }
+                return (document.querySelector(`meta[name="${key}"]`) || document.createElement("p")).getAttribute("content")
+            }
+        })
+    }
+    , enumerable: true
+});
+
 Object.defineProperty(xover.site, 'scrollRestoration', {
     get() {
         return 'scrollRestoration' in xover.state && xover.state.scrollRestoration || (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
@@ -3641,7 +3655,6 @@ xover.spaces["debug"] = "http://panax.io/debug"
 xover.spaces["html"] = "http://www.w3.org/1999/xhtml"
 xover.spaces["js"] = "http://panax.io/languages/javascript"
 xover.spaces["data"] = "http://panax.io/data"
-xover.spaces["meta"] = "http://panax.io/metadata"
 xover.spaces["metadata"] = "http://panax.io/metadata"
 xover.spaces["mml"] = "http://www.w3.org/1998/Math/MathML"
 xover.spaces["session"] = "http://panax.io/session"
@@ -3649,6 +3662,7 @@ xover.spaces["site"] = "http://panax.io/site"
 xover.spaces["store"] = "http://panax.io/store"
 xover.spaces["store-state"] = "http://panax.io/store/state"
 xover.spaces["searchParams"] = "http://panax.io/site/searchParams"
+xover.spaces["meta"] = "http://panax.io/site/meta"
 xover.spaces["state"] = "http://panax.io/state"
 xover.spaces["svg"] = "http://www.w3.org/2000/svg"
 xover.spaces["temp"] = "http://panax.io/temp"
@@ -7662,17 +7676,30 @@ xover.modernize = async function (targetWindow) {
                                             Promise.reject(e);
                                         }
                                     };
+                                    for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'meta:')]`)) {
+                                        try {
+                                            let [prefix, param_name] = param.getAttribute("name").split(/:/);
+                                            let param_value = xover.site[prefix][param_name];
+                                            if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+                                                param_value = eval(`\`${param.value}\``)
+                                            }
+                                            if (param_value != undefined) {
+                                                xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
+                                            }
+                                        } catch (e) {
+                                            if (e instanceof ReferenceError || e instanceof SyntaxError) {
+                                                param_value = param.textContent
+                                                //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
+                                            } else {
+                                                Promise.reject(e);
+                                            }
+                                        }
+                                    };
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)) {
                                         try {
-                                            let param_name = param.getAttribute("name").split(/:/).pop()
-                                            let param_value = xover.site.searchParams.get(param_name);
-                                            if (!xover.site.searchParams.has(param_name)) {
-                                                //let default_value = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
-                                                //if (typeof (default_value) === 'function') {
-                                                //    param_value = default_value(param_value)
-                                                //} else {
-                                                //    param_value = default_value !== undefined ? default_value : '';
-                                                //}
+                                            let [prefix, param_name] = param.getAttribute("name").split(/:/);
+                                            let param_value = xover.site[prefix].get(param_name);
+                                            if (!xover.site[prefix].has(param_name)) {
                                                 if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
