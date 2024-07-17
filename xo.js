@@ -1214,8 +1214,10 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                         context = window[arg]
                     }
                     try {
-                        with (context) {
-                            context = eval(props.join('.'))
+                        if (props.length) {
+                            with (context) {
+                                context = eval(props.join('.'))
+                            }
                         }
                     } catch (e) {
                         for (let [ix, prop] of Object.entries(props)) {
@@ -1236,11 +1238,11 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                     } else {
                         switch (operator) {
                             case "!":
-                                return !`${context}`.matches(`${condition}`)
+                                return !(context instanceof Node ? context : `${context}`).matches(`${condition}`)
                             case "*":
                                 return `${context}`.indexOf(`${condition}`) != -1
                             default:
-                                return `${context}`.matches(`${condition}`)
+                                return (context instanceof Node ? context : `${context}`).matches(`${condition}`)
                         }
                     }
                 }))) continue;
@@ -2088,7 +2090,7 @@ Object.defineProperty(xover.site, 'location', {
 
 Object.defineProperty(xover.site, 'meta', {
     get() {
-        return new Proxy({} , {
+        return new Proxy({}, {
             get: function (self, key) {
                 if (key in self) {
                     return self[key]
@@ -5688,6 +5690,13 @@ xover.modernize = async function (targetWindow) {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
+                    for (let el of xsl.select(`//xsl:template//@xo:use-attribute-sets`)) {
+                        let attribute_sets = el.value.split(/\s+/g);
+                        let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [xsl.createComment(`ack:importing-attribute-sets-begins`)]);
+                        attributes = attributes.concat(xsl.createComment(`ack:importing-attribute-sets-end`))
+                        el.parentNode.prepend(...attributes)
+                        el.remove();
+                    }
                     return xsl;
                 }
 
@@ -8164,6 +8173,7 @@ xover.modernize = async function (targetWindow) {
                                 target.tag = data.tag;
                                 let dom;
                                 if (xsl) {
+                                    xsl.target = target;
                                     if (!xsl.selectFirst(`/*/comment()[.='ack:optimized']`)) {
                                         xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
                                         xsl.documentElement.prepend(new Comment("ack:optimized"))
@@ -9391,15 +9401,6 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 } catch (e) {
                     window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, this));
                     return Promise.reject(e);
-                }
-            }
-            if (return_value instanceof Node) {
-                for (let el of return_value.select(`//xsl:template//@xo:use-attribute-sets`)) {
-                    let attribute_sets = el.value.split(/\s+/g);
-                    let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [return_value.createComment(`ack:importing-attribute-sets-begins`)]);
-                    attributes = attributes.concat(return_value.createComment(`ack:importing-attribute-sets-end`))
-                    el.parentNode.prepend(...attributes)
-                    el.remove();
                 }
             }
             if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
