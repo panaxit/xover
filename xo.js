@@ -1384,7 +1384,9 @@ xover.listener.on('hashchange', function () {
 });
 
 xover.listener.on('render?location.hash', function () {
-    let target = this.querySelector(location.hash);
+    let hash = top.location.hash || '#';
+    hash = hash.split(/\?/)[0];
+    let target = this.querySelector(hash);
     if (target) {
         target.scrollIntoView()
     }
@@ -2048,7 +2050,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
                     window.dispatchEvent(new Event('hashchange'));
                 }
             }
-            if (key === 'seed' && self['active'] != new_value) self['active'] = new_value;
+            if (key === 'seed') self['active'] = new_value;
             for (let [subscriber] of xover.subscribers.site[key]) {
                 subscriber.evaluate()
             }
