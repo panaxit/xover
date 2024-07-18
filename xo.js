@@ -2060,6 +2060,17 @@ xover.site = new Proxy(Object.assign({}, history.state), {
     }
 })
 
+Object.defineProperty(xover.site, 'aspectRatio', {
+    get() {
+        if (window.innerHeight > window.innerWidth) {
+            return 'portrait';
+        } else {
+            return 'landscape';
+        }
+    }
+    , enumerable: true
+});
+
 Object.defineProperty(xover.site, 'width', {
     get() {
         return window.innerWidth
@@ -2075,7 +2086,7 @@ Object.defineProperty(xover.site, 'height', {
 });
 
 window.addEventListener('resize', function () {
-    xover.site.sections.map(el => [el, el.stylesheet]).filter(([, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:width') or starts-with(@name,'site:height')]`)).forEach(([el]) => el.render());
+    xover.site.sections.map(el => [el, el.stylesheet]).filter(([, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:width') or starts-with(@name,'site:height') or starts-with(@name,'site:aspectRatio')]`)).forEach(([el]) => el.render());
 });
 
 Object.defineProperty(xover.site, 'reference', {
@@ -9405,13 +9416,13 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                     if (rejections.length) {
                         return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
                     }
-                    return_value = return_value.consolidate();
                 } catch (e) {
                     window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, this));
                     return Promise.reject(e);
                 }
             }
             if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
+                return_value = return_value.consolidate();
                 return_value.documentElement.set("exclude-result-prefixes", return_value.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "));
                 for (let attr of [...return_value.documentElement.attributes].filter(attr => attr.prefix && attr.namespaceURI === "http://www.w3.org/2000/xmlns/")) {
                     if (attr.localName in xover.spaces && xover.spaces[attr.localName] != attr.value) {
