@@ -285,11 +285,11 @@ xover.stores = new Proxy({}, {
         if (exists) {
             delete self[key];
             delete xover.sources[key];
-            if (same && xover.site.position > 1) {
-                history.back();
-            } /*else {
-                xover.dom.refresh();
-            }*/
+            //if (same && xover.site.position > 1) {
+            //    history.back();
+            //} /*else {
+            //    xover.dom.refresh();
+            //}*/
         }
         return exists && !(key in self)
     }, has: function (self, key) {
