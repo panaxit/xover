@@ -568,8 +568,8 @@ xover.init = async function () {
     }).finally(async () => {
         this.init.initializing = 'done';
         progress_renders = await progress_renders || [];
+        window.top.dispatchEvent(new xover.listener.Event(`xover-initialized`, { progress_renders }, this));
         progress_renders instanceof Array && await Promise.all(progress_renders).then(item => item.remove());
-        window.top.dispatchEvent(new xover.listener.Event(`xover-initialized`, {}, this));
     });
     return this.init.initializing;
 }
@@ -10135,8 +10135,6 @@ xover.sources.defaults["message.xslt"] = xover.xml.createDocument(`
   <xsl:template match="html:*"><xsl:copy-of select="."/></xsl:template>
   <xsl:template match="xson:object/*"><li><strong><xsl:value-of select="name()"/>: </strong> <xsl:apply-templates select="text()"/></li></xsl:template>
 </xsl:stylesheet>`);
-
-xover.data.default = xover.xml.createDocument('<?xml-stylesheet type="text/xsl" href="shell.xslt" role="shell" target="body"?><shell:shell xmlns:xo="http://panax.io/xover" xmlns:shell="http://panax.io/shell" xmlns:state="http://panax.io/state" xmlns:source="http://panax.io/source" xo:id="shell" xo:hash=""></shell:shell>');
 
 xover.xml.Empty = function () {
     if (!(this instanceof xover.xml.Empty)) return new xover.xml.Empty();
