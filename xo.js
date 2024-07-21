@@ -5706,10 +5706,18 @@ xover.modernize = async function (targetWindow) {
                     }
                     for (let el of xsl.select(`//xsl:template//@xo:use-attribute-sets`)) {
                         let attribute_sets = el.value.split(/\s+/g);
-                        let attributes = attribute_sets.reduce((attrs, key) => attrs.concat([el.ownerDocument.createComment(`ack:attribute-set ${key}`)]).concat(el.select(`//xsl:attribute-set[@name="${key}"]/*`)), [xsl.createComment(`ack:importing-attribute-sets-begins`)]);
+                        let attributes = attribute_sets.reduce((attrs, key) => {
+                            let imported_attributes = el.select(`//xsl:attribute-set[@name="${key}"]/*`);
+                            if (imported_attributes.length) {
+                                attrs.push(el.ownerDocument.createComment(`ack:attribute-set ${key}`));
+                                attrs.push(...imported_attributes);
+                                attrs.push(xsl.createComment(`ack:importing-attribute-sets-begins`));
+                            }
+                            return attrs;
+                        },[]);
                         attributes = attributes.concat(xsl.createComment(`ack:importing-attribute-sets-end`))
                         el.parentNode.prepend(...attributes)
-                        el.remove();
+                        //el.remove();
                     }
                     return xsl;
                 }
