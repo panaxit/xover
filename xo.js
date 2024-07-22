@@ -3072,6 +3072,10 @@ xover.Source = function (tag) {
                                 } else if (existsFunction(url.resource)) {
                                     let fn = eval(endpoint);
                                     response = await fn.apply(this, args.length ? args : parameters);
+                                } else {
+                                    if (xover.session.debug) {
+                                        throw (new Error(`Endpoint "${endpoint}"" is not defined neither in the manifest nor as a function`));
+                                    }
                                 }
                             } catch (e) {
                                 if (e instanceof Response && e.document instanceof XMLDocument) {
@@ -5714,7 +5718,7 @@ xover.modernize = async function (targetWindow) {
                                 attrs.push(xsl.createComment(`ack:importing-attribute-sets-begins`));
                             }
                             return attrs;
-                        },[]);
+                        }, []);
                         attributes = attributes.concat(xsl.createComment(`ack:importing-attribute-sets-end`))
                         el.parentNode.prepend(...attributes)
                         //el.remove();
