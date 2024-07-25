@@ -3156,6 +3156,7 @@ xover.Source = function (tag) {
                     if (response instanceof Document) {
                         this.settings.stylesheets && this.settings.stylesheets.forEach(stylesheet => typeof (response.addStylesheet) == 'function' && response.addStylesheet(stylesheet));
                     }
+                    response.url = response.url || url;
                     let fetch_event = new xover.listener.Event('fetch', { source: self, document: response, tag: tag_string, settings: this.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, self);
                     self.fetch_event = fetch_event;
                     window.top.dispatchEvent(fetch_event);
@@ -5780,12 +5781,13 @@ xover.modernize = async function (targetWindow) {
                                     let old = context.cloneNode(true);
                                     context.href = response.href;
                                     context.url = response.url;
+                                    let url = context.url;
                                     if (response instanceof Document || response instanceof DocumentFragment) {
                                         context.replaceBy(response); //transfers all contents
                                     } else {
                                         context.replaceContent(response);
                                     }
-                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { tag: '', document: context, store: store, old: old, target: context }, context));
+                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { url: response.url, href: response.url.href, tag: '', document: context, store: store, old: old, target: context }, context));
                                     resolve(context);
                                 }).catch(async (e) => {
                                     if (!e) {
@@ -6109,7 +6111,7 @@ xover.modernize = async function (targetWindow) {
                         //let section = this.section || this;
                         //if (!(section instanceof HTMLElement && (this.hasAttribute("xo-stylesheet")))) return null;
                         let source = this.closest("[xo-source]");
-                        if (source == 'inherit') {
+                        if (source instanceof Element && source.getAttribute("xo-source") == 'inherit') {
                             return source.parentNode.source;
                         }
                         if (!(source instanceof HTMLElement)) return null;
