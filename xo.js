@@ -3253,7 +3253,7 @@ xover.Source = function (tag) {
         writable: true, enumerable: false, configurable: false
     });
 
-    for (let prop of ['$', '$$', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
+    for (let prop of ['$', '$$', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
         Object.defineProperty(this, prop, {
             get: function () {
                 return (__document || self.document)[prop];
@@ -4969,6 +4969,7 @@ xover.modernize = async function (targetWindow) {
                     else { return null; }
                 }
                 Node.prototype.select = Node.prototype.selectNodes;
+                Node.prototype.single = Node.prototype.selectSingleNode;
                 Node.prototype.selectFirst = Node.prototype.selectSingleNode;
                 HTMLTextAreaElement.prototype.select = Node.prototype.selectNodes;
 
@@ -8807,7 +8808,7 @@ xover.Response = function (response, request) {
                     }
                 });
                 let __document = body;
-                for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS']) {
+                for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS']) {
                     let prop_desc = Object.getPropertyDescriptor(__document, prop);
                     if (!prop_desc) {
                         continue
@@ -11060,7 +11061,7 @@ xover.Store = function (xml, ...args) {
         writable: true, enumerable: false, configurable: false
     });
 
-    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
+    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
         let prop_desc = Object.getPropertyDescriptor(__document, prop);
         if (!prop_desc) {
             continue
