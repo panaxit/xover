@@ -7566,7 +7566,6 @@ xover.modernize = async function (targetWindow) {
                                 return (xml_document || xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed()).transform(this);
                             }
                             let xsl = xml_document;
-                            xover.dom.applyScripts(xsl.select(`//html:script[@fetchpriority="high"]`));
                             let xml = this;
                             let result = undefined;
                             if (!xsl/* && ((arguments || {}).callee || {}).caller != Node.prototype.transform*/) {
@@ -7578,6 +7577,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 return xml;
                             }
+                            xover.dom.applyScripts(xsl.select(`//html:script[@fetchpriority="high"]`));
                             let before_listeners = xover.listener.matches(xml, 'beforeTransform')
                             let after_listeners = xover.listener.matches(xml, 'transform')
                             xml.disconnect();
