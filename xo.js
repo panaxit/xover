@@ -1584,7 +1584,7 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
                 for (let link of [...document.querySelectorAll('link[rel="xover-manifest"]')]) {
                     let url = xover.URL(link.getAttribute("href"));
                     try {
-                        let manifest = await xover.fetch.json(url, { headers: { Accept: "*/*" } }).catch(e => console.log(e));
+                        let manifest = await xover.fetch.json(url, { headers: { Accept: "*/*" } }).catch(e => console.error(e));
                         xover.manifest.merge(manifest)
                     } catch (e) {
                         Promise.reject(e);
@@ -2273,7 +2273,7 @@ Object.defineProperty(xover.site, 'stylesheets', {
 
         Object.defineProperty(stylesheets, 'reload', {
             value: function () {
-                this.forEach(stylesheet => stylesheet.source.clear());
+                xover.site.stylesheets.forEach(stylesheet => stylesheet.source.clear());
                 xover.site.sections.render()
             },
             writable: false, enumerable: false, configurable: false
