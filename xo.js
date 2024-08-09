@@ -2044,6 +2044,7 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             history.state[key] = new_value;
             if (['active', 'seed'].includes(key)) {
                 let current_hash = location.hash;
+                xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
                 let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], location.hash, ''].coalesce();
                 history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
                 if (current_hash != location.hash) {
