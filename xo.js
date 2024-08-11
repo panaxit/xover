@@ -2044,13 +2044,13 @@ xover.site = new Proxy(Object.assign({}, history.state), {
             history.state[key] = new_value;
             if (['active', 'seed'].includes(key)) {
                 let current_hash = location.hash;
-                xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
                 let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], location.hash, ''].coalesce();
                 history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
                 if (current_hash != location.hash) {
                     window.dispatchEvent(new Event('hashchange'));
                 }
             }
+            xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
             if (key === 'seed') self['active'] = new_value;
             for (let [subscriber] of xover.subscribers.site[key]) {
                 subscriber.evaluate()
@@ -2480,6 +2480,9 @@ Object.defineProperty(xover.site, 'seed', {
 Object.defineProperty(xover.site, 'pushState', {
     value: function (state = {}, href = location.hash) {
         history.pushState(Object.merge.call({}, { position: history.length - 1 }, state), {}, href);
+        for (let key of Object.keys(state)) {
+            xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
+        }
     }
     , enumerable: true, writable: false, configurable: false
 });
@@ -2487,6 +2490,9 @@ Object.defineProperty(xover.site, 'pushState', {
 Object.defineProperty(xover.site, 'replaceState', {
     value: function (state = {}, hash = location.hash) {
         history.replaceState(Object.merge.call(history.state, state), {}, hash);
+        for (let key of Object.keys(state)) {
+            xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
+        }
     }
     , enumerable: true, writable: false, configurable: false
 });
