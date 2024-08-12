@@ -966,7 +966,6 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         }
     })
     if (_event.detail) {
-        _event.detail["srcElement"] = _event.detail["srcElement"] || (event || {}).srcElement;
         _event.detail["designMode"] = _event.detail.hasOwnProperty("designMode") ? _event.detail["designMode"] : document.designMode == 'on';
         if (context instanceof Attr) {
             _event.detail["element"] = _event.detail["element"] || context.parentNode;
@@ -1016,6 +1015,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             _event.detail["previousNode"] = _event.detail.hasOwnProperty("previousNode") ? _event.detail["previousNode"] : context.previousNode;
             _event.detail["node"] = _event.detail["node"] || context;
             _event.detail["target"] = _event.detail["target"] || context;
+            _event.detail["srcElement"] = _event.detail["srcElement"] || (event || {}).srcElement || _event.detail["target"];
             _event.detail["document"] = _event.detail["document"] || context.ownerDocument;
             node = context
         }
@@ -1206,16 +1206,17 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                         operator = key[key.length - 1];
                         key = key.slice(0, -1);
                     } else if (!condition && ["*", "!"].includes(key[0])) {
-                        operator = key[0];
-                        key = key.slice(1);
+                        operator = key.match(/^[!|*]*/)[0];
+                        key = key.slice(operator.length);
                     }
                     let [arg, ...props] = key.split(/(?<=[\w\d])\./g);
                     let context = event.detail[arg];
                     if (context === undefined && arg in window) {
-                        context = window[arg]
+                        context = window;
+                        props.unshift(arg);
                     }
                     try {
-                        if (props.length) {
+                        if (context && props.length) {
                             with (context) {
                                 context = eval(props.join('.'))
                             }
@@ -1229,8 +1230,11 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                     if (context instanceof Document) {
                         context = (context.href || '').replace(/^\//, '')
                     }
+                    if (context == undefined) return false;
                     if (!condition) {
                         switch (operator) {
+                            case "!!":
+                                return !!context
                             case "!":
                                 return !context
                             default:
@@ -1238,6 +1242,8 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                         }
                     } else {
                         switch (operator) {
+                            case "!!":
+                                return !!(context instanceof Node ? context : `${context}`).matches(`${condition}`)
                             case "!":
                                 return !(context instanceof Node ? context : `${context}`).matches(`${condition}`)
                             case "*":
@@ -1360,7 +1366,14 @@ Object.defineProperty(xover.listener, 'on', {
             handler.scope = scope && eval(scope) || undefined;
             handler.conditions = handler.conditions || conditions && [] || undefined;
             for (let condition of conditions) {
-                handler.conditions.push(new URLSearchParams("?" + condition));
+                let params;
+                if ('!'.includes(condition[0])) {
+                    params = new URLSearchParams("?")
+                    params.set(condition,"")
+                } else {
+                    params = new URLSearchParams("?" + condition)
+                }
+                handler.conditions.push(params);
             }
 
             let event_array = xover.listener.get(base_event) || new Map();
