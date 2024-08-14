@@ -7646,7 +7646,7 @@ xover.modernize = async function (targetWindow) {
                                                         }
                                                     });
                                                 }
-                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value[0] == '@' ? name.value : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value.indexOf('@') != -1 ? name.value.replace(/"/g, "&quot;") : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
                                             }
                                         } catch (e) {
