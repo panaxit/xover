@@ -7627,6 +7627,7 @@ xover.modernize = async function (targetWindow) {
                                     //}
                                     let tag = xml.tag || `#${xsl.href || ""}`;
                                     xml.tag = tag;
+                                    xsl = xsl.cloneNode(true);
                                     window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                     xsltProcessor.importStylesheet(xsl);
 
@@ -8229,7 +8230,7 @@ xover.modernize = async function (targetWindow) {
                                 if (xsl) {
                                     xsl.target = target;
                                     if (!xsl.selectFirst(`/*/comment()[.='ack:optimized']`)) {
-                                        xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
+                                        xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]|//xsl:template//html:*/@*[contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
                                         xsl.documentElement.prepend(new Comment("ack:optimized"))
                                     }
                                     data.tag = /*'#' + */xsl.href.split(/[\?#]/)[0];
