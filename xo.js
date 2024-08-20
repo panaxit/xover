@@ -5808,7 +5808,7 @@ xover.modernize = async function (targetWindow) {
                                     } else {
                                         context.replaceContent(response);
                                     }
-                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { url: response.url, href: response.url.href, tag: '', document: context, store: store, old: old, target: context }, context));
+                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { url: response.url, href: (response.url || {}).href, tag: '', document: context, store: store, old: old, target: context }, context));
                                     resolve(context);
                                 }).catch(async (e) => {
                                     if (!e) {
@@ -8233,7 +8233,7 @@ xover.modernize = async function (targetWindow) {
                                         xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]|//xsl:template//html:*/@*[contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
                                         xsl.documentElement.prepend(new Comment("ack:optimized"))
                                     }
-                                    data.tag = /*'#' + */xsl.href.split(/[\?#]/)[0];
+                                    data.tag = /*'#' + */(xsl.href || '').split(/[\?#]/)[0];
                                     dom = await data.transform(xsl);
                                     dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove()
                                 } else if (data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) {
@@ -12068,25 +12068,10 @@ xover.dom.beforeunload = function (e) {
 var eventName = xover.browser.isIOS() ? "pagehide" : "beforeunload";
 
 window.addEventListener(eventName, xover.dom.beforeunload);
-
-xover.dom.print = function () {
-    let iframes = document.querySelectorAll('iframe');
-
-    if (iframes) {
-        for (let f = 0; f < iframes.length; ++f) {
-            let iframe = iframes[f];
-            if (iframe.classList.contains("non-printable")) {
-                continue;
-            }
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-            f = iframes.length;
-        }
-    } else {
-        window.print()
-    }
-}
-
+xover.listener.on(`print`, function () {
+    if (event.defaultPrevented) return;
+    window.print()
+})
 xover.listener.on('fetch::xo:message[.!=""]', function ({ target, attribute: key }) {
     this.render()
 });
