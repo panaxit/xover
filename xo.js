@@ -7802,7 +7802,8 @@ xover.modernize = async function (targetWindow) {
                                     if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                         console.time(timer_id);
                                     }
-                                    if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"]')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
+                                    if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"][@standalone="yes"]')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
+                                        //use <xsl:output method="xml"/> to avoid html rules (like embedding invalid items or duplicating <br>) //TODO: Analyze combinations
                                         let transformed = xsltProcessor.transformToFragment(xml, document);
                                         let newDoc;
                                         if (transformed && transformed.children.length > 1) {
@@ -7814,6 +7815,7 @@ xover.modernize = async function (targetWindow) {
                                         result = newDoc;
                                     }
                                     if (result == null) {
+                                        xsl.select('//xsl:output[@method="html"]').remove()
                                         result = xsltProcessor.transformToDocument(xml);
                                     }
                                     result && [...result.children].map(el => el instanceof HTMLElement && el.select('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
@@ -9405,7 +9407,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                 el.prepend(xover.xml.createNode(`<xsl:with-param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="$xo:context"/>`));
             }
 
-            for (let el of return_value.select(`(//xsl:*[not(@match="/")]/html:*[not(self::html:script or self::html:style or self::html:link)]|//xsl:*/svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
+            for (let el of return_value.select(`(//xsl:*[not(@match="/")]/html:*[not(self::html:script or self::html:style or self::html:link or self::html:br or self::html:hr)]|//xsl:*/svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
                 el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
             }
 
