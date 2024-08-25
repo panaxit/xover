@@ -556,8 +556,9 @@ xover.init = async function () {
             xover.dom.updateTitle();
             let sections = xover.site.sections;
             xover.site.sections.forEach(section => section.render());
-            let active = xover.stores.active;
-            active && !sections.find(section => section.store == active && !section.hasAttribute("xo-stylesheet")) && await active.render(); // store will render only if there isn't any section requesting it and it doesn't have xo-stylesheet attribute
+            //let active = xover.stores.active;
+            //active && !document.querySelector(`[id="${self.tag.replace(/^#/, "")}"]`) && !sections.find(section => section.store == active && !section.hasAttribute("xo-stylesheet")) && await active.render(); // store will render only if there isn't any section requesting it and it doesn't have xo-stylesheet attribute
+
             return Promise.resolve();
         } catch (e) {
             return Promise.reject(e)
@@ -1098,7 +1099,6 @@ Object.defineProperty(xover.listener, 'debug', {
         reference = reference || '*'
         subreference = subreference || '*'
 
-
         xover.listener.debugger.set(reference, (xover.listener.debugger.get(reference) || new Map()))
         let target = xover.listener.debugger.get(reference);
         target.set(subreference, (target.get(subreference) || true))
@@ -1466,12 +1466,12 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     await xover.ready;
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (history.state) delete history.state.active;
-    let hash = top.location.hash || '#';
+    let hash = top.location.hash || '';
     hash = hash.split(/\?/)[0];
     if (hash && !document.querySelector(`[id="${hash.split(/^#/)[1]}"]`)) {
         xover.site.seed = (history.state || {}).seed || hash || '#';
     }
-    xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
+    //xover.waitFor(location.hash || document.firstElementChild, 10000).then(target => target.dispatch('scrollIntoView'));
     if (event.defaultPrevented) return;
     (location.search || '').length > 1 && [...xover.site.sections].filter(section => section.store === xover.stores.seed).map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:')]`)).forEach(([el]) => el.render());
     if (xover.session.status == 'authorizing') xover.session.status = null;
@@ -2548,7 +2548,10 @@ Object.defineProperty(xover.site, 'active', {
         }
         if (store) {
             //this.hash = store.hash;
-            store.render();
+            store.render().catch(e => {
+                let target = document.querySelector(`[id="${tag.replace(/^#/, "")}"]`);
+                return target && target.scrollIntoView();
+            });
         } else {
             return Promise.reject(`${tag || "store"} not available`)
         }
@@ -11067,7 +11070,7 @@ xover.Store = function (xml, ...args) {
                 renders = await Promise.all(renders);
                 if (!renders.length && (target || active_store === self)) document.render({ target: target || window.document.body, store: self });
                 return renders;
-            }).then((renders) => {
+            }).then((renders = []) => {
                 window.top.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
                 return renders.flat().filter(el => el)
             }).catch((e) => {
@@ -11941,7 +11944,7 @@ xover.listener.on('dialog::iframe', function () {
     }
 })
 
-xover.listener.on('hotreload', function ( file_name ) {
+xover.listener.on('hotreload', function (file_name) {
     let document = this instanceof Document && this || this.ownerDocument || window.document;
     let file = xover.URL(file_name);
     let current_url = xover.URL(location);
