@@ -9541,8 +9541,17 @@ xover.fetch.json = async function (url, settings) {
         url = new xover.URL(url);
     }
     url.settings["headers"].append("Accept", "application/json");
+    try {
     let return_value = await xover.fetch.call(this, url, settings).then(response => response.json || response.body && Promise.reject(response));
     return return_value;
+    } catch (e) {
+        if (e instanceof Response && e.ok) {
+            console.error(`response is not a valid json`, e.body);
+            return Promise.reject(new Error(`response is not a valid json`, e.url.href))
+        } else {
+            return Promise.reject(e)
+        }
+    }
 }
 
 xover.xml.fromString = function (xmlString) {
