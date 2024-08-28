@@ -2521,7 +2521,7 @@ Object.defineProperty(xover.site, 'seed', {
 
 Object.defineProperty(xover.site, 'pushState', {
     value: function (state = {}, href = location.href) {
-        history.pushState({ position: history.length - 1, origin: location.href, ...state}, {}, href);
+        history.pushState({ position: history.length - 1, origin: location.href, ...state }, {}, href);
         for (let key of Object.keys(state)) {
             xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
         }
@@ -2531,7 +2531,7 @@ Object.defineProperty(xover.site, 'pushState', {
 
 Object.defineProperty(xover.site, 'replaceState', {
     value: function (state = {}, hash = location.href) {
-        history.replaceState({ ...history.state, origin: location.href, ...state}, {}, hash);
+        history.replaceState({ ...history.state, origin: location.href, ...state }, {}, hash);
         for (let key of Object.keys(state)) {
             xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
         }
@@ -2992,6 +2992,30 @@ xover.Source = function (tag) {
         Object.defineProperty(this, 'manifest_key', {
             get: function () {
                 return manifest_key
+
+            }, enumerable: false, configurable: false
+        });
+    }
+
+    if (!this.hasOwnProperty("url")) {
+        Object.defineProperty(this, 'url', {
+            get: function () {
+                return this.document.url
+
+            }, set: function (input) {
+                this.document.url = input
+
+            }, enumerable: false, configurable: false
+        });
+    }
+
+    if (!this.hasOwnProperty("href")) {
+        Object.defineProperty(this, 'href', {
+            get: function () {
+                return this.url.href
+
+            }, set: function (input) {
+                return this.url.href = input
 
             }, enumerable: false, configurable: false
         });
@@ -8096,7 +8120,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 source_document = source_document && source_document.document || source_document || xover.xml.createDocument(this.cloneNode(true));
                                 //if (source_document instanceof Document) {
-                                    await source_document.render(stylesheets) ;
+                                await source_document.render(stylesheets);
                                 //} else {
                                 //    source_document = ;
                                 //    await source_document.render(stylesheets);
@@ -10671,7 +10695,14 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'url', {
         get: function () {
-            return _store_url;
+            return _store_url
+        }
+    });
+
+    Object.defineProperty(this, 'href', {
+        get: function () {
+            return this.url.href
+
         }
     });
 
