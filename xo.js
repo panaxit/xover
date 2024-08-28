@@ -1427,7 +1427,14 @@ xover.listener.on('render?location.hash', function () {
     }
 })
 
-xover.listener.on('pushstate', function ({ state }) {
+xover.listener.on('pushstate', function ({ state = {} }) {
+    //TODO: Explore the case when pushstate occurs (since it just won't navigate away)
+    //let origin = new xover.URL(state.origin);
+    //let target = new xover.URL(top.location);
+    //if (origin.pathname != target.pathname) {
+    //    let dialog = xover.dom.createDialog(target);
+    //    //target_document.render(document.body);
+    //}
     if (typeof HashChangeEvent !== "undefined") {
         window.dispatchEvent(new HashChangeEvent("hashchange"));
         return;
@@ -4907,6 +4914,39 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
+                if (!Document.prototype.hasOwnProperty('url')) {
+                    let url = new Map()
+                    Object.defineProperty(Document.prototype, 'url', {
+                        get: function () {
+                            if (!url.has(this)) {
+                                url.set(this, null)
+                            }
+                            return url.get(this);
+                        }, set: function (input) {
+                            if (input == null) {
+                                url.delete(this)
+                            } else {
+                                input = (input instanceof URL) && input || xover.URL(input);
+                                url.set(this, input)
+                            }
+                        }
+                    });
+                }
+
+                if (!Document.prototype.hasOwnProperty('href')) {
+                    Object.defineProperty(Document.prototype, 'href', {
+                        get: function () {
+                            return (this.url || {}).href;
+                        }, set: function (input) {
+                            if (this.url) {
+                                this.url.href = input || ''
+                            } else {
+                                this.url = input
+                            }
+                        }
+                    });
+                }
+
                 xover.xml.observer = new MutationObserver(async (mutationList, observer) => {
                     let mutated_targets = new MutationSet(...mutationList).consolidate();
                     if (!mutated_targets.size) return;
@@ -5783,7 +5823,7 @@ xover.modernize = async function (targetWindow) {
                         xsl = xsltProcessor.transformToDocument(xsl);
                         xsl.source = this.source;
                         xsl.store = this.store;
-                        xsl.href = this.href;
+                        //xsl.href = this.href;
                         xsl.url = this.url;
                         imports = xsl.documentElement.selectNodes("xsl:import|xsl:include").filter(node => {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
@@ -5859,7 +5899,7 @@ xover.modernize = async function (targetWindow) {
                                         response && response.ownerDocument.documentElement.replaceWith(response);
                                     }
                                     let old = context.cloneNode(true);
-                                    context.href = response.href;
+                                    //context.href = response.href;
                                     context.url = response.url;
                                     let url = context.url;
                                     if (response instanceof Document || response instanceof DocumentFragment) {
@@ -7514,7 +7554,7 @@ xover.modernize = async function (targetWindow) {
                     let cloned_element = originalCloneNode.apply(this, args);
                     cloned_element.source = this.source;
                     cloned_element.store = this.store;
-                    cloned_element.href = this.href;
+                    //cloned_element.href = this.href;
                     cloned_element.url = this.url;
                     return cloned_element;
                 }
@@ -8232,9 +8272,9 @@ xover.modernize = async function (targetWindow) {
                             for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
                                 let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet instanceof ProcessingInstruction && stylesheet.document || stylesheet.href && xover.sources[stylesheet.href];
                                 xsl instanceof Document && await xsl.ready;
-                                if (xsl instanceof Document && xsl.selectSingleNode('xsl:*')) {
-                                    xsl.href = xsl.href || ""
-                                }
+                                //if (xsl instanceof Document && xsl.selectSingleNode('xsl:*')) {
+                                //    xsl.href = xsl.href || ""
+                                //}
                                 data = data || this.cloneNode(true);
                                 if (stylesheet.assert && !data.selectFirst(stylesheet.assert)) {
                                     continue;
@@ -9542,8 +9582,8 @@ xover.fetch.json = async function (url, settings) {
     }
     url.settings["headers"].append("Accept", "application/json");
     try {
-    let return_value = await xover.fetch.call(this, url, settings).then(response => response.json || response.body && Promise.reject(response));
-    return return_value;
+        let return_value = await xover.fetch.call(this, url, settings).then(response => response.json || response.body && Promise.reject(response));
+        return return_value;
     } catch (e) {
         if (e instanceof Response && e.ok) {
             console.error(`response is not a valid json`, e.body);
@@ -11999,13 +12039,42 @@ xover.listener.on('dialog::iframe', function () {
     }
 })
 
+xover.socket = {};
+xover.socket.connect = function (url, listeners = {}, socket_handler = window.io, config = { transports: ['websocket'] }) {
+    try {
+        if (!socket_handler) return;
+        const socket_io = socket_handler(url, config);
+
+        for (let [listener, handler] of Object.entries(listeners)) {
+            socket_io.on(listener, async function (...args) {//let data = event.data || "[]"; let args2 = JSON.parse(`[` + data.split("[")[1]); let [, file_name] = args;
+                if (!handler) {
+                    return
+                } else if (existsFunction(handler)) {
+                    let fn = eval(handler);
+                    response = await fn.apply(this, args.length ? args : parameters);
+                } else if (handler[0] == '#') {
+                    let source = xo.sources[handler];
+                    await source.ready;
+                    source.documentElement.append(xo.xml.createNode(`<item/ >`).textContent = args.join())
+                } else if (handler.indexOf("event:") == 0) {
+                    window.document.dispatch.apply(document, [handler.split(":").pop(), ...args])
+                } else {
+                    window.document.dispatch.apply(document, [handler, ...args])
+                }
+            })
+        }
+    } catch (e) {
+        return Promise.reject(e);
+    }
+}
+
 xover.listener.on('hotreload', function (file_path) {
     let document = this instanceof Document && this || this.ownerDocument || window.document;
     let file = xover.URL(file_path);
     let current_url = xover.URL(location);
     let not_found = true;
     if (current_url.href == file.href) {
-        location.href = location.href;
+        return location.reload(true);
         not_found = false;
     }
     let scripts = document.select(`//html:link/@href|//html:script/@src`);
@@ -12016,7 +12085,7 @@ xover.listener.on('hotreload', function (file_path) {
         old_script.parentNode.replaceChild(new_script, old_script);
         not_found = false;
     }
-    for (let section of [...xover.site.stylesheets, ...xover.site.sections].filter(node => node.source && xover.URL(node.href || (node.source || {}).href).pathname == file.pathname)) {
+    for (let section of [...xover.site.stylesheets, ...xover.site.sections, ...xover.sources].filter(item => xover.URL(item.href || (item.source || {}).href).pathname == file.pathname)) {
         section.source.reload().then(() => section.render())
         not_found = false;
     }
@@ -12298,9 +12367,9 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     if (hashtag !== undefined && hashtag != (window.top || window).location.hash) {
         let custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash], url)
         window.top.dispatchEvent(custom_event);
-    if (custom_event.defaultPrevented) {
-        return event.preventDefault();
-    }
+        if (custom_event.defaultPrevented) {
+            return event.preventDefault();
+        }
     }
 
     if (url.pathname == location.pathname && srcElement.getAttribute("target") == "_self") {
