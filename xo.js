@@ -975,6 +975,9 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
     })
     if (_event.detail) {
         _event.detail["designMode"] = _event.detail.hasOwnProperty("designMode") ? _event.detail["designMode"] : document.designMode == 'on';
+        if (typeof (context) == 'function' || context instanceof Window) {
+            console.info(context)
+        }
         if (context instanceof Attr) {
             _event.detail["element"] = _event.detail["element"] || context.parentNode;
             _event.detail["attribute"] = _event.detail["attribute"] || context;
@@ -990,6 +993,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             node = context
         } else if (context instanceof Document) {
             _event.detail["stylesheets"] = _event.detail.hasOwnProperty("stylesheets") ? _event.detail["stylesheets"] : context.stylesheets;
+            _event.detail["settings"] = _event.detail["settings"] || context.settings;
             _event.detail["document"] = _event.detail["document"] || context;
             _event.detail["element"] = _event.detail["element"] || context.firstElementChild;
             _event.detail["store"] = _event.detail["store"] || context.store;
@@ -1018,8 +1022,19 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             //_event.detail["tag"] = _event.detail["tag"] || context.tag;
             node = _event.detail["return_value"] || context.document;
             node = node instanceof Document && node.documentElement || node;
-        } else if (context instanceof URL) {
-            _event.detail["settings"] = _event.detail["settings"] || context.settings;
+        } else if (context instanceof URL || context instanceof Request) {
+            let url = context instanceof URL ? context : context.url;
+            _event.detail["settings"] = _event.detail["settings"] || context.settings || url.settings;
+            _event.detail["parameters"] = _event.detail["parameters"] || context.searchParams || url.searchParams;
+            _event.detail["searchParams"] = _event.detail["searchParams"] || context.searchParams || url.searchParams;
+            _event.detail["search"] = _event.detail["search"] || context.search || url.search;
+            _event.detail["tag"] = _event.detail["tag"] || context.tag || context.hash || url.hash;
+            _event.detail["hash"] = _event.detail["hash"] || context.hash || url.hash;
+            _event.detail["href"] = _event.detail["href"] || context.href || url.href;
+            _event.detail["url"] = _event.detail["url"] || url;
+            if (context instanceof Request) {
+                _event.detail["request"] = _event.detail["request"] || context;
+            }
         }
         if (context instanceof Node) {
             _event.detail["parentNode"] = _event.detail.hasOwnProperty("parentNode") ? _event.detail["parentNode"] : (context.formerParentNode || context.parentNode);
@@ -1027,10 +1042,10 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             _event.detail["previousNode"] = _event.detail.hasOwnProperty("previousNode") ? _event.detail["previousNode"] : context.previousNode;
             _event.detail["node"] = _event.detail["node"] || context;
             _event.detail["target"] = _event.detail["target"] || context;
-            _event.detail["srcElement"] = _event.detail["srcElement"] || (event || {}).srcElement || _event.detail["target"];
             _event.detail["document"] = _event.detail["document"] || context.ownerDocument;
             node = context
         }
+        _event.detail["srcElement"] = _event.detail["srcElement"] || (event || {}).srcElement || _event.detail["target"];
         if (context) {
             let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, (predicate || '')[0] = '#' && predicate, null].coalesce();
             if (tag != null) _event.detail["tag"] = tag;
@@ -1222,9 +1237,9 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                     }
                     let [arg, ...props] = key.split(/(?<=[\w\d])\./g);
                     let context = event.detail[arg];
-                    if (context === undefined && arg in window) {
+                    if (context === undefined && arg.split('.')[0] === 'window') { //disabled to 
                         context = window;
-                        props.unshift(arg);
+                        props.unshift(arg.split('.')[1]);
                     }
                     try {
                         if (context && props.length) {
@@ -3106,7 +3121,8 @@ xover.Source = function (tag) {
                 if (!source) continue;
                 let url;
                 //if (typeof (source) != 'object')
-                url = xover.URL(source);
+                this.request = new xover.Request(source, this.settings);
+                url = this.request.url;//xover.URL(source);
                 url.hash = tag_string.replace(source, '');//(xover.manifest.server[source.replace(/^server:/, '')] || source)
                 //if (location.origin == url.origin) { //xover.URL automatically supports ?searchParams to come after or before hash;
                 let [hash, searchParams = ''] = url.hash.split("?");
@@ -3117,7 +3133,7 @@ xover.Source = function (tag) {
                 //}
                 this.url = url;
 
-                url.settings = xover.json.merge({}, xover.manifest.getSettings(url), self.settings, this.settings);
+                url.settings = xover.json.merge({}, xover.manifest.getSettings(url), url.settings);
                 let parameters = {}.constructor === definition.constructor && definition[source] || args;
                 let before_event = new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, parameters, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, self);
                 window.top.dispatchEvent(before_event);
@@ -8375,16 +8391,16 @@ xover.modernize = async function (targetWindow) {
                                     }
                                     data.tag = /*'#' + */(xsl.href || '').split(/[\?#]/)[0];
                                     target.classList.add('xo-loading');
-
-                                    await new Promise(resolve => {
-                                        requestAnimationFrame(() => {
-                                            setTimeout(async () => {
+                                    //await xover.delay(1);
+                                    //await new Promise(resolve => {
+                                    //    requestAnimationFrame(() => {
+                                    //        setTimeout(async () => {
                                                 dom = await data.transform(xsl);
                                                 target.classList.remove('xo-loading');
-                                                resolve();
-                                            }, 0);
-                                        });
-                                    });
+                                    //            resolve();
+                                    //        }, 0);
+                                    //    });
+                                    //});
                                     dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove()
                                 } else if (data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof SVGElement) {
                                     dom = this.cloneNode(true);
@@ -9182,12 +9198,14 @@ xover.Request = function (request, settings = {}) {
     let url, req;
     let self = this;
     let _request = request;
+    let request_headers;
     if (request instanceof Request) {
         req = request;
         if (Object.keys(settings).length) {
-            let { method, headers, mode, credentials, cache, redirect, referrer, integrity } = req;
+            let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = req;
             let url = new xover.URL(req.url, location.origin + location.pathname.replace(/[^/]+$/, ""), settings);
-            req = new Request(url, Object.assign({ method, headers, mode, credentials, cache, redirect, referrer, integrity }, { body: settings.body }));
+            req = new Request(url, { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal, ...{ body: settings.body || body } });
+            request_headers = headers;
         }
     } else {
         let headers;
@@ -9214,6 +9232,7 @@ xover.Request = function (request, settings = {}) {
             headers: headers
         });
         req = new Request(url, settings);
+        request_headers = headers;
     }
     if (req.method == 'POST' && ((event || {}).srcElement || {}).closest) {
         let form = event.srcElement.closest('form');
@@ -9238,17 +9257,23 @@ xover.Request = function (request, settings = {}) {
             return url;
         }
     })
-    //Object.defineProperty(self, 'initiator', {
-    //    get: function () {
-    //        return _request.initiator;
-    //    }
-    //})
-    Object.defineProperty(self, 'settings', {
-        value: settings
-    })
-    Object.defineProperty(self, 'toString', {
+    request_headers = request_headers || new Headers();
+    Object.defineProperty(self, 'headers', {
         get: function () {
-            return url.toString;
+            return url.headers instanceof Headers ? url.headers : request_headers;
+        }
+    })
+    Object.defineProperty(self, 'settings', {
+        get: function () {
+            return url.settings;
+        }
+    })
+
+    Object.defineProperty(self, 'clone', {
+        value: function () {
+            let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = req;
+            req = new Request(new xover.URL(req.url, location.origin + location.pathname.replace(/[^/]+$/, ""), settings), { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal, ...{ body: settings.body || body } });
+            return req;
         }
     })
     Object.defineProperty(self, 'parameters', {
@@ -9334,7 +9359,7 @@ xover.fetch = async function (url, ...args) {
         settings.progress.value = 0;
     }
     //settings.headers = new Headers(Object.fromEntries([...new Headers(this instanceof xover.Source && this.headers || {}), ...new Headers(this instanceof xover.Source && (this.settings || {}).headers || {}), ...new Headers(settings.headers)]));
-    let request = new xover.Request(url);
+    let request = this.request || new xover.Request(url);
 
     let original_response;
     let stored_document;
@@ -9354,7 +9379,7 @@ xover.fetch = async function (url, ...args) {
         stored_document = null;
         const signal = controller.signal;
         try {
-            window.top.dispatchEvent(new xover.listener.Event(`beforeFetch`, { url: request.url, request }, this));
+            window.top.dispatchEvent(new xover.listener.Event(`beforeFetch`, { }, request));
             original_response = await fetch(request.clone(), { signal })
         } catch (e) {
             //try {
@@ -9372,7 +9397,7 @@ xover.fetch = async function (url, ...args) {
     }
     if (!original_response && !controller.signal.aborted) return Promise.reject(`No response for ${url}!`);
 
-    let response = new xover.Response(original_response, request);
+    let response = new xover.Response(original_response.clone(), request);
     let res = original_response.clone();
     const contentLength = res.headers.get('content-length');
     let receivedLength = 0;
@@ -9499,9 +9524,9 @@ xover.fetch.xml = async function (url, ...args) {
         if (return_value instanceof Document && xover.session.debug) {
             for (let el of return_value.select(`//xsl:template/*[not(self::xsl:*) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute)] or self::xsl:comment[not(preceding-sibling::xsl:comment)]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
                 let ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
-                let debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
+                let debug_node = await xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
-file="${new xover.URL(url).href}"
+file="${new xover.URL(url).href.replace(/&/g, '&amp;')}"
 >${ancestor.localName == 'template' ? '' : `
 &lt;!- -${ancestor.cloneNode().toString().replace(/ xmlns:(\w+)=(["'])([^\2]+?)\2/ig, '').replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/--/g, '- -')}- -&gt;`}
 ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
@@ -9627,12 +9652,13 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
 }
 
 xover.fetch.json = async function (url, settings) {
+    let self = [{}.constructor, [].constructor].includes(this.constructor) ? this : {};
     if (!(url instanceof xover.URL)) {
         url = new xover.URL(url);
     }
     url.settings["headers"].append("Accept", "application/json");
     try {
-        let return_value = await xover.fetch.call(this, url, settings).then(response => response.json || response.body && Promise.reject(response));
+        let return_value = await xover.fetch.call(self, url, settings).then(response => response.json || response.body && Promise.reject(response));
         return return_value;
     } catch (e) {
         if (e instanceof Response && e.ok) {
@@ -12125,6 +12151,20 @@ xover.socket.connect = function (url, listeners = {}, socket_handler = window.io
     }
 }
 
+xover.listener.on('databaseChange', async function (changes) {
+    let formatObjectName = function (object_name) {
+        return (object_name || '').replace(/\[|\]|"/g, '').toLowerCase();
+    }
+    let objects_changed = changes.root.map(item => formatObjectName(item.SchemaName + '.' + item.ObjectName))
+    for (let [key, document] of Object.entries(xover.stores)) {
+        let source = document.source;
+        let qri = xover.QUERI(source.href);
+        if (objects_changed.includes(formatObjectName(qri.predicate.get("FROM")))) {
+            xover.stores[key].fetch()
+        }
+    }
+})
+
 xover.listener.on('hotreload', async function (file_path) {
     let document = this instanceof Document && this || this.ownerDocument || window.document;
     let file = new xover.URL(file_path.replace(/^[\\\/]/,''));
@@ -12149,7 +12189,11 @@ xover.listener.on('hotreload', async function (file_path) {
         for (let related_document of related_documents) {
             related_document.clear()
         }
-        await source.reload();
+        try {
+            await source.reload();
+        } catch (e) {
+            console.error(e)
+        }
         xover.site.sections.filter(section => related_documents.includes(section.stylesheet)).forEach(section => section.render());
         not_found = !source.firstElementChild;
     }
