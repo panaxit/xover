@@ -1519,6 +1519,12 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
 })
 
 xover.listener.on('popstate', async function (event) {
+    if (!history.state) {
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }    
     history.scrollRestoration = xover.site.scrollRestoration;
 })
 
@@ -12181,6 +12187,15 @@ xover.listener.on('hotreload', async function (file_path) {
         [...old_script.attributes].map(attr => new_script.setAttributeNode(attr.cloneNode(true)));
         old_script.parentNode.replaceChild(new_script, old_script);
         not_found = false;
+    }
+    if (not_found && file.href) {
+        for (let [key, store] of Object.entries(xover.stores)) {
+            let source = store.source;
+            if (source.href.replace(/#.*/,'') == file.href) {
+                xover.stores[key].fetch()
+                not_found = false
+            }
+        }
     }
     let source;
     if (not_found && file.href) {
