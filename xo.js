@@ -558,8 +558,8 @@ xover.init = async function () {
             await xover.stores.restore();
             //xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || ""; //causes troubles at firefox
             xover.dom.updateTitle();
-            let sections = xover.site.sections;
-            xover.site.sections.forEach(section => section.render());
+            let sections = xover.site.sections.map(section => section.render());
+            if (!sections.length) xover.stores.active.render();
             //let active = xover.stores.active;
             //active && !document.querySelector(`[id="${self.tag.replace(/^#/, "")}"]`) && !sections.find(section => section.store == active && !section.hasAttribute("xo-stylesheet")) && await active.render(); // store will render only if there isn't any section requesting it and it doesn't have xo-stylesheet attribute
 
@@ -681,15 +681,14 @@ xover.init.Observer = function (target_node = window.document) {
                 }
             }
         }
-        // TODO: React to attribute change for stylesheets that have attributes bound to a param
-        //for (let section of [...mutations].filter(([node, mutations]) =>
-        //    !mutations.addedNodes.length && !mutations.removedNodes.length && !(mutations.attributes || {})[""] && node.matches("[xo-source],[xo-stylesheet]")
-        //    || mutations.attributes && ["xo-source", "xo-stylesheet"].some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
-        //    || node.stylesheet instanceof Document && node.stylesheet.select(`//xsl:stylesheet/xsl:param/@name`).some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
-        //).map(([node]) => node.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
-        //    section && section.render()
-        //}
-        ////observer.observe(target_node, config);
+        for (let section of [...mutations].filter(([node, mutations]) =>
+            !mutations.addedNodes.length && !mutations.removedNodes.length && !(mutations.attributes || {})[""] && node.matches("[xo-source],[xo-stylesheet]")
+            || mutations.attributes && ["xo-source", "xo-stylesheet"].some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
+            || node.stylesheet instanceof Document && node.stylesheet.select(`//xsl:stylesheet/xsl:param/@name`).some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
+        ).map(([node]) => node.closest(`[xo-source],[xo-stylesheet]`)).distinct()) {
+            section && section.render()
+        }
+        //observer.observe(target_node, config);
 
         return;
         for (const mutation of mutationsList) {
