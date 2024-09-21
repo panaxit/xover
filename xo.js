@@ -197,8 +197,7 @@ xover.cryptography.encodeMD5 = function (str) {
     return rhex(a) + rhex(b) + rhex(c) + rhex(d);
 }
 
-Object.defineProperty(Array.prototype, 'coalesce',
-    {
+Object.defineProperty(Array.prototype, 'coalesce', {
         value: function () {
             let args = this instanceof Array && this || arguments;
             for (let item of args) {
@@ -212,8 +211,7 @@ Object.defineProperty(Array.prototype, 'coalesce',
     }
 );
 
-Object.defineProperty(Array.prototype, 'distinct',
-    {
+Object.defineProperty(Array.prototype, 'distinct', {
         value: function (fn) {
             let array = this;
             if (!fn && array.some(item => item && [Attr, Text].includes(item.constructor))) {
@@ -228,8 +226,7 @@ Object.defineProperty(Array.prototype, 'distinct',
     }
 );
 
-Object.defineProperty(Array.prototype, 'order',
-    {
+Object.defineProperty(Array.prototype, 'order', {
         value: function (direction = 'ASC') {
             return this.sort((a, b) => {
                 const orderA = parseInt(a.value || a);
@@ -2104,15 +2101,16 @@ xover.site = new Proxy(Object.assign({}, history.state), {
         }
         return [/*history.state[key], won't work properly*/self[key], xover.session.getKey(key)].coalesce()
     },
-    set: function (self, key, new_value) {
+    set: function (self, key, input) {
         try {
             xover.site[key];
-            self[key] = new_value;
-            history.state[key] = new_value;
+            let old_value = self[key];
+            self[key] = input;
+            history.state[key] = input;
             if (['active', 'seed'].includes(key)) {
                 let current_hash = location.hash;
                 let hash = [xover.manifest.getSettings(self['active'], 'hash').pop(), self['active'], location.hash, ''].coalesce();
-                history.replaceState(Object.assign({}, history.state), {}, location.pathname + location.search + hash);
+                history.replaceState({ ...history.state }, {}, location.pathname + location.search + hash);
                 if (current_hash != location.hash) {
                     window.dispatchEvent(new Event('hashchange'));
                 }
@@ -2588,6 +2586,7 @@ Object.defineProperty(xover.site, 'active', {
         if (store) {
             //this.hash = store.hash;
             store.render().catch(e => {
+                tag = tag || '';
                 let target = document.querySelector(`[id="${tag.replace(/^#/, "")}"]`);
                 return target && target.scrollIntoView();
             });
@@ -3021,7 +3020,7 @@ xover.Source = function (tag) {
             }, enumerable: false, configurable: false
         });
     }
-
+    let url;
     if (!this.hasOwnProperty("url")) {
         Object.defineProperty(this, 'url', {
             get: function () {
@@ -3125,7 +3124,6 @@ xover.Source = function (tag) {
             while (!response && sources.length) {
                 let source = sources.shift();
                 if (!source) continue;
-                let url;
                 //if (typeof (source) != 'object')
                 this.request = new xover.Request(source, this.settings);
                 url = this.request.url;//xover.URL(source);
@@ -3498,9 +3496,11 @@ xover.URL = function (url, base, settings = {}) {
             }
         })
     }
-    Object.setPrototypeOf(url, URL.prototype);
+    Object.setPrototypeOf(url, this);
     return url;
 }
+
+xover.URL.prototype = Object.create(URL.prototype);
 
 URL.href = URL.href || Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 Object.defineProperty(URL.prototype, 'href', {
@@ -8027,7 +8027,6 @@ xover.modernize = async function (targetWindow) {
                                             }
                                             return result;
                                         } else {
-                                            debugger
                                             console.error(xover.messages.transform_exception || "There must be a problem with the transformation file. A misplaced attribute, maybe?", { xsl, xml }); //Podría ser un atributo generado en un lugar prohibido. Se puede enviar al servidor y aplicar ahí la transformación //TODO: Hacer una transformación del XSLT para identificar los problemas comúnes.
                                             result = new Text();
                                         }
@@ -9247,17 +9246,6 @@ xover.Request = function (request, settings = {}) {
         }
     }
 
-    //let srcElement = event && event.target;
-    //if (srcElement instanceof HTMLElement) {
-    //    let initiator_button = srcElement.closest('button, .btn')
-    //    initiator_button && initiator_button.classList.add("xo-working");
-    //    //if (event && event.target && event.target.store && event.target.store.documentElement.selectSingleNode('self::xo:prompt')) { //TODO: Cambiar el método para identificar el initiator
-    //    //    req.initiator = event && event.target && event.target.store;
-    //    //}
-    //}
-    //if (req.initiator) {
-    //    req.initiator.state.loading = true;
-    //}
     Object.defineProperty(self, 'url', {
         get: function () {
             return url;
@@ -9430,17 +9418,17 @@ xover.fetch = async function (url, ...args) {
     if (!controller.signal.aborted) {
         progress();
     }
-    let body = await response.processBody.apply(this);
+    let return_value = await response.processBody.apply(this);
 
-    if (body instanceof Object) {
+    if (return_value instanceof Object) {
         let url = request.url;
         let href = url.href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "").replace(/^\/+/, '');
-        Object.defineProperty(body, 'url', {
+        Object.defineProperty(return_value, 'url', {
             get: function () {
                 return url;
             }
         });
-        Object.defineProperty(body, 'href', {
+        Object.defineProperty(return_value, 'href', {
             get: function () {
                 return href
             }
@@ -9448,7 +9436,7 @@ xover.fetch = async function (url, ...args) {
     }
     let self = this;
     if (this instanceof xover.Source) {
-        Object.defineProperty(body, 'source', {
+        Object.defineProperty(return_value, 'source', {
             get: function () {
                 return self;
             }
@@ -9456,12 +9444,14 @@ xover.fetch = async function (url, ...args) {
     }
     response.tag = ((`${url.pathname || url}`).replace(/^\//, ''));
     let manifest_settings = xover.manifest.getSettings(response.tag, "stylesheets");
-    body instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
+    return_value instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
         return_value.addStylesheet(stylesheet);
     });
     //window.top.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
     if (response.ok) {
-        handlers.forEach(handler => handler(return_value, response, request));
+        for (let handler of request.handlers) {
+            handler(return_value, response, request)
+        }
         window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request, response, status: response.status, statusText: response.statusText }, response));
     } else {
         window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response, status: response.status, statusText: response.statusText }, response));
@@ -9473,7 +9463,7 @@ xover.fetch = async function (url, ...args) {
         xover.session.status = "unauthorized";
     }
     if (response.status == 204) {
-        body = xover.xml.createDocument();
+        return_value = xover.xml.createDocument();
     }
 
     if (response.ok) {
@@ -9481,7 +9471,7 @@ xover.fetch = async function (url, ...args) {
             (request.headers.get("Accept") || "").indexOf("*/*") != -1 ||
             request.headers.get("Accept").split(/\s*,\s*/g).includes(response.headers.get("content-type")) ||
             xover.mimeTypes[response.bodyType] == request.headers.get("Accept") ||
-            (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(body.type) != -1 ||
+            (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(return_value.type) != -1 ||
             (request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
 
             return Promise.resolve(response);
@@ -9600,7 +9590,8 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             return_value.documentElement && return_value.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//html:link/@href|//html:script/@src|//processing-instruction()").map(async node => {
                 let href = `${node.href || node}`;
                 if (!href.match(/^[\/#]|^\.\/|{/)) {
-                    let new_href = new URL(href, response.url || response.href).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
+                    let url = xover.URL(response.url);
+                    let new_href = new URL(href, url).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
                     if (href != new_href) {
                         if (node instanceof ProcessingInstruction) {
                             node.href = new_href;
@@ -12173,7 +12164,7 @@ xover.listener.on('databaseChange', async function (changes) {
 
 xover.listener.on('hotreload', async function (file_path) {
     let document = this instanceof Document && this || this.ownerDocument || window.document;
-    let file = new xover.URL(file_path.replace(/^[\\\/]/,''));
+    let file = new xover.URL(file_path.replace(/^[\\\/]/, ''));
     let current_url = new xover.URL(location);
     let not_found = true;
     if (current_url.href == file.href) {
