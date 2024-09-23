@@ -10566,14 +10566,13 @@ xover.sources.defaults["shell.xslt"] = xover.xml.createDocument(`
     xmlns="http://www.w3.org/1999/xhtml">                                                               
     <xsl:output method="xml" indent="no" />                                                             
     <xsl:template match="node()">
-    <main><div class="p-5 mb-4 bg-light rounded-3">
+    <dialog open="open" style="width: fit-content; max-width: 600px; margin: auto; padding: 1rem; overflow: auto; position: fixed; z-index: var(--zindex-modal, 1055); min-width: fit-content; max-width: 90%;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><div class="p-5 mb-4 bg-light rounded-3">
       <div class="container-fluid py-5">
         <h1 class="display-5 fw-bold">Welcome to xover!</h1>
         <p class="col-md-8 fs-4">Please create your templates in your own transformation file.</p><p>Starting with shell.xslt is a good idea.</p>
         <a href="https://xover.dev" target="_blank">Show me how!</a>
       </div>
-    </div>
-    </main>
+    </div></form></dialog>
     </xsl:template>                                                                                     
     <xsl:template match="text()|processing-instruction()|comment()"/>
 </xsl:stylesheet> `);
@@ -10584,13 +10583,13 @@ xover.sources.defaults["login.xslt"] = xover.xml.createDocument(`
     xmlns="http://www.w3.org/1999/xhtml">                                                               
     <xsl:output method="xml" indent="no" />                                                             
     <xsl:template match="node()">
-    <div class="p-5 mb-4 bg-light rounded-3">
+    <dialog open="open" style="width: fit-content; max-width: 600px; margin: auto; padding: 1rem; overflow: auto; position: fixed; z-index: var(--zindex-modal, 1055); min-width: fit-content; max-width: 90%;" role="alertdialog"><header style="display:flex;justify-content: end;"><button type="button" formmethod="dialog" aria-label="Close" onclick="this.closest('dialog').remove();" style="background-color:transparent;border: none;"><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-x-circle text-primary_messages" viewBox="0 0 24 24"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"></path><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"></path></svg></button></header><form method="dialog" onsubmit="closest('dialog').remove()"><div class="p-5 mb-4 bg-light rounded-3">
       <div class="container-fluid py-5">
         <h1 class="display-5 fw-bold">Welcome to xover!</h1>
         <p class="col-md-8 fs-4">It looks like login feature is enabled and requires a template.</p><p>Please create your templates in your own transformation file.</p><p>Starting with login.xslt is a good idea.</p>
         <a href="https://xover.dev" target="_blank">Show me how!</a>
       </div>
-    </div>
+    </div></form></dialog>
     </xsl:template>                                                                                     
     <xsl:template match="text()|processing-instruction()|comment()"/>
 </xsl:stylesheet>`);
