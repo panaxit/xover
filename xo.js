@@ -12449,11 +12449,11 @@ xover.listener.on('hotreload', async function (file_path) {
     let file = new xover.URL(file_path.replace(/^[\\\/]/, ''));
     let current_url = new xover.URL(location);
     let not_found = true;
-    if (current_url.href == file.href) {
+    if (current_url.resource == file.resource) {
         return location.reload(true);
         not_found = false;
     }
-    let urls = window.document.select(`//@href|//@src`);
+    let urls = window.document.select(`//html:link/@href|//@src`);
     for (let src of urls.filter(script => new xover.URL(script.value).pathname == file.pathname)) {
         let old_script = src.parentNode;
         let new_script = document.createElement(old_script.tagName); /*script.cloneNode(); won't work properly*/
@@ -12498,7 +12498,7 @@ xover.listener.on('hotreload', async function (file_path) {
         let file_name = file_parts.pop();
         if (extension.indexOf("xsl") == 0) {
             xo.site.stylesheets.reload()
-        } else if (file_name.indexOf("index") == 0 || file_name.indexOf("default") == 0) {
+        } else if (["index", "default", "manifest"].includes(file_name) || ["manifest"].includes(extension)) {
             location.reload(true);
         }
     }
