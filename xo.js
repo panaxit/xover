@@ -2021,47 +2021,52 @@ Object.defineProperty(xover.session, 'checkStatus', {
 });
 
 Object.defineProperty(xover.session, 'login', {
-    value: function () {
+    value: async function (username, password, ...args) {
         if ('login' in xover.server) {
             try {
-                return xover.server.login.apply(xover.server.login, arguments);
+                username = username instanceof HTMLElement ? username.value : username;
+                password = password instanceof HTMLElement ? xover.cryptography.encodeMD5(password.value) : password;
+                xover.session.user_login = username;
+                xover.session.status = 'authorizing';
+                await xover.server.login(new URLSearchParams(...args), new Headers({ authorization: `Basic ${btoa(username + ':' + password)}` }), (return_value, request) => { xover.session[`${request.url.host}:id`] = return_value.id });
+                xover.session.status = 'authorized';
             } catch (e) {
-                console.error(e);
+                xover.session.status = 'unauthorized';
+                return Promise.reject(e);
             }
         } else {
             xover.session.status = 'authorized';
+            window.top.dispatchEvent(new xover.listener.Event('login', {}, this));
             return false;
         }
-    }
-    , writable: true, enumerable: false, configurable: true
-});
-
-Object.defineProperty(xover.session, 'locale', {
-    get() {
-        return xover.site.searchParams.get("lang") || this.getKey("locale") || navigator.language
-    }
-    , set(input) {
-        this.setKey("locale", input)
-    }
-    , enumerable: false
-});
+    }, writable: true, configurable: true
+})
 
 Object.defineProperty(xover.session, 'logout', {
-    value: function () {
+    value: async function () {
         if ('logout' in xover.server) {
             try {
                 return xover.server.logout.apply(xover.server.logout, arguments);
             } catch (e) {
                 console.error(e);
+            } finally {
+                xover.session.status = 'unauthorized';
             }
         } else {
             xover.session.status = 'unauthorized';
             xover.init();
-            return false;
         }
+        window.top.dispatchEvent(new xover.listener.Event('logout', {}, this));
     }
     , writable: true, enumerable: false, configurable: true
 });
+
+Object.defineProperty(xover.session, 'encodeCredential', {
+    value: function (username, password) {
+        if (username == null || password == null) return null;
+        return `Basic ${btoa(username + ':' + password)}`
+    }, writable: true, configurable: true
+})
 
 Object.defineProperty(xover.session, 'locale', {
     get() {
@@ -3267,13 +3272,13 @@ xover.Source = function (tag) {
                     if (request.before_event.cancelBubble || request.before_event.defaultPrevented) return;
                     if (source instanceof Node) {
                         response = source
-                    } else if (url.protocol == 'server:' || existsFunction(url.resource)) {
+                    } else if (source.split(/:/)[0] == 'server' || existsFunction(source)) {//(url.protocol == 'server:' || existsFunction(url.resource)) {
                         let promises = [];
-                        let endpoint = url.protocol == 'server:' ? url.pathname : url.resource;
+                        let endpoint = source.split(/:/).reverse()[0]; //url.protocol == 'server:' ? url.pathname : url.resource;
 
                         promises.push(new Promise(async (resolve, reject) => {
                             try {
-                                if (url.protocol == 'server:' && endpoint in xover.server) {
+                                if (source.split(/:/)[0] == 'server' && endpoint in xover.server) {
                                     response = await xover.server[endpoint].apply(request, request.parameters);
                                 } else if (existsFunction(url.resource)) {
                                     let fn = eval(endpoint);
@@ -5189,7 +5194,7 @@ xover.modernize = async function (targetWindow) {
                         if (target instanceof Document && [...target.childNodes].every(el => mutation.addedNodes.includes(el))) {
                             let node_event = new xover.listener.Event('load', {}, target);
                             window.top.dispatchEvent(node_event);
-                    }
+                        }
                     }
                     if (![...mutated_targets.values()].some(config => Object.values(config).some(arr => Object.values(arr).length))) return;
                     let renders = [];
@@ -5204,7 +5209,7 @@ xover.modernize = async function (targetWindow) {
                         if (active_element.ownerDocument && !active_element.ownerDocument.contains(active_element)) {
                             active_element = document.activeElement || document.documentElement
                         }
-                        [...active_element.querySelectorAll(".xo-working")].concat([active_element]).forEach(element => element.classList.remove("xo-working"))
+                        active_element instanceof HTMLElement && [...active_element.querySelectorAll(".xo-working")].concat([active_element]).forEach(element => element.classList.remove("xo-working"))
                     })
                 })
 
@@ -10861,6 +10866,14 @@ xover.Store = function (xml, ...args) {
         Object.defineProperty(this, 'remove', {
             value: function () {
                 delete xover.stores[_tag];
+            }
+        });
+    }
+
+    if (!this.hasOwnProperty('clear')) {
+        Object.defineProperty(this, 'clear', {
+            value: function () {
+                delete __document.clear();
             }
         });
     }
