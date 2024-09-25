@@ -3272,7 +3272,7 @@ xover.Source = function (tag) {
                     if (request.before_event.cancelBubble || request.before_event.defaultPrevented) return;
                     if (source instanceof Node) {
                         response = source
-                    } else if (source.split(/:/)[0] == 'server' || existsFunction(source)) {//(url.protocol == 'server:' || existsFunction(url.resource)) {
+                    } else if (typeof (source) == 'string' && source.split(/:/)[0] == 'server' || existsFunction(source)) {//(url.protocol == 'server:' || existsFunction(url.resource)) {
                         let promises = [];
                         let endpoint = source.split(/:/).reverse()[0]; //url.protocol == 'server:' ? url.pathname : url.resource;
 
@@ -6712,27 +6712,29 @@ xover.modernize = async function (targetWindow) {
                     }
                 );
 
-                var removeAll = {
+                let removeAll = {
                     value: function (...args) {
-                        let items = this instanceof Array && this || args;
-                        args = this instanceof Array && args || [];
+                        let items = [NodeList, Array].includes(this.constructor) && this || args;
+                        args = [NodeList, Array].includes(this.constructor) && args || [];
                         let removed = [];
-                        for (let i = items.length; i > 0; --i) {
-                            let el = items.pop();
+                        for (let el of items) {
                             removed.unshift(el);
                             if (typeof (el) == 'object' && el && "remove" in el) {
                                 el.remove.apply(el, args);
                             }
                         }
+                        items.length = 0;
                         return removed;
                     },
                     writable: false, enumerable: false, configurable: false
                 }
 
-                Object.defineProperty(Array.prototype, 'removeAll', removeAll);
                 Object.defineProperty(Array.prototype, 'remove', removeAll);
+                Object.defineProperty(NodeList.prototype, 'remove', removeAll);
+                Object.defineProperty(Array.prototype, 'removeAll', removeAll);
+                Object.defineProperty(NodeList.prototype, 'removeAll', removeAll);
 
-                var element_proxy = new Proxy(Node, {
+                let element_proxy = new Proxy(Node, {
                     get: function (target, name) {
                         return target[name];
                     },
@@ -8776,7 +8778,6 @@ xover.modernize = async function (targetWindow) {
                         },
                         enumerable: false, configurable: false
                     });
-
                 }
             }
 
@@ -8814,6 +8815,14 @@ Object.defineProperty(xover.stores, 'seed', {
 class NodeSet extends Array {
     constructor(...args) {
         super(...args)
+    }
+
+    select(...args) {
+        let new_array = []
+        for (let node of this) {
+            new_array = new_array.concat(node.select(...args))
+        }
+        return new_array;
     }
 
     highlight() {
@@ -10113,7 +10122,20 @@ xover.xml.combine = function (target, new_node) {
     }
     for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
         let static_attribute = target.getAttributeNode(item.substring(1));
-        static_attribute && new_node.setAttributeNode(static_attribute.cloneNode(), { silent: true })
+        if (!static_attribute) continue;
+        if (static_attribute.name == "class") {
+            let source_node = static_attribute.ownerElement;
+            for (let class_name of static_attribute.ownerElement.classList) {
+                new_node.classList.add(class_name)
+            }
+        } else if (static_attribute.name == "style") {
+            let source_node = static_attribute.ownerElement;
+            for (let [property] of [...source_node.attributeStyleMap]) {
+                new_node.attributeStyleMap.set(property, source_node.attributeStyleMap.get(property))
+            }
+        } else {
+            new_node.setAttributeNode(static_attribute.cloneNode(), { silent: true })
+        }
     }
     let named_slots = new_node instanceof Element && new_node.hasAttribute("xo-source") && !(new_node.hasAttribute("xo-stylesheet")) && new_node.querySelectorAll("slot[name]") || [];
     if (named_slots.length) {
@@ -10173,7 +10195,7 @@ xover.xml.combine = function (target, new_node) {
             attr.remove({ silent: true })
         }
         for (let attr of new_node.attributes) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
-            if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
+            //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
             if (attr.isEqualNode(target.attributes[attr.name])) continue;
             if (["value"].includes(attr.name)) {
                 target[attr.name] = attr.value
