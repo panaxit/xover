@@ -6712,7 +6712,7 @@ xover.modernize = async function (targetWindow) {
                     }
                 );
 
-                let removeAll = {
+                const removeAll = {
                     value: function (...args) {
                         let items = [NodeList, Array].includes(this.constructor) && this || args;
                         args = [NodeList, Array].includes(this.constructor) && args || [];
@@ -6728,6 +6728,18 @@ xover.modernize = async function (targetWindow) {
                     },
                     writable: false, enumerable: false, configurable: false
                 }
+
+                const select = {
+                    value: function (...args) {
+                        let new_array = []
+                        for (let node of this) {
+                            new_array = new_array.concat(node.select(...args))
+                        }
+                        return new_array;
+                    },
+                    writable: false, enumerable: false, configurable: false
+                }
+                Object.defineProperty(NodeList.prototype, 'select', select);
 
                 Object.defineProperty(Array.prototype, 'remove', removeAll);
                 Object.defineProperty(NodeList.prototype, 'remove', removeAll);
@@ -8730,7 +8742,7 @@ xover.modernize = async function (targetWindow) {
                 };
             }
 
-            for (let prop of ['set', 'setAttribute', 'setAttributeNS', 'get', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value', 'replaceChildren', 'replaceContent']) {
+            for (let prop of ['select', 'set', 'setAttribute', 'setAttributeNS', 'get', 'getAttribute', 'getAttributeNS', 'remove', 'removeAttribute', 'append', 'appendBefore', 'appendAfter', 'textContent', 'value', 'replaceChildren', 'replaceContent']) {
                 let prop_desc = Object.getOwnPropertyDescriptor(Node.prototype, prop) || Object.getOwnPropertyDescriptor(Element.prototype, prop);
                 if (!prop_desc) {
                     continue
@@ -8815,14 +8827,6 @@ Object.defineProperty(xover.stores, 'seed', {
 class NodeSet extends Array {
     constructor(...args) {
         super(...args)
-    }
-
-    select(...args) {
-        let new_array = []
-        for (let node of this) {
-            new_array = new_array.concat(node.select(...args))
-        }
-        return new_array;
     }
 
     highlight() {
