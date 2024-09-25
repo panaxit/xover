@@ -6035,6 +6035,10 @@ xover.modernize = async function (targetWindow) {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
+                    for (let stylesheet of xsl.select(`xsl:*`)) {
+                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:name" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="name()"/></xsl:template>`))
+                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:value" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="."/></xsl:template>`))
+                    }
                     for (let el of xsl.select(`//xsl:template//@xo:use-attribute-sets`)) {
                         let attribute_sets = el.value.split(/\s+/g);
                         let attributes = attribute_sets.reduce((attrs, key) => {
