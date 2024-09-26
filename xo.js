@@ -10134,6 +10134,9 @@ xover.xml.combine = function (target, new_node) {
         if (static_attribute.name == "class") {
             let source_node = static_attribute.ownerElement;
             for (let class_name of static_attribute.ownerElement.classList) {
+                if (class_name[0] == "-") {
+                    new_node.classList.remove(class_name.slice(1))
+                }
                 new_node.classList.add(class_name)
             }
         } else if (static_attribute.name == "style") {
