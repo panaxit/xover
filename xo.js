@@ -12578,7 +12578,7 @@ xover.listener.on('hotreload', async function (file_path) {
         let file_name = file_parts.pop();
         if (extension.indexOf("xsl") == 0) {
             xo.site.stylesheets.reload()
-        } else if (["index", "default", "manifest"].includes(file_name) || ["manifest"].includes(extension)) {
+        } else if (!current_url.resource && ["index", "default", "manifest"].includes(file_name) || ["manifest"].includes(extension)) {
             location.reload(true);
         }
     }
