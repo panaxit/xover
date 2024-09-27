@@ -1744,10 +1744,49 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
             settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => value.constructor === {}.constructor && Object.entries(value) || value);
             settings = settings.flat();
         }
+        if (settings.length && typeof (xover.manifest.evaluate) == 'function') {
+            settings = xover.manifest.evaluate(settings);
+        }
         return settings;
     },
     writable: true, enumerable: false, configurable: false
 });
+
+Object.defineProperty(xover.Manifest.prototype, 'evaluate', {
+    writable: false, enumerable: false, configurable: false,
+    value: function (value, context = xover.URL(location.href).href) {
+        let result;
+        if (value == null) {
+            result = value
+        } else if ([].constructor === value.constructor) {
+            result = [];
+            for (let item of value) {
+                result.push(this.evaluate(item, context))
+            }
+        } else if ({}.constructor === value.constructor) {
+            result = {}
+            for (let key in value) {
+                let reg_ex;
+                if (/^\^/.test(key)) {
+                    reg_ex = [context, new RegExp(key, "gi")];
+                }
+                result[this.evaluate(key, context)] = this.evaluate(value[key], reg_ex || context);
+            }
+        } else if (typeof (value) == 'string') {
+            if (/\$[\d&<]/.test(value) && context instanceof Array) {
+                value = context[0].replace(context[1], value)
+            }
+            if (typeof (value) == 'string' && value.indexOf('${') !== -1) {
+                value = typeof (value.indexOf) == 'function' && value.indexOf('${') == 0 && eval(`(${value.replace(/^\$\{(.*)\}$/, '$1')})`) || eval("`" + value + "`"); /* if value starts with ${ then it will evaluate in sucha a way that it might return an object, otherwise it will evaluate and return a string */
+            }
+            result = value;
+        } else {
+            result = value;
+        }
+        return result;
+    }
+})
+
 xover.manifest = new xover.Manifest();
 xover.messages = new Map();
 xover.server = new Proxy({}, {
@@ -1818,7 +1857,8 @@ xover.server = new Proxy({}, {
             //}
 
             //url.payload = payload;
-            url.settings.merge(settings)
+            let manifest_settings = Object.fromEntries(xover.manifest.getSettings(url));
+            url.settings = xover.json.combine(url.settings, manifest_settings, settings);
             request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { request, tag: `server:${key}`, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, request);
 
             window.top.dispatchEvent(request.before_event);
@@ -1832,8 +1872,8 @@ xover.server = new Proxy({}, {
                     }
                 }
             }
-            let manifest_settings = xover.manifest.getSettings(response, "stylesheets");
-            return_value instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
+            let response_manifest_settings = xover.manifest.getSettings(response, "stylesheets");
+            return_value instanceof XMLDocument && response_manifest_settings.reverse().map(stylesheet => {
                 return_value.addStylesheet(stylesheet);
             });
             response.response_value = return_value;
@@ -2029,7 +2069,7 @@ Object.defineProperty(xover.session, 'login', {
                 password = password instanceof HTMLElement ? xover.cryptography.encodeMD5(password.value) : password;
                 xover.session.user_login = username;
                 xover.session.status = 'authorizing';
-                await xover.server.login(new URLSearchParams(...args), new Headers({ authorization: `Basic ${btoa(username + ':' + password)}` }), (return_value, request) => { xover.session[`${request.url.host}:id`] = return_value.id });
+                await xover.server.login(...args, new Headers({ authorization: `Basic ${btoa(username + ':' + password)}` }), (return_value, request) => { xover.session[`${request.url.host}:id`] = return_value.id });
                 xover.session.status = 'authorized';
             } catch (e) {
                 xover.session.status = 'unauthorized';
@@ -6519,7 +6559,7 @@ xover.modernize = async function (targetWindow) {
                             //if (this.ownerDocument instanceof XMLDocument) {
                             //    return undefined
                             //} else { /* Some nodes like processing-instructions have no closest method */
-                            let target = typeof (this.closest) === 'function' ? this.closest("[xo-source],[xo-stylesheet]") : null
+                            let target = typeof (this.closest) === 'function' ? this.closest("[xo-source],[xo-stylesheet]") : this.ownerDocument.createComment("ack:no-scope");
                             return target == this ? Object.getOwnPropertyDescriptor(Node.prototype, 'section').get.call(this.parentNode) : target;
                             //}
                         }
@@ -7027,6 +7067,7 @@ xover.modernize = async function (targetWindow) {
                 let generic_attributeNode = function () {
                     return new Comment("ack:not-supported");
                 }
+                Comment.prototype.getAttribute = function () { return null };
                 Comment.prototype.getAttributeNode = generic_attributeNode;
                 Attr.prototype.getAttributeNode = generic_attributeNode;
                 Text.prototype.getAttributeNode = generic_attributeNode;
@@ -9396,15 +9437,23 @@ xover.Request = function (request, ...args) {
     for (let i = args.length - 1; i >= 0; --i) {
         if (!args[i]) continue;
         try {
-        if (typeof (args[i]) == 'function') {
-            handlers.push(args[i]);
-            args.splice(i, 1)
-        } else if (args[i] instanceof Headers) {
-            headers.push(args[i]);
-            args.splice(i, 1)
-        } else if (args[i].constructor && [Document, File, Blob, FormData, URLSearchParams].includes(args[i].constructor)) {
-            payload.push(args[i]);
-            args.splice(i, 1)
+            if (typeof (args[i]) == 'function') {
+                handlers.push(args[i]);
+                args.splice(i, 1)
+            } else if (args[i] instanceof Headers) {
+                headers.push(args[i]);
+                args.splice(i, 1)
+            } else if (args[i].constructor && [Document, File, Blob, FormData, URLSearchParams].includes(args[i].constructor)) {
+                payload.push(args[i]);
+                args.splice(i, 1)
+            }/* else if (args.length == 1 args[i].constructor &&) {
+                let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = args[0];
+                if (method || headers || body || mode || credentials || cache || redirect || referrer || integrity || keepalive || signal) {
+                    console.warn()
+                }
+            }*/
+        } catch (e) {
+            continue
         }
     }
     let settings// = args.pop() || {};
@@ -10288,7 +10337,7 @@ xover.dom.applyScripts = async function (scripts = []) {
                                     console.error(e, arguments)
                                 }
                             }
-                        }(`/*${xover.context.section.getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; ${script.textContent};xover.context = undefined;`));
+                        }(`/*${(xover.context.section || document.createElement("p")).getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; ${script.textContent};xover.context = undefined;`));
                         if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                             let target = document.getElementById(script.id);
                             target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
