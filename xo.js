@@ -639,14 +639,14 @@ xover.init.Observer = function (target_node = window.document) {
                 let replace_event = new xover.listener.Event('replaceChildren', { addedNodes: mutation.addedNodes, removedNodes: mutation.removedNodes }, target);
                 window.top.dispatchEvent(replace_event);
             }
-            if (xo.listener.has('reallocate')) {
+            if (xover.listener.has('reallocate')) {
                 for (let node of [...mutation.reallocatedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
                     let remove_event = new xover.listener.Event('reallocate', { nextSibling: node.formerNextSibling, previousSibling: node.formerPreviousSibling, parentNode: target }, node);
                     window.top.dispatchEvent(remove_event);
                     if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
                 }
             }
-            if (xo.listener.has('remove')) {
+            if (xover.listener.has('remove')) {
                 for (let node of mutation.removedNodes) {
                     if (target.contains(node)
                         || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)
@@ -660,7 +660,7 @@ xover.init.Observer = function (target_node = window.document) {
                     if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
                 }
             }
-            if (xo.listener.has('append')) {
+            if (xover.listener.has('append')) {
                 for (let node of mutation.addedNodes) {
                     if (!target.contains(node)
                         || node instanceof Element && [HTMLStyleElement, HTMLScriptElement].includes(node.constructor)) {
@@ -1792,6 +1792,7 @@ xover.server = new Proxy({}, {
             } else if (typeof (endpoint) == 'string') {
                 url = new xover.URL(endpoint, undefined, { ...settings })
             }
+
             if (this instanceof Request) {
                 request = this;
                 for (let prop of ['hash', 'username', 'password', 'port', 'searchParams'].filter(prop => this.url[prop])) {//Object.getOwnPropertyNames(URL.prototype).filter(prop => !['href', 'search', 'searchParams', 'origin'].includes(prop) && url[prop] && typeof (url[prop]) )) {
@@ -9394,6 +9395,7 @@ xover.Request = function (request, ...args) {
     let headers = [];
     for (let i = args.length - 1; i >= 0; --i) {
         if (!args[i]) continue;
+        try {
         if (typeof (args[i]) == 'function') {
             handlers.push(args[i]);
             args.splice(i, 1)
@@ -12495,9 +12497,9 @@ xover.socket.connect = function (url, listeners = {}, socket_handler = window.io
                     let fn = eval(handler);
                     response = await fn.apply(this, args.length ? args : parameters);
                 } else if (handler[0] == '#') {
-                    let source = xo.sources[handler];
+                    let source = xover.sources[handler];
                     await source.ready;
-                    source.documentElement.append(xo.xml.createNode(`<item/ >`).textContent = args.join())
+                    source.documentElement.append(xover.xml.createNode(`<item/ >`).textContent = args.join())
                 } else if (handler.indexOf("event:") == 0) {
                     window.document.dispatch.apply(document, [handler.split(":").pop(), ...args])
                 } else {
@@ -12577,7 +12579,7 @@ xover.listener.on('hotreload', async function (file_path) {
         let extension = file_parts.pop();
         let file_name = file_parts.pop();
         if (extension.indexOf("xsl") == 0) {
-            xo.site.stylesheets.reload()
+            xover.site.stylesheets.reload()
         } else if (!current_url.resource && ["index", "default", "manifest"].includes(file_name) || ["manifest"].includes(extension)) {
             location.reload(true);
         }
@@ -12856,7 +12858,7 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     }
 
     if (url.pathname == location.pathname && srcElement.getAttribute("target") == "_self") {
-        xo.site.active = hashtag
+        xover.site.active = hashtag
     } else {
         xover.site.pushState({ seed: hashtag }, url.toString())
     }
