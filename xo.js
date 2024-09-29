@@ -1221,8 +1221,8 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         //context.eventHistory = context.eventHistory || new Map();
         context.handlerHistory = context.handlerHistory || context instanceof Request && new Set() || null
         let returnValue;
-        try {
-            for (let handler of [...handlers.values()].reverse()) {
+        for (let handler of [...handlers.values()].reverse()) {
+            try {
                 if (event.propagationStopped || event.cancelBubble) break;
                 if (context.handlerHistory instanceof Set && context.handlerHistory.has(handler)) continue;
                 if (xover.listener.history.overflowed(handler, context)) {
@@ -1331,13 +1331,13 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                     event.srcEvent.stopPropagation();
                 }
                 //xover.listener.history.delete(handler, context);
-            }
-        } catch (e) {
-            if (event.detail) {
-                event.detail.returnValue = e;
-                console.error(e);
-            } else {
-                throw e;
+            } catch (e) {
+                if (event.detail) {
+                    event.detail.returnValue = e;
+                    console.error(e, handler);
+                } else {
+                    throw e;
+                }
             }
         }
     },
