@@ -2287,7 +2287,7 @@ Object.defineProperty(xover.site, 'meta', {
                 if (key in self) {
                     return self[key]
                 }
-                return (document.querySelector(`meta[name="${key}"]`) || document.createElement("p")).getAttribute("content")
+                return (window.document.querySelector(`meta[property="${key}"],meta[name="${key}"]`) || window.document.createElement("p")).getAttribute("content")
             }
         })
     }
