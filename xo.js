@@ -778,6 +778,27 @@ xover.initializeDOM = function () {
         //}
     }
 
+    for (let component of window.document.select(`//*[starts-with(name(),'px-')]`)) {
+        let component_name = component.nodeName.toLowerCase();
+        if (customElements.get(component_name)) continue;
+        let class_name = component_name.replace(/-/g, '_');
+        let [extension_name, ...file_name] = component_name.split(/-/g);
+        file_name = file_name.join('-');
+        xover.manifest.sources[component_name] = xover.manifest.sources[component_name] || [`${file_name}.${extension_name}`,`${file_name}.xsl`,`${file_name}.html`];
+        eval(`
+            class ${class_name} extends HTMLElement {
+                constructor() {
+                    super();
+                    let source = xover.sources["${component_name}"]
+                    source.ready.then((document)=>{
+                        xover.dom.combine(this, document.cloneNode(true));
+                    });
+                }
+            }
+            customElements.define("${component_name}", ${class_name});
+        `)
+    }
+
     xover.subscribeReferencers()
 }
 
@@ -5095,7 +5116,7 @@ xover.modernize = async function (targetWindow) {
                                     await this.fetch();
                                 }
                             }
-                            return true;
+                            return this;
                         } catch (e) {
                             if (e instanceof Response && e.status == 499) {
                                 e = ''
