@@ -10452,7 +10452,7 @@ xover.dom.applyScripts = async function (scripts = []) {
         } else if (!script.getAttribute("src") && script.innerHTML) {
             script.innerHTML = xover.string.htmlDecode(script.innerHTML); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
             if (script.selectSingleNode(`self::html:style`)) {
-                let target = (this instanceof window.Document || this instanceof Document) && targetDocument.querySelector("head,body") || targetDocument;
+                let target = (this instanceof window.Document || this instanceof Document) && targetDocument.querySelector("head,body") || targetDocument.firstElementChild || targetDocument;
                 if (![...target.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
                     target.appendChild(script);
                     //let new_element = target.createElement(script.tagName); /*script.cloneNode(); won't work properly*/
@@ -10551,7 +10551,7 @@ xover.dom.combine = async function (target, new_node) {
     let target_preceding_siblings = [];
 
     //target.ownerDocument.disconnect();
-    scripts = new_node.selectNodes('.//*[self::html:script][not(@src)][text()]').map(el => {
+    scripts = new_node.selectNodes('descendant-or-self::html:script[not(@src)][text()]').map(el => {
         let cloned = el.cloneNode(true);
         cloned.original = el;
         el.textContent = ''
