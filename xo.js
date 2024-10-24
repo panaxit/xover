@@ -1489,6 +1489,22 @@ Object.defineProperty(xover.listener, 'on', {
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
+                if (["mouseout", "mouseleave"].includes(base_event)) {
+                    xover.listener.on(`mousemove`, function () {
+                        let target = this.closest(predicate);
+                        if (target) {
+                            target.custom_events = target.custom_events || new Map();
+                            target.custom_events.set(`${base_event}::${predicate}`, new xover.listener.Event(`${base_event}::${predicate}`, { ...event.detail }, target));
+                            let mouseout_handler = function () {
+                                if (!target.custom_events.has(`${base_event}::${predicate}`)) return;
+                                target.removeEventListener('mouseleave', mouseout_handler);
+                                window.top.dispatchEvent(target.custom_events.get(`${base_event}::${predicate}`));
+                                target.custom_events.delete(`${base_event}::${predicate}`);
+                            }
+                            target.addEventListener('mouseleave', mouseout_handler);
+                        }
+                    })
+                }
                 window.top.removeEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
                 window.top.addEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher/*, options*/);
             }
@@ -5598,7 +5614,7 @@ xover.modernize = async function (targetWindow) {
                             if (args[0].match(/\/|@/)) {
                                 throw new DOMException('not a valid selector');
                             }
-                            if (event instanceof CustomEvent && ['click'].includes(event.type)) {
+                            if (event instanceof CustomEvent && ['click', 'mousemove', 'mouseup', 'mouseout'].includes(event.type)) {
                                 matches = Element.closest && Element.closest.value.apply(node, args);
                             } else {
                                 matches = Element.matches && Element.matches.value.apply(node, args);
