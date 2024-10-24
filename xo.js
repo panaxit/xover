@@ -1004,7 +1004,7 @@ xover.evaluateReferencers = async function (context) {
         let value = txt.value.replace(/\{\{([^\}]+)\}\}/g, (match, key) => (typeof (context.selectSingleNode) == 'function' ? context.selectSingleNode(key) : context[key]) || `{{${key}}}`)
         if (!isNaN(value)) {
             value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
-}
+        }
         txt.textContent = value
     })
 }
@@ -1783,31 +1783,31 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                 if (key[0] == '#' || key[0] === '^' && key[1] == '#') {
                     return (tag_url.hash || '#').matches(key)
                 } else if (key[0] === '^') {
-                return tag_url.pathname.slice(1).matches(key)
+                    return tag_url.pathname.slice(1).matches(key)
                 } else if (key[0] === '/') {
                     return input.matches(key) /*should work either with nodes and strings */
-            } else {
-                let key_url = new xover.URL(!(input instanceof Node) ? key : '');
-                if (location.origin == key_url.origin) { //removes current folder so it can be evaluated 
-                    key_url.pathname = key_url.pathname.replace(new RegExp("^" + location.pathname), "");
+                } else {
+                    let key_url = new xover.URL(!(input instanceof Node) ? key : '');
+                    if (location.origin == key_url.origin) { //removes current folder so it can be evaluated 
+                        key_url.pathname = key_url.pathname.replace(new RegExp("^" + location.pathname), "");
+                    }
+                    return value.constructor === {}.constructor
+                        && (
+                            tag_url.protocol == key_url.protocol
+                        ) && (
+                            !key_url.pathname[1]
+                            || tag_url.pathname.slice(1).matches(key_url.pathname.slice(1))
+                        ) && (
+                            !key_url.hash
+                            || tag_url.hash == key_url.hash
+                            || tag_url.hash.slice(1).matches(key_url.hash.slice(1))
+                        ) && (
+                            !key_url.searchParams.length ||
+                            [...key_url.searchParams].every(([key, predicate]) => {
+                                return !predicate ? tag_url.searchParams.has(key) : tag_url.searchParams.get(key) == predicate
+                            })
+                        )
                 }
-                return value.constructor === {}.constructor
-                    && (
-                        tag_url.protocol == key_url.protocol
-                    ) && (
-                        !key_url.pathname[1]
-                        || tag_url.pathname.slice(1).matches(key_url.pathname.slice(1))
-                    ) && (
-                        !key_url.hash
-                        || tag_url.hash == key_url.hash
-                        || tag_url.hash.slice(1).matches(key_url.hash.slice(1))
-                    ) && (
-                        !key_url.searchParams.length ||
-                        [...key_url.searchParams].every(([key, predicate]) => {
-                            return !predicate ? tag_url.searchParams.has(key) : tag_url.searchParams.get(key) == predicate
-                        })
-                    )
-            }
             } catch (e) {
                 if (xover.session.debug) {
                     debugger
@@ -2771,7 +2771,7 @@ Object.defineProperty(xover.site, 'active', {
     set: function (tag) {
         history.state.active = tag;
         //if (xover.stores.seed != xover.stores.active) {
-            xover.stores.active.render()
+        xover.stores.active.render()
         //}
         /*
         let store = xover.stores[tag];
@@ -2953,7 +2953,7 @@ xover.string.toHTML = function (string) {
         //}
     } else {
         body = html_doc
-}
+    }
     return body
 }
 
@@ -4087,7 +4087,7 @@ xover.dom.alert = async function (message) {
             dom.documentElement.select('//text()').filter(text => text.data.trim()).forEach(text => text.replaceWith(xover.string.toHTML(text)))
             dom.select(`//@xo-scope[starts-with(.,'context:')]`).remove();
             if (![...document.querySelectorAll(`${dom.firstElementChild.tagName}`)].map(el => el.select(".//text()").filter(text => text.data.trim()).join("\n")).includes(dom.select(".//text()").filter(text => text.data.trim()).join("\n"))) {
-            document.body && document.body.appendChild(dom.documentElement)
+                document.body && document.body.appendChild(dom.documentElement)
             }
             return dom.documentElement;
         } catch (e) {
@@ -5085,7 +5085,7 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 HTMLTextAreaElement.select = HTMLTextAreaElement.select || HTMLTextAreaElement.prototype.select;
-                Node.prototype.selectNodes = function (xpath) {
+                Node.prototype.selectNodes = function (xpath, resultType = XPathResult.ORDERED_NODE_SNAPSHOT_TYPE) {
                     if (this instanceof HTMLTextAreaElement && xpath == undefined) {
                         return HTMLTextAreaElement.select.apply(this)
                     }
@@ -5135,7 +5135,16 @@ xover.modernize = async function (targetWindow) {
                     let selection = new Array;
                     let aItems;
                     try {
-                        aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                        aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, resultType, null);
+                        //let aItems2 //TODO: explore if this option is best performant. Consider it is breaking with $0.stylesheet.single(`//@xo:use-attribute-sets`).select("//xsl:stylesheet")
+                        //try {
+                        //    aItems2 = (context.ownerDocument || context).createExpression(xpath, nsResolver).evaluate(this, resultType, null)
+                        //} catch (e) {
+                        //    debugger
+                        //}
+                        //if (resultType !== XPathResult.FIRST_ORDERED_NODE_TYPE && aItems.snapshotLength != aItems2.snapshotLength) {
+                        //    console.log([this, aItems, aItems2, (context.ownerDocument || context).createExpression("*", nsResolver).evaluate(this, resultType, null)], xpath)
+                        //}
                     } catch (e) {
                         if (e.NAMESPACE_ERR == e.code || e.message.match(/contains unresolvable namespaces/g)) {
                             ////let prefixes = xpath.match(/\w+(?=\:)/g);
@@ -5145,12 +5154,12 @@ xover.modernize = async function (targetWindow) {
                             ////    Element.setAttributeNS.call(target, "http://www.w3.org/2000/xmlns/", `xmlns:${prefix}`, nsResolver(prefix));
                             ////}
                             ////try {
-                            ////    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                            ////    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, resultType, null);
                             ////} catch (e) {
                             if (!xover.browser.isIOS()) {
                                 xpath = xpath.replace(RegExp("(?<=::|@|\\/|\||\\[|^|\\()([\\w-_]+):([\\w-_]+|\\*)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
                             }
-                            aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                            aItems = (context.ownerDocument || context).evaluate(xpath, context instanceof Document ? this : context, nsResolver, resultType, null);
                         } else {
                             //if (xover.session.debug) console.warn(e);
                             aItems = [];
@@ -5163,10 +5172,16 @@ xover.modernize = async function (targetWindow) {
                             //this.ownerDocument.connect()
                         }
                     }
-                    for (let i = 0; i < aItems.snapshotLength; i++) {
-                        selection[i] = aItems.snapshotItem(i);
-                        if (selection[i] instanceof ProcessingInstruction) {
-                            selection[i] = new xover.ProcessingInstruction(selection[i]);
+                    if (resultType === XPathResult.FIRST_ORDERED_NODE_TYPE) {
+                        if (aItems.singleNodeValue) {
+                            selection[0] = aItems.singleNodeValue;
+                        }
+                    } else {
+                        for (let i = 0; i < aItems.snapshotLength; i++) {
+                            selection[i] = aItems.snapshotItem(i);
+                            if (selection[i] instanceof ProcessingInstruction) {
+                                selection[i] = new xover.ProcessingInstruction(selection[i]);
+                            }
                         }
                     }
 
@@ -5419,7 +5434,7 @@ xover.modernize = async function (targetWindow) {
                     //    xpath = `*[namespace-uri()='${namespace}' and name()='${xpath}']`
                     //}
                     let scope = this instanceof Node && this || this.document;
-                    let xItems = scope.selectNodes(`(${xpath})[1]`);
+                    let xItems = scope.selectNodes(xpath, XPathResult.FIRST_ORDERED_NODE_TYPE);
                     if (xItems.length > 0) { return xItems[0]; }
                     else { return null; }
                 }
