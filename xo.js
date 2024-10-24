@@ -8737,14 +8737,7 @@ xover.modernize = async function (targetWindow) {
                                 target.tag = data.tag;
                                 let dom;
                                 if (xsl instanceof Document) {
-                                    for (let [prefix, prop] of xsl.select(`//xsl:param[contains(@name,':')]/@name`).map(param => param.value).distinct().map(param => param.split(":", 2)).filter(([prefix]) => prefix in xover)) {
-                                        data.firstElementChild.setAttributeNS(xover.spaces[prefix], prop, xover[prefix][prop]);
-                                    }
                                     xsl.target = target;
-                                    if (!xsl.selectFirst(`/*/comment()[.='ack:optimized']`)) {
-                                        xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]|//xsl:template//html:*/@*[contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
-                                        xsl.documentElement.prepend(new Comment("ack:optimized"))
-                                    }
                                     data.tag = /*'#' + */(xsl.href || '').split(/[\?#]/)[0];
                                     //let target_class = target.getAttributeNode("class");
                                     //target.classList.add('xo-loading');
