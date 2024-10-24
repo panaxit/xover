@@ -10500,18 +10500,22 @@ xover.dom.combine = async function (target, new_node) {
     let script_wrapper = window.document.firstElementChild.cloneNode();
     script_wrapper.append(...new_node.selectNodes(`html:style|descendant-or-self::*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
     if ((target instanceof window.HTMLElement || target instanceof HTMLElement) && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
-        if (target.tagName != 'CODE' && !(new_node.firstElementChild instanceof HTMLElement)) {
-            let named_slots = target.querySelectorAll("slot[name]");
-            if (named_slots.length) {
+        //if (target.tagName != 'CODE' && !(new_node.firstElementChild instanceof HTMLElement)) {
+        //    let named_slots = target.querySelectorAll("slot[name]");
+        //    if (named_slots.length) {
+        //        for (let slot of named_slots) {
+        //            let name = slot.name;
+        //            let new_content = new_node.documentElement.get(name);
+        //            if (!(name && new_content)) continue
+        //            slot.replaceChildren(...[new_content.value].flat())
+        //        }
+        //        return target;
+        //    }
+        //}
+        let named_slots = target.tagName != 'CODE' && (new_node.content || new_node).querySelectorAll("slot[name]") || [];
                 for (let slot of named_slots) {
-                    let name = slot.name;
-                    let new_content = new_node.documentElement.get(name);
-                    if (!(name && new_content)) continue
-                    slot.replaceChildren(...[new_content.value].flat())
-                }
-                return target;
+            slot.replaceChildren(target.getAttribute(slot.getAttribute("name")));
             }
-        }
         if ((new_node.firstElementChild || new_node).namespaceURI == xover.spaces["xson"]) {
             new_node = xover.xml.toJSON(new_node)
             new_node = JSON.stringify(new_node)
