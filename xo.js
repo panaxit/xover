@@ -1001,7 +1001,7 @@ xover.evaluateReferencers = async function (context) {
     if (!context) return;
     // first version of {{@attr}} notation. TODO: Keeo record of place holders and be aware of changes
     target.select(`//text()[contains(.,'{{')]`).forEach(txt => {
-        let value = txt.value.replace(/\{\{([^\}]+)\}\}/g, (match, key) => typeof (context.selectSingleNode) == 'function' ? context.selectSingleNode(key) : context[key] || `{{${key}}}`)
+        let value = txt.value.replace(/\{\{([^\}]+)\}\}/g, (match, key) => (typeof (context.selectSingleNode) == 'function' ? context.selectSingleNode(key) : context[key]) || `{{${key}}}`)
         if (!isNaN(value)) {
             value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
 }
@@ -1751,23 +1751,26 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
 });
 
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
-    value: function (input, config_name) { //returns array of values if config_name is sent otherwise returns entries
+    value: function (input, ...config_names) { //returns array of values if config_name is sent otherwise returns entries
         if (!Object.entries(this.settings || {}).length) return [];
         let tag = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
-        let tag_url = input instanceof URL && xover.URL(input.toString()) || input instanceof Response && xover.URL(input.url.toString()) || xover.URL(tag);
+        //let tag_url = input instanceof URL && xover.URL(input.toString()) || input instanceof Response && xover.URL(input.url.toString()) || xover.URL(tag);
+        let tag_url = xover.URL(input instanceof URL && input.toString() || (input.ownerDocument || input).url || tag);
         if (location.origin == tag_url.origin) { //removes current folder so it can be evaluated 
             tag_url.pathname = tag_url.pathname.replace(new RegExp("^" + location.pathname), "");
         }
+        if (input.store instanceof xover.Store) {
+            tag_url.hash = input.store.tag
+        }
         let settings = Object.entries(this.settings).filter(([full_key, value]) => full_key.split(/\|\|/g).some(key => {
-            if (input instanceof Node) {
-                if (key[0] != '/') return false;
-                return input.selectFirst(key)
-            } else if (key[0] == '^' && key[1] == '#') {
-                return tag_url.hash.matches(key)
-            } else if (key[0] == '^') {
+            try {
+                if (key[0] == '#' || key[0] === '^' && key[1] == '#') {
+                    return (tag_url.hash || '#').matches(key)
+                } else if (key[0] === '^') {
                 return tag_url.pathname.slice(1).matches(key)
+                } else if (key[0] === '/') {
+                    return input.matches(key) /*should work either with nodes and strings */
             } else {
-                if (key[0] == '/') return false;
                 let key_url = new xover.URL(!(input instanceof Node) ? key : '');
                 if (location.origin == key_url.origin) { //removes current folder so it can be evaluated 
                     key_url.pathname = key_url.pathname.replace(new RegExp("^" + location.pathname), "");
@@ -1789,11 +1792,16 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                         })
                     )
             }
+            } catch (e) {
+                if (xover.session.debug) {
+                    debugger
+                }
+            }
 
         }
         )).reduce((config, [key, value]) => { config.push(...Object.entries(value)); return config }, []);
-        if (config_name) {
-            settings = settings.filter(([key, value]) => key === config_name).map(([key, value]) => value.constructor === {}.constructor && Object.entries(value) || value);
+        if (config_names.flat()) {
+            settings = settings.filter(([key, value]) => config_names.includes(key)).map(([key, value]) => value.constructor === {}.constructor && Object.entries(value) || value);
             settings = settings.flat();
         }
         if (settings.length && typeof (xover.manifest.evaluate) == 'function') {
