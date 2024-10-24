@@ -816,7 +816,7 @@ xover.initializeDOM = async function () {
                     let source = xover.sources["${component_name}"]
                     source.ready.then((document)=>{
                         xover.dom.combine(this, document.cloneNode(true));
-                    });
+                    }).catch(e => console.error(e));
                 }
             }
             customElements.define("${component_name}", ${class_name});
