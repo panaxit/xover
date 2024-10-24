@@ -10538,9 +10538,9 @@ xover.dom.combine = async function (target, new_node) {
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
     xover.xml.staticMerge(target, new_node);
-    let dependants = [...new_node.querySelectorAll('[xo-stylesheet]')];
+    let dependants = [...new_node.querySelectorAll('[xo-source],[xo-stylesheet]')];
     dependants = dependants.map(el => el.render());
-    if (target.matches('[xo-stylesheet]')) await Promise.all(dependants);
+    //if (target.matches('[xo-source],[xo-stylesheet]')) await Promise.all(dependants);
 
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
     window.top.dispatchEvent(before_dom);
