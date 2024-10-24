@@ -2770,9 +2770,9 @@ Object.defineProperty(xover.site, 'active', {
     },
     set: function (tag) {
         history.state.active = tag;
-        if (xover.stores.seed != xover.stores.active) {
+        //if (xover.stores.seed != xover.stores.active) {
             xover.stores.active.render()
-        }
+        //}
         /*
         let store = xover.stores[tag];
         if (!store) {
