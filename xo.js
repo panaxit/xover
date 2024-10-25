@@ -813,9 +813,13 @@ xover.initializeDOM = async function () {
             class ${class_name} extends HTMLElement {
                 constructor() {
                     super();
+                }
+
+                connectedCallback() {
                     let source = xover.sources["${component_name}"]
                     source.ready.then((document)=>{
-                        xover.dom.combine(this, document.cloneNode(true));
+                        this.replaceChildren(...document.cloneNode(true).childNodes);
+                        //xover.dom.combine(this, document.cloneNode(true));
                     }).catch(e => console.error(e));
                 }
             }
