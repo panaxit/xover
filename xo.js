@@ -8679,9 +8679,11 @@ xover.modernize = async function (targetWindow) {
                                 //}
                                 data = data || this.cloneNode(true);
                                 xsl instanceof Document && await xsl.ready;
-                                if (xsl instanceof Document) { //TODO: Is there any chance that xs is not a document?
+                                if (xsl instanceof Document) { //TODO: Is there any chance that xsl is not a document?
+                                    if (data.documentElement) {
                                     for (let [prefix, prop] of [...data.documentElement.attributes].map(attr => [attr.prefix, attr.localName]).concat(xsl.select(`//xsl:param[contains(@name,':')]/@name`).map(param => param.value).distinct().map(param => param.split(":", 2))).filter(([prefix]) => prefix in xover)) {
                                         data.firstElementChild.setAttributeNS(xover.spaces[prefix], prop, xover[prefix][prop]);
+                                    }
                                     }
                                     if (!xsl.selectFirst(`/*/comment()[.='ack:optimized']`)) {
                                         xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]|//xsl:template//html:*/@*[contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
