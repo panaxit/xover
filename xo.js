@@ -973,10 +973,10 @@ xover.subscribers = new Structure(new Map(), {
     }
 });
 
-xover.evaluateReferencers = async function (context) {
+xover.evaluateReferencers = async function (valueParser) {
     await xover.ready;
-    let window = this.window || this.defaultView || top.window;
-    let target = (this instanceof window.Node || this instanceof Node) && this || window.document;
+    let window = this.window || (this.ownerDocument || this).defaultView || top.window;
+    let target = (this instanceof Node || this instanceof window.Node) && this || document; 
     let references = new Map();
     target.select(`.//@*[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[starts-with(.,'$\{')]`).forEach(attr => references.set(attr, attr.value));
     for (let [ref, formula] of references.entries()) {
@@ -1002,15 +1002,14 @@ xover.evaluateReferencers = async function (context) {
     }
     target.select(`.//*[@xo-site]//@src|.//*[@xo-site]//@href`).map(src => src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
 
-    if (!context) return;
-    // first version of {{@attr}} notation. TODO: Keeo record of place holders and be aware of changes
-    target.select(`//text()[contains(.,'{{')]`).forEach(txt => {
-        let value = txt.value.replace(/\{\{([^\}]+)\}\}/g, (match, key) => (typeof (context.selectSingleNode) == 'function' ? context.selectSingleNode(key) : context[key]) || `{{${key}}}`)
-        if (!isNaN(value)) {
-            value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+    // first version of {{@attr}} notation. TODO: Keep record of place holders and be aware of changes
+    if (typeof (valueParser) != 'function') return;
+    for (let txt of target.select(`//text()[contains(.,'{{')]`)) {
+        let value = txt.value.replace(/\{\{([^\}]+)\}\}/g, (match, key) => {
+            return valueParser.call(target, key);
+        });
+        txt.textContent = value;
         }
-        txt.textContent = value
-    })
 }
 
 xover.json = {};
