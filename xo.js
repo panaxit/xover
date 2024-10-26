@@ -818,8 +818,8 @@ xover.initializeDOM = async function () {
                 connectedCallback() {
                     let source = xover.sources["${component_name}"]
                     source.ready.then((document)=>{
-                        this.replaceChildren(...document.cloneNode(true).childNodes);
-                        //xover.dom.combine(this, document.cloneNode(true));
+                        //this.replaceChildren(...document.cloneNode(true).childNodes);
+                        xover.dom.combine(this, document.cloneNode(true));
                     }).catch(e => console.error(e));
                 }
             }
@@ -975,8 +975,7 @@ xover.subscribers = new Structure(new Map(), {
 
 xover.evaluateReferencers = async function (valueParser) {
     await xover.ready;
-    let window = this.window || (this.ownerDocument || this).defaultView || top.window;
-    let target = (this instanceof Node || this instanceof window.Node) && this || document; 
+    let target = instanceOf.call(this, Node) && this || document;
     let references = new Map();
     target.select(`.//@*[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[starts-with(.,'$\{')]`).forEach(attr => references.set(attr, attr.value));
     for (let [ref, formula] of references.entries()) {
@@ -5211,7 +5210,7 @@ xover.modernize = async function (targetWindow) {
                     return selection
                 }
 
-                if (!this.hasOwnProperty("relatedDocuments")) {
+                if (!Document.prototype.hasOwnProperty("relatedDocuments")) {
                     Object.defineProperty(Document.prototype, 'relatedDocuments', {
                         enumerable: false,
                         get: function () {
@@ -5219,6 +5218,25 @@ xover.modernize = async function (targetWindow) {
                         }
                     })
                 }
+
+                Object.defineProperty(Object.prototype, 'instanceOf', {
+                    enumerable: false,
+                    value: function (...constructors) {
+                        if (this == null) return false;
+                        if ((this.ownerDocument || this).defaultView) {
+                            constructors.push(...constructors.map(el => (this.ownerDocument || this).defaultView[el.name]));
+                        }
+                        return constructors.some(constructor => {
+                            if (typeof constructor === "function") {
+                                return this instanceof constructor;
+                            } else if (constructor && typeof constructor === "object" && "Node" in constructor) {
+                                // Check for constructor in a specific context (e.g., iframe)
+                                return this instanceof constructor.Node;
+                            }
+                            return false;
+                        })
+                    }
+                })
 
                 Object.defineProperty(Document.prototype, 'ready', {
                     enumerable: false,
@@ -8514,14 +8532,12 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 source_document = source_document && source_document.document || source_document || xover.xml.createDocument(this.cloneNode(true));
                                 //if (source_document instanceof Document) {
-                                source_document.window = this.ownerDocument.defaultView;
                                 await source_document.render(stylesheets);
                                 //} else {
                                 //    source_document = ;
                                 //    await source_document.render(stylesheets);
                                 //}
                             } else if (source_document instanceof xover.Store || source_document instanceof xover.Source) {
-                                source_document.document.window = this.ownerDocument.defaultView;
                                 await source_document.render(self)
                             } else {
                                 let body = source_document.cloneNode(true);
@@ -8664,7 +8680,6 @@ xover.modernize = async function (targetWindow) {
                 if (!XMLDocument.prototype.hasOwnProperty('render')) {
                     Object.defineProperty(XMLDocument.prototype, 'render', {
                         value: async function (stylesheets = []) {
-                            let window = this.window || this.defaultView || top.window;
                             let self = this;
                             await this.ready;
                             stylesheets = stylesheets instanceof Array && stylesheets || stylesheets && [stylesheets] || [];
@@ -8715,9 +8730,10 @@ xover.modernize = async function (targetWindow) {
                                 let store = stylesheet.store instanceof xover.Store && stylesheet.store || typeof (stylesheet.store) == 'string' && xover.stores[stylesheet.store] || xover.stores.active.document == self && xover.stores.active || null;
                                 let tag = store && store.tag || '';
                                 let action = stylesheet.action;// || !stylesheet.target && "append";
-                                let stylesheet_target = (stylesheet instanceof window.HTMLElement || stylesheet instanceof HTMLElement || stylesheet instanceof window.SVGElement || stylesheet instanceof SVGElement) && stylesheet || (stylesheet.target instanceof window.HTMLElement || stylesheet.target instanceof HTMLElement || stylesheet.target instanceof window.SVGElement || stylesheet.target instanceof SVGElement) && stylesheet.target || (stylesheet.target || '').indexOf("@#") != -1 && stylesheet.target.replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-source="$1"]`) || stylesheet.target || 'body';
+                                let stylesheet_target = instanceOf.call(stylesheet, HTMLElement, SVGElement) && stylesheet ||
+                                    instanceOf.call(stylesheet.target, HTMLElement, SVGElement) && stylesheet.target || (stylesheet.target || '').indexOf("@#") != -1 && stylesheet.target.replace(new RegExp("@(#[^\\s\\[]+)", "ig"), `[xo-source="$1"]`) || stylesheet.target || 'body';
                                 stylesheet_target = typeof (stylesheet_target) == 'string' && document.querySelector(stylesheet_target) || stylesheet_target;
-                                if (!(stylesheet_target instanceof window.HTMLElement || stylesheet_target instanceof HTMLElement)) {
+                                if (!instanceOf.call(stylesheet_target, HTMLElement)) {
                                     let dependencies = typeof (stylesheet_target) == 'string' && [...stylesheet_target.matchAll(new RegExp(`\\[xo-source=('|")([^\\1\\]]+)\\1\\]`, 'g'))].reduce((arr, curr) => { arr.push(curr[2]); return arr }, []).filter(source => !(source == tag || document.querySelector(`[xo-source="${tag}"]`)));
                                     if (!(dependencies || []).length) {
                                         if (stylesheet_target == 'self') {
@@ -8736,10 +8752,10 @@ xover.modernize = async function (targetWindow) {
                                     let dependency_promises = dependencies.map(parent_tag => parent_tag != tag && xover.stores[parent_tag] || undefined).filter(store => store).map(store => store.render());
                                     await Promise.all(dependency_promises);
                                 }
-                                let target = (stylesheet_target instanceof window.HTMLElement || stylesheet_target instanceof HTMLElement) && stylesheet_target || document.querySelector(stylesheet_target);
-                                target = (target instanceof window.HTMLElement || target instanceof HTMLElement) && (tag && target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`)) || target;
-                                if (store && store !== xover.stores.active && (target instanceof window.Node || target instanceof Node) && [...target.querySelectorAll(`[xo-source]`)].some(source => source.store === xover.stores.active)) continue;
-                                if (!((target instanceof window.Node || target instanceof Node) /*&& document.contains(target)*/ && [target, target.parentNode].includes(stylesheet.srcElement || target))) { //
+                                let target = instanceOf.call(stylesheet_target, HTMLElement, SVGElement) && stylesheet_target || document.querySelector(stylesheet_target);
+                                target = instanceOf.call(target, HTMLElement, SVGElement) && (tag && target.queryChildren(`[xo-source="${tag}"][xo-stylesheet='${stylesheet.href}']`)[0] || !tag && target.querySelector(`[xo-stylesheet="${stylesheet.href}"]:not([xo-source])`)) || target;
+                                if (store && store !== xover.stores.active && instanceOf.call(target, Node) && [...target.querySelectorAll(`[xo-source]`)].some(source => source.store === xover.stores.active)) continue;
+                                if (!(instanceOf.call(target, Node) /*&& document.contains(target)*/ && [target, target.parentNode].includes(stylesheet.srcElement || target))) { //
                                     continue;
                                 }
                                 //let active_element = document.activeElement;
@@ -8752,7 +8768,7 @@ xover.modernize = async function (targetWindow) {
                                     data.append(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
                                 }
 
-                                if (!(data.firstElementChild instanceof window.HTMLElement || data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof window.SVGElement || data.firstElementChild instanceof SVGElement) && ((data.documentElement || data) instanceof window.Element || (data.documentElement || data) instanceof Element)) {
+                                if (!instanceOf.call(data.firstElementChild, HTMLElement, SVGElement) && instanceOf.call((data.documentElement || data), Element)) {
                                     Element.setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:store", tag.split(/\?/)[0]);
                                     Element.setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
                                 }
@@ -8778,7 +8794,7 @@ xover.modernize = async function (targetWindow) {
                                     ////    });
                                     ////});
                                     dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove()
-                                } else if (data.firstElementChild instanceof window.HTMLElement || data.firstElementChild instanceof HTMLElement || data.firstElementChild instanceof window.SVGElement || data.firstElementChild instanceof SVGElement) {
+                                } else if (instanceOf.call(data.firstElementChild, HTMLElement, SVGElement)) {
                                     dom = data;
                                 } else {
                                     return new Text()
@@ -10453,8 +10469,7 @@ xover.xml.combine = function (target, new_node) {
 }
 
 xover.dom.applyScripts = async function (scripts = []) {
-    let window = this.window || (this.ownerDocument || this).defaultView || top.window;
-    let targetDocument = (this instanceof window.Node || this instanceof Node) ? this : window.document;
+    let targetDocument = instanceOf.call(this, Node) ? this : window.document;
     for (let script of scripts) {
         let promise;
         if (script.hasAttribute("defer")) await xover.delay(1);
@@ -10464,7 +10479,7 @@ xover.dom.applyScripts = async function (scripts = []) {
                 [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
                 let on_load = script.textContent;
 
-                if (new_element instanceof window.HTMLScriptElement || new_element instanceof HTMLScriptElement) {
+                if (instanceOf.call(new_element, HTMLScriptElement)) {
                     promise = new Promise(async (resolve, reject) => {
                         new_element.onload = function () {
                             on_load && (function () { return eval.apply(this, arguments) }(on_load))
@@ -10477,7 +10492,7 @@ xover.dom.applyScripts = async function (scripts = []) {
         } else if (!script.getAttribute("src") && script.innerHTML) {
             script.innerHTML = xover.string.htmlDecode(script.innerHTML); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
             if (script.selectSingleNode(`self::html:style`)) {
-                let target = (this instanceof window.Document || this instanceof Document) && targetDocument.querySelector("head,body") || targetDocument.firstElementChild || targetDocument;
+                let target = instanceOf.call(this, Document) && targetDocument.querySelector("head,body") || targetDocument.firstElementChild || targetDocument;
                 if (![...target.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
                     target.appendChild(script);
                     //let new_element = target.createElement(script.tagName); /*script.cloneNode(); won't work properly*/
@@ -10524,7 +10539,7 @@ xover.dom.combine = async function (target, new_node) {
     let scripts;
     let script_wrapper = window.document.firstElementChild.cloneNode();
     script_wrapper.append(...new_node.selectNodes(`html:style|descendant-or-self::*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
-    if ((target instanceof window.HTMLElement || target instanceof HTMLElement) && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
+    if (instanceOf.call(target, HTMLElement) && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
         //if (target.tagName != 'CODE' && !(new_node.firstElementChild instanceof HTMLElement)) {
         //    let named_slots = target.querySelectorAll("slot[name]");
         //    if (named_slots.length) {
@@ -10545,7 +10560,7 @@ xover.dom.combine = async function (target, new_node) {
             new_node = xover.xml.toJSON(new_node)
             new_node = JSON.stringify(new_node)
         }
-        if (!(new_node instanceof window.Node || new_node instanceof Node)) {
+        if (!instanceOf.call(new_node, Node)) {
             new_node = new Text(new_node)
         } else if (new_node.childElementCount > 1) {
             let target_clone = target.cloneNode();
@@ -10555,7 +10570,7 @@ xover.dom.combine = async function (target, new_node) {
             new_node = new_node.firstElementChild || new_node.firstChild
         }
     }
-    if (!(new_node instanceof window.Node || new_node instanceof Node)) return;
+    if (!instanceOf.call(new_node, Node)) return;
 
     if (!(target.getAttribute("xo-source") == new_node.getAttribute("xo-source") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet"))) {
         target = [...target.children].find(el => el.store == new_node.store && el.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet")) || target;
@@ -10744,12 +10759,12 @@ xover.listener.on('append::iframe[xo-source],iframe[xo-stylesheet]', function ()
             files = files.filter(item => item);
             if (!files.length) return;
             let window = this.ownerDocument.defaultView;
-            let target = (this instanceof window.Node || this instanceof Node) && this || iframe.contentDocument || iframe.contentWindow.document;
+            let target = instanceOf.call(this, Node) && this || iframe.contentDocument || iframe.contentWindow.document;
             target = target.body || target;
             let nodes = [];
             for (let file of files) {
                 const node = window.document.createElement(type == 'style' ? 'link' : type);
-                if (node instanceof window.HTMLScriptElement || node instanceof HTMLScriptElement) {
+                if (instanceOf.call(node, HTMLScriptElement)) {
                     node.type = 'text/javascript';
                     node.src = new xover.URL(file);
                 } else {
