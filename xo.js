@@ -564,7 +564,7 @@ xover.init = async function () {
             if (history.state) delete history.state.active;
             xover.site.seed = (history.state || {}).seed || top.location.hash || '#';
             this.init.status = 'initialized';
-            window.top.dispatchEvent(new xover.listener.Event('xover-initializing', { progress_renders }, this));
+            window.dispatchEvent(new xover.listener.Event('xover-initializing', { progress_renders }, this));
             if (xover.session.status == 'authorized' && 'session' in xover.server) {
                 await xover.session.checkStatus();
             }
@@ -596,7 +596,7 @@ xover.init = async function () {
     }).finally(async () => {
         this.init.initializing = 'done';
         progress_renders = await progress_renders || [];
-        window.top.dispatchEvent(new xover.listener.Event(`xover-initialized`, { progress_renders }, this));
+        window.dispatchEvent(new xover.listener.Event(`xover-initialized`, { progress_renders }, this));
         progress_renders instanceof Array && await Promise.all(progress_renders).then(item => item.remove());
     });
     return this.init.initializing;
@@ -652,20 +652,20 @@ xover.init.Observer = function (target_node = window.document) {
         //observer.disconnect();
         let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement;
         let mutation_event = new xover.listener.Event('mutate', { document: target_node, srcElement: active_element, mutations }, target_node);
-        window.top.dispatchEvent(mutation_event);
+        window.dispatchEvent(mutation_event);
         mutations = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue) : mutations;
         for (let [target, mutation] of mutations) {
             for (let [attr, oldValue] of Object.values((mutation.attributes || {})[""] || {})) {
-                window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue, parentNode: (attr.parentNode || target) }, attr));
+                window.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue, parentNode: (attr.parentNode || target) }, attr));
             }
             if (mutation.removedNodes.length && mutation.addedNodes.length) {
                 let replace_event = new xover.listener.Event('replaceChildren', { addedNodes: mutation.addedNodes, removedNodes: mutation.removedNodes }, target);
-                window.top.dispatchEvent(replace_event);
+                window.dispatchEvent(replace_event);
             }
             if (xover.listener.has('reallocate')) {
                 for (let node of [...mutation.reallocatedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
                     let remove_event = new xover.listener.Event('reallocate', { nextSibling: node.formerNextSibling, previousSibling: node.formerPreviousSibling, parentNode: target }, node);
-                    window.top.dispatchEvent(remove_event);
+                    window.dispatchEvent(remove_event);
                     if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
                 }
             }
@@ -678,7 +678,7 @@ xover.init.Observer = function (target_node = window.document) {
                     };
                     node.formerParentNode = target;
                     let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
-                    window.top.dispatchEvent(remove_event);
+                    window.dispatchEvent(remove_event);
                     if (target.contains(node)) continue;
                     if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
                 }
@@ -691,7 +691,7 @@ xover.init.Observer = function (target_node = window.document) {
                         continue;
                     }
                     let append_event = new xover.listener.Event('append', { target }, node);
-                    window.top.dispatchEvent(append_event);
+                    window.dispatchEvent(append_event);
                     if (!target.contains(node)) continue;
                     const elementsToObserve = typeof (node.querySelectorAll) == 'function' && node.querySelectorAll('[xo-suspense*="Intersect"]') || [];
                     elementsToObserve.forEach(element => {
@@ -749,26 +749,26 @@ xover.init.Observer = function (target_node = window.document) {
                 }
             }
             if (![...xover.listener].filter(([event, map]) => ['mutate', 'change', 'remove', 'input', 'append', 'appendTo', 'removeFrom', 'reallocate'].includes(event)).reduce((array, [event, map]) => { array.push(...Array.from(map, ([key, [[predicate, fn]]]) => [event, predicate])); return array }, []).some(([event, key]) => event == 'change' && attr && (attr).matches(key) || event == 'append' && [...mutation.addedNodes].some(node => node.matches(key)) || event == 'remove' && [...mutation.removedNodes].some(node => node.matches(key)) || event == 'appendTo' && target.matches(key) || event == 'appendFrom' && target.matches(key))) continue; /*test if there is any listener that would be triggered*/
-            attr && window.top.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
-            window.top.dispatchEvent(new xover.listener.Event('mutate', { target }, target));
+            attr && window.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: mutation.oldValue }, attr));
+            window.dispatchEvent(new xover.listener.Event('mutate', { target }, target));
             if (mutation.addedNodes.length) {
-                window.top.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
+                window.dispatchEvent(new xover.listener.Event('appendTo', { addedNodes: mutation.addedNodes }, target));
             }
 
             for (let node of [...mutation.removedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {/*nodes that were actually reallocated*/
                 if (target.contains(node)) {
-                    window.top.dispatchEvent(new xover.listener.Event('reallocate', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node));
+                    window.dispatchEvent(new xover.listener.Event('reallocate', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node));
                 } else {
                     observer.disconnect();
                     node.formerParentNode = target;
                     let remove_event = new xover.listener.Event('remove', { nextSibling: mutation.nextSibling, previousSibling: mutation.previousSibling, parentNode: target }, node);
-                    window.top.dispatchEvent(remove_event);
+                    window.dispatchEvent(remove_event);
                     if (remove_event.defaultPrevented) target.insertBefore(node, mutation.nextSibling);
                     observer.observe(target_node, config);
                 }
             }
             for (let node of [...mutation.addedNodes].filter(node => node instanceof Element && ![HTMLStyleElement, HTMLScriptElement].includes(node.constructor))) {
-                window.top.dispatchEvent(new xover.listener.Event('append', { target }, node));
+                window.dispatchEvent(new xover.listener.Event('append', { target }, node));
                 const elementsToObserve = node.querySelectorAll('[xo-suspense*="Intersect"]');
                 elementsToObserve.forEach(element => {
                     intersection_observer.observe(element);
@@ -832,7 +832,7 @@ xover.initializeDOM = async function () {
 
 xover.initializeElementListeners = function (document = window.document) {
     const event_handler = function (event, el) {
-        window.top.dispatchEvent(new xover.listener.Event(event.type, { event: event }, el));
+        window.dispatchEvent(new xover.listener.Event(event.type, { event: event }, el));
     };
     const observer = new MutationObserver((mutationsList, observer) => {
         if (event && event.type == 'input') return;
@@ -849,7 +849,7 @@ xover.initializeElementListeners = function (document = window.document) {
 
     document.querySelectorAll('img').forEach(el => el.addEventListener('error', function () {
         if (event && (event.srcEvent || event).type == 'error') {
-            window.top.dispatchEvent(new xover.listener.Event('error', { event: event }));
+            window.dispatchEvent(new xover.listener.Event('error', { event: event }));
         }
     }));
 
@@ -1501,7 +1501,7 @@ Object.defineProperty(xover.listener, 'on', {
                             let mouseout_handler = function () {
                                 if (!target.custom_events.has(`${base_event}::${predicate}`)) return;
                                 target.removeEventListener('mouseleave', mouseout_handler);
-                                window.top.dispatchEvent(target.custom_events.get(`${base_event}::${predicate}`));
+                                window.dispatchEvent(target.custom_events.get(`${base_event}::${predicate}`));
                                 target.custom_events.delete(`${base_event}::${predicate}`);
                             }
                             target.addEventListener('mouseleave', mouseout_handler);
@@ -1609,11 +1609,11 @@ xover.listener.on(['pushstate', 'pageshow', 'popstate'], async function ({ state
     //delete diff["position"];
     //let old_value = null;
     //for (let [key, input] in Object.entries(diff)) {
-    //    window.top.dispatchEvent(new xover.listener.Event(`change::#site:${key}`, { attribute: key, value: input, old: old_value }, { tag: `site:${key}` }));
+    //    window.dispatchEvent(new xover.listener.Event(`change::#site:${key}`, { attribute: key, value: input, old: old_value }, { tag: `site:${key}` }));
     //    xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
     //}
     if ((xover.session["site:position"] || xover.site.position) != xover.site.position) {
-        window.top.dispatchEvent(new xover.listener.Event(xover.session["site:position"] < xover.site.position ? 'navigatedForward' : 'navigatedBack', {}, xover.site));
+        window.dispatchEvent(new xover.listener.Event(xover.session["site:position"] < xover.site.position ? 'navigatedForward' : 'navigatedBack', {}, xover.site));
     }
     xover.session["site:position"] = xover.site.position;
     xover.subscribers.evaluate()
@@ -1940,7 +1940,7 @@ xover.server = new Proxy({}, {
             url.settings = xover.json.combine(url.settings, manifest_settings, settings);
             request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { request, tag: `server:${key}`, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, request);
 
-            window.top.dispatchEvent(request.before_event);
+            window.dispatchEvent(request.before_event);
             try {
                 [return_value, request, response] = await xover.fetch.apply(request, [url, ...args]).then(response => [response.body, response.request, response]);
             } catch (e) {
@@ -1960,10 +1960,10 @@ xover.server = new Proxy({}, {
                 for (let handler of request.handlers) {
                     return_value = handler(return_value, request, response) || return_value
                 }
-                window.top.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.settings.body, request, status: response.status, statusText: response.statusText, tag: `#server:${key}` }, response));
+                window.dispatchEvent(new xover.listener.Event(`success`, { response, url, payload: url.settings.body, request, status: response.status, statusText: response.statusText, tag: `#server:${key}` }, response));
                 return Promise.resolve(return_value);
             } else {
-                window.top.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.settings.body, request, status: response.status, statusText: response.statusText, tag: `#server:${key}` }, response));
+                window.dispatchEvent(new xover.listener.Event(`failure`, { response, url, payload: url.settings.body, request, status: response.status, statusText: response.statusText, tag: `#server:${key}` }, response));
                 return Promise.reject(response);/*response.body*/
             }
         })
@@ -2038,10 +2038,10 @@ xover.session = new Proxy({}, {
     set: async function (self, key, new_value) {
         let old_value = xover.session.getKey(key);
         let before = new xover.listener.Event(`beforeChange::#session:${key}`, { attribute: key, value: new_value, old: old_value }, this);
-        window.top.dispatchEvent(before);
+        window.dispatchEvent(before);
         if (before.cancelBubble || before.defaultPrevented) return;
         xover.session.setKey(key, new_value);
-        window.top.dispatchEvent(new xover.listener.Event(`change::#session:${key}`, { attribute: key, value: new_value, old: old_value, tag: `session:${key}` }, this));
+        window.dispatchEvent(new xover.listener.Event(`change::#session:${key}`, { attribute: key, value: new_value, old: old_value, tag: `session:${key}` }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
         let subscribers = xover.subscribers.session[key];
         subscribers.evaluate();
@@ -2156,7 +2156,7 @@ Object.defineProperty(xover.session, 'login', {
             }
         } else {
             xover.session.status = 'authorized';
-            window.top.dispatchEvent(new xover.listener.Event('login', {}, this));
+            window.dispatchEvent(new xover.listener.Event('login', {}, this));
             return false;
         }
     }, writable: true, configurable: true
@@ -2176,7 +2176,7 @@ Object.defineProperty(xover.session, 'logout', {
             xover.session.status = 'unauthorized';
             xover.init();
         }
-        window.top.dispatchEvent(new xover.listener.Event('logout', {}, this));
+        window.dispatchEvent(new xover.listener.Event('logout', {}, this));
     }
     , writable: true, enumerable: false, configurable: true
 });
@@ -2294,7 +2294,7 @@ xover.siteHandler = {
                 }
             }
             if (old_value != input && key[0] != '#') {
-                window.top.dispatchEvent(new xover.listener.Event(`change::#site:${key}`, { attribute: key, value: input, old: old_value }, { tag: `site:${key}` }));
+                window.dispatchEvent(new xover.listener.Event(`change::#site:${key}`, { attribute: key, value: input, old: old_value }, { tag: `site:${key}` }));
                 let subscribers = xover.subscribers.site[key];
                 subscribers.evaluate();
                 xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:${key}')]`)).forEach(([el]) => el.render());
@@ -2430,7 +2430,7 @@ class SearchParams {
         }
         let searchText = this.params.toString();
         history[`${action}State`](current_state, {}, location.pathname + (searchText ? `?${searchText}` : '').replace(/=(&|$)/g, '') + (location.hash || ''));
-        window.top.dispatchEvent(new xover.listener.Event(`searchParams`, { param, params: { ...Object.fromEntries([...this.params.entries()]) } }, this));
+        window.dispatchEvent(new xover.listener.Event(`searchParams`, { param, params: { ...Object.fromEntries([...this.params.entries()]) } }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'searchParams:${param}')]`)).forEach(([el]) => el.render());
     }
 
@@ -2506,7 +2506,7 @@ Object.defineProperty(xover.site, 'state', {
                 let old_value = self[key];
                 self[key] = input;
                 if (old_value != input && key[0] != '#') {
-                    window.top.dispatchEvent(new xover.listener.Event(`change::#state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
+                    window.dispatchEvent(new xover.listener.Event(`change::#state:${key}`, { attribute: key, value: input, old: old_value }, { tag: `state:${key}` }));
                     xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(([el]) => el.render());
                     let subscribers = xover.subscribers.state[key];
                     subscribers.evaluate();
@@ -3299,7 +3299,7 @@ xover.Source = function (tag) {
     //        return _progress
     //    }, set: function (input) {
     //        _progress = input;
-    //        window.top.dispatchEvent(new xover.listener.Event('progress', { percent: _progress, document: __document, source: self }, self));
+    //        window.dispatchEvent(new xover.listener.Event('progress', { percent: _progress, document: __document, source: self }, self));
     //    }
     //});
 
@@ -3414,7 +3414,7 @@ xover.Source = function (tag) {
                 request.parameters = parameters;
                 request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, request);
                 request.before_event.detail.tag = tag_string;
-                window.top.dispatchEvent(request.before_event);
+                window.dispatchEvent(request.before_event);
 
                 //if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
                 //    parameters = parameters && parameters.map(([key, value]) => [key, value && value.indexOf && value.indexOf('${') !== -1 && eval("`" + value + "`") || value]) || parameters;
@@ -3527,7 +3527,7 @@ xover.Source = function (tag) {
                     response.url = response.url || url;
                     let fetch_event = new xover.listener.Event('fetch', { source: self, document: response, tag: tag_string, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, self);
                     self.fetch_event = fetch_event;
-                    window.top.dispatchEvent(fetch_event);
+                    window.dispatchEvent(fetch_event);
                     if (fetch_event.detail.returnValue instanceof Error) {
                         return Promise.reject(fetch_event.detail.returnValue);
                     }
@@ -3537,7 +3537,7 @@ xover.Source = function (tag) {
                     if (!e) {
                         return Promise.reject(e);
                     }
-                    window.top.dispatchEvent(new xover.listener.Event('failure', { tag: tag_string, response: e, request: source }, this));
+                    window.dispatchEvent(new xover.listener.Event('failure', { tag: tag_string, response: e, request: source }, this));
 
                     let document = e.document;
                     let targets = []
@@ -3575,7 +3575,7 @@ xover.Source = function (tag) {
                     await store.fetch();
                 }
                 let document = __document.cloneNode(true);
-                window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
+                window.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
                 let renders = [];
                 let sections = !target && xover.site.sections.filter(el => el.store && el.store === self) || [];
                 let stylesheets = [..._store_stylesheets, ...document.stylesheets].distinct();
@@ -3595,7 +3595,7 @@ xover.Source = function (tag) {
                 if (!renders.length && (target || active_store === self)) document.render({ target: target || window.document.body, store: self });
                 return renders;
             }).then((renders) => {
-                window.top.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
+                window.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
                 return renders.flat().filter(el => el)
             }).catch((e) => {
                 let tag = self.tag;
@@ -3913,7 +3913,7 @@ Object.defineProperty(URL.prototype, 'fetch', {
                     _progress = percent;
                     progress();
                 }
-                window.top.dispatchEvent(new xover.listener.Event('progress', { controller, percent: _progress }, request));
+                window.dispatchEvent(new xover.listener.Event('progress', { controller, percent: _progress }, request));
             }).catch(e => {
                 if (e.name != 'AbortError') {
                     console.log(e)
@@ -3954,12 +3954,12 @@ Object.defineProperty(URL.prototype, 'fetch', {
         document instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
             return_value.addStylesheet(stylesheet);
         });
-        //window.top.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
+        //window.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
         if (response.ok) {
             handlers.forEach(handler => handler(return_value, response, request));
-            window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request, response, status: response.status, statusText: response.statusText }, response));
+            window.dispatchEvent(new xover.listener.Event(`success`, { url, request, response, status: response.status, statusText: response.statusText }, response));
         } else {
-            window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response, status: response.status, statusText: response.statusText }, response));
+            window.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response, status: response.status, statusText: response.statusText }, response));
         }
 
         if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
@@ -4124,7 +4124,7 @@ xover.dom.alert = async function (message) {
 
 xover.dom.createDialog = function (message) {
     if (!message) { return null }
-    window.top.dispatchEvent(new xover.listener.Event('beforeDialog', { message }, message));
+    window.dispatchEvent(new xover.listener.Event('beforeDialog', { message }, message));
     let original_message = message;
     if (xover.messages.get(original_message)) return;
     let dialog_id = `dialog_${xover.cryptography.generateUUID()}`
@@ -4147,7 +4147,7 @@ xover.dom.createDialog = function (message) {
             iframe.style.minWidth = '90vw'
             iframe.style.minHeight = '90vh'
             dialog.focus();
-            window.top.dispatchEvent(new xover.listener.Event('dialog', { message }, iframe));
+            window.dispatchEvent(new xover.listener.Event('dialog', { message }, iframe));
         }
         message = iframe;
     } else if (message.documentElement instanceof HTMLHtmlElement) {
@@ -4159,7 +4159,7 @@ xover.dom.createDialog = function (message) {
             iframe.style.height = (iframe.contentDocument.firstElementChild.scrollHeight + 0) + 'px';
             iframe.style.width = (iframe.contentDocument.firstElementChild.scrollWidth + 100) + 'px';
             dialog.focus();
-            window.top.dispatchEvent(new xover.listener.Event('dialog', { message }, iframe));
+            window.dispatchEvent(new xover.listener.Event('dialog', { message }, iframe));
         }
         message = iframe;
     } else if (message.documentElement instanceof HTMLElement) {
@@ -5307,17 +5307,17 @@ xover.modernize = async function (targetWindow) {
                     //mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
 
                     let mutation_event = new xover.listener.Event('mutate', { document: self, srcElement: active_element, mutations: mutated_targets }, self);
-                    window.top.dispatchEvent(mutation_event);
+                    window.dispatchEvent(mutation_event);
                     mutated_targets = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue || []) : mutated_targets;
 
                     //let node_event = new xover.listener.Event('change', { srcElement: active_element }, self);
-                    //window.top.dispatchEvent(node_event);
+                    //window.dispatchEvent(node_event);
                     //if (node_event.defaultPrevented) return;
 
                     for (const [target, mutation] of [...mutated_targets]) {
                         /*Known issues: Mutation observer might break if interrupted and page is reloaded. In this case, closing and reopening tab might be a solution. */
                         let node_event = new xover.listener.Event('change', { srcElement: active_element, target: target, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, target);
-                        window.top.dispatchEvent(node_event);
+                        window.dispatchEvent(node_event);
                         if (node_event.defaultPrevented) {
                             mutated_targets.delete(target);
                             continue;
@@ -5331,7 +5331,7 @@ xover.modernize = async function (targetWindow) {
 
                         if (mutation.addedNodes.length) {
                             let node_event = new xover.listener.Event('appendTo', { srcElement: active_element, addedNodes: mutation.addedNodes }, target);
-                            window.top.dispatchEvent(node_event);
+                            window.dispatchEvent(node_event);
                             if (node_event.defaultPrevented) mutation.addedNodes.splice(0);
                             if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
                                 target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
@@ -5339,19 +5339,19 @@ xover.modernize = async function (targetWindow) {
                         }
                         for (let [index, el] of [...mutation.addedNodes].entries()) {
                             let node_event = new xover.listener.Event('append', { srcElement: active_element, target }, el);
-                            window.top.dispatchEvent(node_event);
+                            window.dispatchEvent(node_event);
                             if (node_event.defaultPrevented) mutation.addedNodes.splice(index, 1);
                             el.selectNodes("descendant-or-self::*[not(contains(namespace-uri(),'www.w3.org'))][not(@xo:id)]").forEach(el => el.seed());
                         }
 
                         if (mutation.removedNodes.length) {
                             let node_event = new xover.listener.Event('removeFrom', { srcElement: active_element, removedNodes: mutation.removedNodes }, target);
-                            window.top.dispatchEvent(node_event);
+                            window.dispatchEvent(node_event);
                             if (node_event.defaultPrevented) mutation.removedNodes.splice(0);
                         }
                         for (let el of [...mutation.removedNodes]) {
                             let node_event = new xover.listener.Event('remove', { srcElement: active_element, target }, el);
-                            window.top.dispatchEvent(node_event);
+                            window.dispatchEvent(node_event);
                             if (node_event.defaultPrevented) mutation.removedNodes.splice(index, 1);
                             el.selectNodes("descendant-or-self::*[not(contains(namespace-uri(),'www.w3.org'))][not(@xo:id)]").forEach(el => el.seed());
                         }
@@ -5361,7 +5361,7 @@ xover.modernize = async function (targetWindow) {
                                 let current_value = attribute.value;
                                 if (String(current_value) === String(old_value)) continue;
                                 let node_event = new xover.listener.Event('change', { srcElement: active_element, element: target, attribute, value: current_value, old: old_value, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, attribute);
-                                window.top.dispatchEvent(node_event);
+                                window.dispatchEvent(node_event);
                                 if (node_event.defaultPrevented || current_value == null && target.hasAttributeNS(attribute.namespaceURI, attribute.localName)) delete (mutation.attributes[attribute.namespaceURI] || {})[attribute.localName];
                                 if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) delete mutation.attributes[attribute.namespaceURI];
                             }
@@ -5369,7 +5369,7 @@ xover.modernize = async function (targetWindow) {
 
                         if (target instanceof Document && [...target.childNodes].every(el => mutation.addedNodes.includes(el))) {
                             let node_event = new xover.listener.Event('load', {}, target);
-                            window.top.dispatchEvent(node_event);
+                            window.dispatchEvent(node_event);
                         }
                     }
                     if (![...mutated_targets.values()].some(config => Object.values(config).some(arr => Object.values(arr).length))) return;
@@ -5879,7 +5879,7 @@ xover.modernize = async function (targetWindow) {
                         let detail = { target: this, element: this.closest("*"), attribute: this instanceof Attr ? this : null };
                         if (args.length) detail.args = args;
                         let event = new xover.listener.Event(event_name, detail, this);
-                        window.top.dispatchEvent(event);
+                        window.dispatchEvent(event);
                         return event.detail.returnValue;
                     }
                 })
@@ -6293,7 +6293,7 @@ xover.modernize = async function (targetWindow) {
                                     } else {
                                         context.replaceContent(response);
                                     }
-                                    window.top.dispatchEvent(new xover.listener.Event(`fetch`, { url: response.url, href: (response.url || {}).href, tag: '', document: context, store: store, old: old, target: context }, context));
+                                    window.dispatchEvent(new xover.listener.Event(`fetch`, { url: response.url, href: (response.url || {}).href, tag: '', document: context, store: store, old: old, target: context }, context));
                                     resolve(context);
                                 }).catch(async (e) => {
                                     if (!e) {
@@ -6302,7 +6302,7 @@ xover.modernize = async function (targetWindow) {
                                     let document = e.document || e instanceof Document && e || null//e;
                                     let targets = []
                                     if (e.status != 404 && document && document.render) {
-                                        window.top.dispatchEvent(new xover.listener.Event(`failure`, { tag: '', response: document, document }, document));
+                                        window.dispatchEvent(new xover.listener.Event(`failure`, { tag: '', response: document, document }, document));
                                         //targets = await document.render();
                                         if (!(targets && targets.length)) {
                                             return reject(e)
@@ -6501,7 +6501,7 @@ xover.modernize = async function (targetWindow) {
                         //    store.render();
                         //}
                         let beforeEvent = new xover.listener.Event('beforeAddStylesheet', { stylesheet: stylesheet }, this);
-                        window.top.dispatchEvent(beforeEvent);
+                        window.dispatchEvent(beforeEvent);
                         if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                         document.insertBefore(stylesheet, target || document.selectSingleNode(`(processing-instruction('xml-stylesheet')${definition.role == 'init' ? '' : definition.role == 'binding' ? `[not(contains(.,'role="init"') or contains(.,'role="binding"'))]` : '[1=0]'} | *[1])[1]`));
                     }
@@ -6714,7 +6714,7 @@ xover.modernize = async function (targetWindow) {
                         return this;
                     }
                     let beforeRemove = new xover.listener.Event('beforeRemove', { target: this, srcEvent: event }, this);
-                    window.top.dispatchEvent(beforeRemove);
+                    window.dispatchEvent(beforeRemove);
                     if (beforeRemove.cancelBubble || beforeRemove.defaultPrevented) return;
                     let parentNode = this.parentNode;
                     let nextSibling = this.nextSibling;
@@ -6774,7 +6774,7 @@ xover.modernize = async function (targetWindow) {
                     //    //        resolve(true);
                     //    //    }, 50);
                     //    //});
-                    //window.top.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
+                    //window.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
                     //}
                     /*!(this instanceof HTMLElement) && xover.site.sections.filter(el => el.store && el.store === this.store).forEach((el) => el.render())*/
                     return this;
@@ -7468,7 +7468,7 @@ xover.modernize = async function (targetWindow) {
                             }
                             let old_value = this.value;
                             let set_event = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
-                            window.top.dispatchEvent(set_event);
+                            window.dispatchEvent(set_event);
                             if (set_event.defaultPrevented) return;
                             value = (set_event.detail || {}).hasOwnProperty("returnValue") ? set_event.detail.returnValue : value;
 
@@ -7490,7 +7490,7 @@ xover.modernize = async function (targetWindow) {
                             if (old_value !== value) {
                                 let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
                                 if (!(event && (event.type || "").split(/::/, 1).shift() == 'beforeChange')) {
-                                    (old_value != value || event && (event.type || "").split(/::/, 1).shift() == 'change') && window.top.dispatchEvent(before);
+                                    (old_value != value || event && (event.type || "").split(/::/, 1).shift() == 'change') && window.dispatchEvent(before);
                                 }
                                 value = (before.detail || {}).hasOwnProperty("returnValue") ? before.detail.returnValue : value;
                                 //if (before.cancelBubble || before.defaultPrevented) return;
@@ -7508,7 +7508,7 @@ xover.modernize = async function (targetWindow) {
                             }
                             //if (old_value !== value) {
                             //    if (!(old_value === null && this.namespaceURI === 'http://panax.io/xover' && this.localName === 'id')) {
-                            //        //window.top.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }, this));
+                            //        //window.dispatchEvent(new xover.listener.Event('change', { element: this.parentNode, attribute: this, value: value, old: old_value }, this));
                             //        if ((this.namespaceURI || '').indexOf("http://panax.io/state") != -1 || Object.values(xover.site.get(this.name) || {}).length) {
                             //            xover.site.set(this.name, new Object.push(this.parentNode.getAttribute("xo:id"), value))
                             //        }
@@ -7676,11 +7676,11 @@ xover.modernize = async function (targetWindow) {
                         if (this.reactive) {
                             let old_value = this.textContent;
                             let before_set = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
-                            window.top.dispatchEvent(before_set);
+                            window.dispatchEvent(before_set);
                             if (before_set.defaultPrevented || event.cancelBubble) return;
                             if (old_value == new_value) return;
                             let before = new xover.listener.Event('beforeChange', { element: this.parentNode, attribute: this, value: new_value, old: old_value }, this);
-                            window.top.dispatchEvent(before);
+                            window.dispatchEvent(before);
                         }
                         this.textContent = new_value;
                         return this;
@@ -7784,7 +7784,7 @@ xover.modernize = async function (targetWindow) {
                 Node.prototype.replaceChild = function (new_node, target, refresh = true) {
                     new_node = (new_node.documentElement || new_node);
                     let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this.parentElement, srcEvent: event }, this.parentElement);
-                    window.top.dispatchEvent(beforeEvent);
+                    window.dispatchEvent(beforeEvent);
                     if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                     if ((this.ownerDocument || this) instanceof XMLDocument) {
                         let store = this.store;
@@ -7805,7 +7805,7 @@ xover.modernize = async function (targetWindow) {
                     } else {
                         Element.replaceChild.apply(this, [new_node, target]);
                     }
-                    window.top.dispatchEvent(new xover.listener.Event('appendTo', { target: this.parentElement, srcEvent: event }, this.parentElement));
+                    window.dispatchEvent(new xover.listener.Event('appendTo', { target: this.parentElement, srcEvent: event }, this.parentElement));
                     return new_node;
                 }
 
@@ -7836,7 +7836,7 @@ xover.modernize = async function (targetWindow) {
                             Object.defineProperty(this, 'parentNode', { get: function () { return parentNode } }); //Si un elemento es borrado, pierde la referencia de ownerElement y parentNode, pero con esto recuperamos cuando menos la de parentNode. La de parentElement no la recuperamos para que de esa forma sepamos que es un elemento que está desconectado. Métodos como "closest" dejan de funcionar cuando el elemento ya fue borrado.
                         }
                         this.value = null;
-                        //window.top.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
+                        //window.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
                         return return_value;
                     }
                 }
@@ -7862,8 +7862,8 @@ xover.modernize = async function (targetWindow) {
                         //if (this.ownerDocument.store) {
                         //    this.ownerDocument.store.render();
                         //}
-                        //window.top.dispatchEvent(new xover.listener.Event('change', { node: this }, this));
-                        //window.top.dispatchEvent(new xover.listener.Event('insert', { node: this }, this));
+                        //window.dispatchEvent(new xover.listener.Event('change', { node: this }, this));
+                        //window.dispatchEvent(new xover.listener.Event('insert', { node: this }, this));
                     } else {
                         Element.insertBefore.apply(this, arguments);
                     }
@@ -7896,11 +7896,11 @@ xover.modernize = async function (targetWindow) {
                     if (!(args.length)) return [];
                     args.forEach(el => {
                         let beforeEvent = new xover.listener.Event('beforeAppend', { target: this, args: args }, el);
-                        window.top.dispatchEvent(beforeEvent);
+                        window.dispatchEvent(beforeEvent);
                         if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) el.remove();
                     })
                     let beforeEvent = new xover.listener.Event('beforeAppendTo', { target: this, args: args, srcEvent: event }, this);
-                    window.top.dispatchEvent(beforeEvent);
+                    window.dispatchEvent(beforeEvent);
                     if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
                     Element.append.apply(this, args);
                     if (!(this instanceof HTMLElement) && this.store) this.seed();
@@ -8146,7 +8146,7 @@ xover.modernize = async function (targetWindow) {
                                     let tag = xml.tag || `#${xsl.href || ""}`;
                                     xml.tag = tag;
                                     xsl = xsl.cloneNode(true);
-                                    window.top.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
+                                    window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                     xsltProcessor.importStylesheet(xsl);
 
                                     for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'globalization:')]`)) {
@@ -8415,7 +8415,7 @@ xover.modernize = async function (targetWindow) {
                             }
                             try {
                                 //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                                window.top.dispatchEvent(new xover.listener.Event('transform', { original: xml, tag: tag, result, transformed: result, listeners: after_listeners }, result));
+                                window.dispatchEvent(new xover.listener.Event('transform', { original: xml, tag: tag, result, transformed: result, listeners: after_listeners }, result));
                                 //}
                             } catch (e) { }
                             return result
@@ -8632,10 +8632,10 @@ xover.modernize = async function (targetWindow) {
                     value: function (...args) {
                         let current = this.state || {};
                         let before = new xover.listener.Event('beforePushstate', { state: args[0], current }, this)
-                        window.top.dispatchEvent(before);
+                        window.dispatchEvent(before);
                         if (before.cancelBubble || before.defaultPrevented) return;
                         let response = History.pushState.value.apply(this, [JSON.parse(JSON.stringify(args[0])), args[1], args[2]]);
-                        window.top.dispatchEvent(new xover.listener.Event('pushstate', { state: args[0], old: current }, this));
+                        window.dispatchEvent(new xover.listener.Event('pushstate', { state: args[0], old: current }, this));
                         return response;
                     }
                 });
@@ -8830,7 +8830,7 @@ xover.modernize = async function (targetWindow) {
 
                                 xover.delay(10).then(() => {
                                     let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
-                                    window.top.dispatchEvent(render_event);
+                                    window.dispatchEvent(render_event);
                                     if (render_event.cancelBubble || render_event.defaultPrevented) return target;
                                 })
                                 targets.push(target);
@@ -9903,7 +9903,7 @@ xover.fetch = async function (url, ...args) {
         const signal = controller.signal;
         try {
             request.before_event = request.before_event || new xover.listener.Event(`beforeFetch`, {}, request)
-            window.top.dispatchEvent(request.before_event);
+            window.dispatchEvent(request.before_event);
             xover.requests.add(request);
             original_response = await fetch(request.clone(), { signal })
             xover.requests.delete(request);
@@ -9941,7 +9941,7 @@ xover.fetch = async function (url, ...args) {
                 _progress = percent;
                 progress();
             }
-            window.top.dispatchEvent(new xover.listener.Event('progress', { controller, settings, percent: _progress }, request));
+            window.dispatchEvent(new xover.listener.Event('progress', { controller, settings, percent: _progress }, request));
         }).catch(e => {
             if (e.name != 'AbortError') {
                 console.log(e)
@@ -9980,14 +9980,14 @@ xover.fetch = async function (url, ...args) {
     return_value instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
         return_value.addStylesheet(stylesheet);
     });
-    //window.top.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
+    //window.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
     if (response.ok) {
         for (let handler of request.handlers) {
             handler(return_value, response, request)
         }
-        window.top.dispatchEvent(new xover.listener.Event(`success`, { url, request, response, status: response.status, statusText: response.statusText }, response));
+        window.dispatchEvent(new xover.listener.Event(`success`, { url, request, response, status: response.status, statusText: response.statusText }, response));
     } else {
-        window.top.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response, status: response.status, statusText: response.statusText }, response));
+        window.dispatchEvent(new xover.listener.Event(`failure`, { url, request, response, status: response.status, statusText: response.statusText }, response));
     }
 
     if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
@@ -10159,7 +10159,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                         return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
                     }
                 } catch (e) {
-                    window.top.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, this));
+                    window.dispatchEvent(new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, this));
                     return Promise.reject(e);
                 }
             }
@@ -10572,7 +10572,7 @@ xover.dom.combine = async function (target, new_node) {
     if (target.matches('[xo-source],[xo-stylesheet]')) await Promise.all(dependants);
 
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
-    window.top.dispatchEvent(before_dom);
+    window.dispatchEvent(before_dom);
     await xover.evaluateReferencers.call(new_node);
     let changes = xover.xml.getDifferences(target, new_node);
     if (!changes.length) return target;
@@ -11862,7 +11862,7 @@ xover.Store = function (xml, ...args) {
                 }
                 let document = __document.cloneNode(true);
                 document.window = document.window || this.window || target && target.ownerDocument.defaultView || undefined;
-                window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
+                window.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
                 let renders = [];
                 let sections = !target && xover.site.sections.filter(el => el.store && el.store === self) || [];
                 let stylesheets = [..._store_stylesheets, ...document.stylesheets].map(stylesheet => stylesheet.data).distinct().map(data => xover.json.fromAttributes(data));
@@ -11882,7 +11882,7 @@ xover.Store = function (xml, ...args) {
                 if (!renders.length && (target || active_store === self)) document.render({ target: target || window.document.body, store: self });
                 return renders;
             }).then((renders = []) => {
-                window.top.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
+                window.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
                 return renders.flat().filter(el => el)
             }).catch((e) => {
                 let tag = self.tag;
@@ -11931,7 +11931,7 @@ xover.Store = function (xml, ...args) {
     //_tag = _tag.split(/\?/)[0];
     //this.seed();
     xover.manifest.getSettings(this, 'stylesheets').flat().forEach(stylesheet => store.addStylesheet(stylesheet, false));
-    //window.top.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }, this));
+    //window.dispatchEvent(new xover.listener.Event('storeLoaded', { store: this }, this));
     xover.stores[_tag] = this;
     return this;
 }
@@ -12704,7 +12704,7 @@ Object.defineProperty(xover.network, 'listener', {
                         xover.network.broadcast(xover.network.createResponse(new_value.id, "No se pudo completar el proceso"));
                     }
                 } else {
-                    window.top.dispatchEvent(new xover.listener.Event('rpcResponse', new_value));
+                    window.dispatchEvent(new xover.listener.Event('rpcResponse', new_value));
                 }
             } else {
                 xover.session[key] = new_value;
@@ -13123,7 +13123,7 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     hashtag = url.hash;
     if (hashtag !== undefined && hashtag != (window.top || window).location.hash) {
         let custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash], url)
-        window.top.dispatchEvent(custom_event);
+        window.dispatchEvent(custom_event);
         if (custom_event.defaultPrevented) {
             return event.preventDefault();
         }
@@ -13645,7 +13645,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     event.preventDefault && event.preventDefault();
     if (event.type == 'error') {
         let error_event = new xover.listener.Event(event.constructor.name, {}, event);
-        window.top.dispatchEvent(error_event);
+        window.dispatchEvent(error_event);
         if (error_event.defaultPrevented || error_event.cancelBubble) return;
     }
     await xover.ready;
@@ -13654,7 +13654,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
         if (!reason || reason == 'Script error.') return;
         //if (!(/*typeof (reason) == 'string' || */reason instanceof Error)) {
         let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
-        window.top.dispatchEvent(unhandledrejection_event);
+        window.dispatchEvent(unhandledrejection_event);
         if (unhandledrejection_event.defaultPrevented) return;
         if ((unhandledrejection_event.detail || {}).returnValue) {
             reason = unhandledrejection_event.detail.returnValue;
