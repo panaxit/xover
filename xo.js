@@ -2991,7 +2991,8 @@ xover.json.tryParse = function (input) {
     return output;
 }
 
-xover.xml.createDocument = function (xml, options = { autotransform: true }) {
+xover.xml.createDocument = function (xml, options = { autotransform: true, mime_type: "text/xml" }) {
+    let mime_type = options["mime_type"] || "text/xml";
     let result = undefined;
     if (xml instanceof Node) {
         result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
@@ -3003,20 +3004,19 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
         if (sXML.indexOf('<<<<<<< ') != -1) {
             throw (new Error("Possible unresolved GIT conflict on file."));
         }
-        parser = new DOMParser();
+        let parser = new DOMParser();
         if (!sXML) {
             result = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
         } else {
             if (xml.namespaceURI && xml.namespaceURI.indexOf("http://www.w3.org") == 0) {
                 result = parser.parseFromString(sXML, "text/html");
             } else {
-                let escaped_line_breaks
-                result = parser.parseFromString(sXML.replace(/[\u0000-\u001F]/g, (char) => ['\r', '\n', '\t'].includes(char) && char || '').replace(/\w+="[^"]+[\n\r]+[^"]+"/ig, (attr) => {
-                    escaped_line_breaks = true;
+                sXML = sXML.replace(/[\u0000-\u001F]/g, (char) => ['\r', '\n', '\t'].includes(char) && char || '').replace(/\w+="[^"]+[\n\r]+[^"]+"/ig, (attr) => {
                     attr = attr.replace(/\r\n/ig, "&#10;");
                     attr = attr.replace(/\t/ig, "&#9;");
                     return attr
-                }), "text/xml");
+                });
+                result = parser.parseFromString(sXML, mime_type);
             }
             if (sXML && result.getElementsByTagName && (result.getElementsByTagName('parsererror').length || 0) > 0) {
                 for (let parsererror of [...result.querySelectorAll('parsererror div, parsererror sourcetext')]) {
@@ -3052,13 +3052,31 @@ xover.xml.createDocument = function (xml, options = { autotransform: true }) {
                         frag.append(...p.childNodes);
                         return frag;
                     } else if (parsererror.closest("html")) {
+                        if (mime_type == "text/xml") {
+                            result = xover.xml.createDocument(sXML, { ...options, mime_type: "text/html" });
+                            result.select(`//html[not(body/* or head/*)]`).remove()
+                        } else {
                         return Promise.reject(parsererror.closest("html"));
+                        }
                     } else {
+                        try {
+                            result = xover.xml.createFragment(sXML);
+                            if (result.childElementCount == 1) {
+                                let new_document = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
+                                new_document.append(...result.childNodes);
+                                result = new_document;
+                            }
+                            message = null;
+                        } catch (e) {
+                            console.error(e)
+                        }
+                        if (message) {
                         return Promise.reject(message.match("(error [^:]+):(.+)").pop())
                     }
                 }
             }
         }
+    }
     }
     if (result instanceof Document) {
         result.settings = result.settings || {}
@@ -4078,6 +4096,7 @@ xover.spaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
 xover.spaces["env"] = "http://panax.io/state/environment"
 xover.spaces["globalization"] = "http://xover.dev/globalization"
 xover.spaces["x"] = "urn:schemas-microsoft-com:office:excel"
+xover.spaces["o"] = "urn:schemas-microsoft-com:office:office"
 
 xover.timeouts = new Map();
 
@@ -8503,6 +8522,7 @@ xover.modernize = async function (targetWindow) {
                                 //    await source_document.render(stylesheets);
                                 //}
                             } else if (source_document instanceof xover.Store || source_document instanceof xover.Source) {
+                                source_document.document.window = this.ownerDocument.defaultView;
                                 await source_document.render(self)
                             } else {
                                 let body = source_document.cloneNode(true);
@@ -10225,9 +10245,7 @@ xover.xml.tryParse = function (input) {
 xover.xml.createFragment = function (xml_string) {
     const xmlDoc = new DOMParser().parseFromString("<root/>", 'text/xml');
     const fragment = xmlDoc.createDocumentFragment();
-    let p = top.document.createElement('p');
-    p.innerHTML = xml_string || "";
-    fragment.append(...p.childNodes);
+    fragment.append(...[...xover.string.toHTML(xml_string).childNodes].map(el => [...xover.xml.fromString(el).childNodes]).flat(Infinity));
     return fragment;
 }
 
@@ -10403,12 +10421,14 @@ xover.xml.combine = function (target, new_node) {
             target.setAttributeNode(attr.cloneNode());
         }
         //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
+        if (!(customElements.get(target.tagName.toLowerCase()) || customElements.get(target.getAttribute("is")))) {
         try {
             target.replaceChildren(...new_node.childNodes)
         } catch (e) {
             if (!(e instanceof DOMException && e.name == 'NotFoundError')) {
                 return Promise.reject(e)
             }
+        }
         }
         //active_element && xover.delay(100).then(() => active_element.focus());
         return target
@@ -10550,7 +10570,7 @@ xover.dom.combine = async function (target, new_node) {
     xover.xml.staticMerge(target, new_node);
     let dependants = [...new_node.querySelectorAll('[xo-source],[xo-stylesheet]')];
     dependants = dependants.map(el => el.render());
-    //if (target.matches('[xo-source],[xo-stylesheet]')) await Promise.all(dependants);
+    if (target.matches('[xo-source],[xo-stylesheet]')) await Promise.all(dependants);
 
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
     window.top.dispatchEvent(before_dom);
@@ -11842,6 +11862,7 @@ xover.Store = function (xml, ...args) {
                     await self.ready;
                 }
                 let document = __document.cloneNode(true);
+                document.window = document.window || this.window || target && target.ownerDocument.defaultView || undefined;
                 window.top.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
                 let renders = [];
                 let sections = !target && xover.site.sections.filter(el => el.store && el.store === self) || [];
@@ -12787,8 +12808,8 @@ xover.listener.on('hotreload', async function (file_path) {
         return location.reload(true);
         not_found = false;
     }
-    let urls = [...window.document.select(`//html:link/@href|//@src`), ...[...this.querySelectorAll(`iframe`)].map(el => typeof (el.contentDocument.select) === 'function' && el.contentDocument.select(`//html:link/@href|//@src`)).flat()];
-    for (let src of urls.filter(script => new xover.URL(script.value).resource == file.resource)) {
+    let urls = [...window.document.select(`//html:link/@href|//@src`), ...[...this.querySelectorAll(`iframe`)].map(el => el.contentDocument && typeof (el.contentDocument.select) === 'function' && el.contentDocument.select(`//html:link/@href|//@src`)).flat()];
+    for (let src of urls.filter(script => script && new xover.URL(script.value).resource == file.resource)) {
         let old_script = src.parentNode;
         let new_script = document.createElement(old_script.tagName); /*script.cloneNode(); won't work properly*/
         [...old_script.attributes].map(attr => new_script.setAttributeNode(attr.cloneNode(true)));
