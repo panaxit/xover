@@ -813,12 +813,22 @@ xover.initializeDOM = async function () {
             class ${class_name} extends HTMLElement {
                 constructor() {
                     super();
+                    this.template = xover.sources["${component_name}"];
+                    const observer = new MutationObserver(() => this.render());
+                    observer.observe(this.template, { childList: true, subtree: true });
                 }
 
                 connectedCallback() {
-                    let source = xover.sources["${component_name}"]
-                    source.ready.then((document)=>{
-                        //this.replaceChildren(...document.cloneNode(true).childNodes);
+                    this.render()
+                }
+
+                disconnectedCallback() {
+                    this.disconnected = true;
+                }
+
+                render() {
+                    if (this.disconnected) return;
+                    this.template.ready.then((document)=>{
                         xover.dom.combine(this, document.cloneNode(true));
                     }).catch(e => console.error(e));
                 }
@@ -5423,7 +5433,7 @@ xover.modernize = async function (targetWindow) {
                             self.connect()
                             return;
                         }
-                        if (!(observer instanceof MutationObserver)) { //on iframe content should be tested against it's defaultView
+                        if (!instanceOf.call(observer, MutationObserver)) {
                             observer = new MutationObserver(observer)
                         }
                         observer.observe(self, config);
@@ -7045,6 +7055,39 @@ xover.modernize = async function (targetWindow) {
                     })
                 }
 
+                if (!Element.prototype.hasOwnProperty('combineAttributes')) {
+                    Object.defineProperty(Element.prototype, 'combineAttributes', {
+                        enumerable: false,
+                        value: function (...attributes) {
+                            let target = this;
+                            for (let attr of attributes) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
+                                //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
+                                if (attr.isEqualNode(target.attributes[attr.name])) continue;
+                                if (attr.name == "class") {
+                                    let source_node = attr.ownerElement;
+                                    for (let class_name of attr.ownerElement.classList) {
+                                        if (class_name[0] == "-") {
+                                            target.classList.remove(class_name.slice(1))
+                                        }
+                                        target.classList.add(class_name)
+                                    }
+                                } else if (attr.name == "style") {
+                                    let source_node = attr.ownerElement;
+                                    for (let [property] of [...source_node.attributeStyleMap]) {
+                                        target.style[property] = source_node.style[property];
+                                        //target.attributeStyleMap.set(property, source_node.attributeStyleMap.get(property)) /*This method throws an error for some valid styles*/
+                                    }
+                                } else {
+                                    if (["value"].includes(attr.name)) {
+                                        target[attr.name] = attr.value
+                                    }
+                                    target.setAttributeNode(attr.cloneNode());
+                                }
+                            }
+                        }
+                    })
+                }
+
                 MutationObserver.observe = MutationObserver.observe || MutationObserver.prototype.observe;
                 MutationObserver.prototype.observe = function (target, options) {
                     target.observers = target.observers || new Map();
@@ -7089,6 +7132,12 @@ xover.modernize = async function (targetWindow) {
                         }
                     })
                 }
+
+                HTMLElement.attachShadow = HTMLElement.attachShadow || HTMLElement.prototype.attachShadow;
+                HTMLElement.prototype.attachShadow = function (options) {
+                    this.shadowMode = options.mode;
+                    return HTMLElement.attachShadow.call(this, options);
+                };
 
 
                 HTMLElement.prototype.silenceAttribute = function (attr) {
@@ -10427,14 +10476,7 @@ xover.xml.combine = function (target, new_node) {
             }
             attr.remove({ silent: true })
         }
-        for (let attr of new_node.attributes) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
-            //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
-            if (attr.isEqualNode(target.attributes[attr.name])) continue;
-            if (["value"].includes(attr.name)) {
-                target[attr.name] = attr.value
-            }
-            target.setAttributeNode(attr.cloneNode());
-        }
+        target.combineAttributes(...new_node.attributes)
         //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
         if (!(customElements.get(target.tagName.toLowerCase()) || customElements.get(target.getAttribute("is")))) {
         try {
@@ -10456,7 +10498,22 @@ xover.xml.combine = function (target, new_node) {
             target.append(...new_node.childNodes);
             return target
         } else if (new_node instanceof HTMLTemplateElement) {
-            target.attachShadow({ mode: 'open', ...Object.fromEntries([...new_node.attributes].filter(attr => ["shadowrootclonable", "shadowrootdelegatesfocus", "shadowrootmode", "shadowrootserializable"].includes(attr.name)).map(attr => [attr.name.replace(/^shadowroot/, '').replace(/focus/g, (match) => match[0].toUpperCase() + match.slice(1)), attr.value])) }).replaceChildren(...new_node.content.childNodes);
+            let attributes = [...new_node.attributes].filter(attr => attr.name.slice(0, 10) == "shadowroot");
+            target.combineAttributes(...[...new_node.attributes].filter(attr => !attributes.some(el => el.name == attr.name)));
+            if (target.shadowMode) {
+                let replacement = target.cloneNode(true);
+                target.after(replacement)
+                target.shadowRoot && target.shadowRoot.replaceChildren();
+                target.remove()
+            } else if (target.hasAttribute("shadowroot") || target.hasAttribute("shadowrootmode") || attributes.length) {
+                try {
+                    target.attachShadow({ mode: 'open', ...Object.fromEntries(attributes.map(attr => [(attr.name.replace(/^shadowroot/, '') || "mode").replace(/focus/g, (match) => match[0].toUpperCase() + match.slice(1)), attr.value])) }).replaceChildren(...new_node.content.childNodes);
+                } catch (e) {
+                    console.error(e)
+                }
+            } else {
+                target.replaceChildren(...new_node.content.childNodes)
+            }
             return target
         } else if (target.matches("[xo-source],[xo-stylesheet]")) {
             target.replaceChildren(new_node)
@@ -10534,7 +10591,6 @@ xover.dom.applyScripts = async function (scripts = []) {
 }
 
 xover.dom.combine = async function (target, new_node) {
-    let window = this.window || target.ownerDocument.defaultView || top.window;
     let document = target.ownerDocument || window.document;
     let scripts;
     let script_wrapper = window.document.firstElementChild.cloneNode();
@@ -10582,9 +10638,9 @@ xover.dom.combine = async function (target, new_node) {
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
     xover.xml.staticMerge(target, new_node);
-    let dependants = [...new_node.querySelectorAll('[xo-source],[xo-stylesheet]')];
+    let dependants = [...(new_node.content || new_node).querySelectorAll('[xo-source],[xo-stylesheet]')];
     dependants = dependants.map(el => el.render());
-    if (target.matches('[xo-source],[xo-stylesheet]')) await Promise.all(dependants);
+    if (target.matches('[xo-suspense*=dependants]')) await Promise.all(dependants);
 
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
     window.dispatchEvent(before_dom);
@@ -13042,9 +13098,9 @@ xover.listener.on('change::#site:scrollRestoration', function ({ value }) {
 //    documents.filter(stylesheet => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'state:${key}')]`)).forEach(stylesheet => stylesheet.store.render());
 //});
 
-xover.listener.on('change::@xo-source', function ({ element }) {
-    let section = element.section;
-    section && section.render()
+xover.listener.on('change::@xo-source', function ({ element, value, old }) {
+    if (xover.stores[value] == xover.stores[old]) return
+    element.render()
 });
 
 //xover.listener.on('change::@state:busy', function ({ target, value }) {
