@@ -813,6 +813,7 @@ xover.initializeDOM = async function () {
             class ${class_name} extends HTMLElement {
                 constructor() {
                     super();
+                    this.initialData = this.initialData || [...this.childNodes];
                     this.template = xover.sources["${component_name}"];
                     const observer = new MutationObserver(() => this.render());
                     observer.observe(this.template, { childList: true, subtree: true });
@@ -824,13 +825,47 @@ xover.initializeDOM = async function () {
 
                 disconnectedCallback() {
                     this.disconnected = true;
+                    delete this.initialData;
+                }
+
+                updateSlotContent() {
+                    let _initialData = !this.shadowRoot && this.initialData || [...this.childNodes];
+                    if (_initialData.length) {
+                        let clone = this.cloneNode();
+                        let initialData = _initialData.filter(el => !el.assignedSlot).map(el => el.cloneNode(true));
+                        clone.append(...initialData.filter(child => typeof(child.trim)!='function' || child.trim()));
+                        for (let slot of [...(this.shadowRoot || this).querySelectorAll("slot")].filter(el => !el.assignedNodes().length)) {
+                            if (slot.hasAttribute("name")) {
+                                if (clone.hasAttribute(slot.getAttribute("name"))) {
+                                    let reference = document.createElement("span");
+                                    reference.setAttribute("slot", slot.getAttribute("name"));
+                                    reference.innerHTML = clone.getAttribute(slot.getAttribute("name"));
+                                    if (this.shadowRoot) {
+                                        this.append(reference)
+                                        slot.assign(reference)
+                                    } else {
+                                        slot.replaceWith(reference);
+                                        //slot.replaceChildren(clone.getAttribute(slot.getAttribute("name")));
+                                    }
+                                } else {
+                                    let slots = clone.querySelectorAll(\`[slot="\${slot.getAttribute("name")}"]\`);
+                                    if (slots.length) {
+                                        slot.replaceWith(...slots)
+                                    }
+                                }
+                            } else if (!slot.attributes.length) {
+                                slot.replaceWith(...[...clone.childNodes].filter(el => !el.attributes || !el.hasAttribute("slot")))
+                            }
+                        }
+                    }
                 }
 
                 render() {
                     if (this.disconnected) return;
-                    this.template.ready.then((document)=>{
-                        xover.dom.combine(this, document.cloneNode(true));
-                    }).catch(e => console.error(e));
+                    this.template.ready.then(async (document)=>{
+                        await xover.dom.combine(this, document.cloneNode(true));
+                        this.updateSlotContent();
+                    }).catch(e => console.error(e, this));
                 }
             }
             customElements.define("${component_name}", ${class_name});
@@ -10436,7 +10471,27 @@ xover.xml.combine = function (target, new_node) {
     let target_stylesheet = target instanceof Element && target.getAttribute("xo-stylesheet")
     let new_source = new_node instanceof Element && new_node.getAttribute("xo-source")
     let new_stylesheet = new_node instanceof Element && new_node.getAttribute("xo-stylesheet")
-    if (
+    if (new_node instanceof HTMLTemplateElement || customElements.get(target.tagName.toLowerCase()) || target.attributes && customElements.get(target.getAttribute("is"))) {
+        let attributes = [...new_node.attributes].filter(attr => attr.name.slice(0, 10) == "shadowroot");
+        target.combineAttributes(...[...new_node.attributes].filter(attr => !attributes.some(el => el.name == attr.name)));
+        target.replaceChildren(...target.initialData || [])
+        if (target.shadowMode) {
+            let replacement = target.cloneNode(true);
+            target.after(replacement)
+            target.shadowRoot && target.shadowRoot.replaceChildren();
+            target.remove()
+            target = replacement;
+        } else if (target.hasAttribute("shadowroot") || target.hasAttribute("shadowrootmode") || attributes.length) {
+            try {
+                target.attachShadow({ mode: 'open', ...Object.fromEntries(attributes.map(attr => [(attr.name.replace(/^shadowroot/, '') || "mode").replace(/focus/g, (match) => match[0].toUpperCase() + match.slice(1)), attr.value])) }).replaceChildren(...new_node.content.childNodes);
+            } catch (e) {
+                console.error(e)
+            }
+        } else {
+            target.replaceChildren(...new_node.content.childNodes)
+        }
+        return target
+    } else if (
         target instanceof Element && (
             /*`${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope")
             || new_node.getAttributeNode("xo-scope")}` && `${target.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}` == `${new_node.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}`
@@ -10478,14 +10533,12 @@ xover.xml.combine = function (target, new_node) {
         }
         target.combineAttributes(...new_node.attributes)
         //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
-        if (!(customElements.get(target.tagName.toLowerCase()) || customElements.get(target.getAttribute("is")))) {
         try {
             target.replaceChildren(...new_node.childNodes)
         } catch (e) {
             if (!(e instanceof DOMException && e.name == 'NotFoundError')) {
                 return Promise.reject(e)
             }
-        }
         }
         //active_element && xover.delay(100).then(() => active_element.focus());
         return target
@@ -10496,24 +10549,6 @@ xover.xml.combine = function (target, new_node) {
             return target
         } else if (new_node instanceof Document || new_node instanceof DocumentFragment) {
             target.append(...new_node.childNodes);
-            return target
-        } else if (new_node instanceof HTMLTemplateElement) {
-            let attributes = [...new_node.attributes].filter(attr => attr.name.slice(0, 10) == "shadowroot");
-            target.combineAttributes(...[...new_node.attributes].filter(attr => !attributes.some(el => el.name == attr.name)));
-            if (target.shadowMode) {
-                let replacement = target.cloneNode(true);
-                target.after(replacement)
-                target.shadowRoot && target.shadowRoot.replaceChildren();
-                target.remove()
-            } else if (target.hasAttribute("shadowroot") || target.hasAttribute("shadowrootmode") || attributes.length) {
-                try {
-                    target.attachShadow({ mode: 'open', ...Object.fromEntries(attributes.map(attr => [(attr.name.replace(/^shadowroot/, '') || "mode").replace(/focus/g, (match) => match[0].toUpperCase() + match.slice(1)), attr.value])) }).replaceChildren(...new_node.content.childNodes);
-                } catch (e) {
-                    console.error(e)
-                }
-            } else {
-                target.replaceChildren(...new_node.content.childNodes)
-            }
             return target
         } else if (target.matches("[xo-source],[xo-stylesheet]")) {
             target.replaceChildren(new_node)
