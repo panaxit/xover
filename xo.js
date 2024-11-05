@@ -5161,25 +5161,34 @@ xover.modernize = async function (targetWindow) {
                 });
             }
 
-            Object.render = Object.render || Object.prototype.render;
-            if ((Object.getPropertyDescriptor(Object.prototype, 'render') || { writable: true })["writable"]) {
-                Object.defineProperty(Object.prototype, 'render', {
-                    value: function (...args) {
-                        let source = this.message && typeof (this.message) === 'string' && new String(this.message) || this;
-                        if (typeof (source.alert) === 'function') {
-                            source.alert.apply(source, args)
-                        } else if (source !== this && source.render) {
-                            source.render.apply(source, args)
-                        } else if (source instanceof Attr) {
-                            source.value.render()
-                        } else if (source instanceof Array && source.length) {
-                            let ul = document.cloneNode().createElement("ul");
-                            ul.append(...this.map(el => { let li = document.createElement("li"); li.textContent = el; return li }))
-                            xover.dom.createDialog(ul)
-                        }
-                        if (Object.render) {
-                            return Object.render.apply(this, args)
-                        }
+            //Object.render = Object.render || Object.prototype.render;
+            //if ((Object.getPropertyDescriptor(Object.prototype, 'render') || { writable: true })["writable"]) {
+            //    Object.defineProperty(Object.prototype, 'render', {
+            //        value: function (...args) {
+            //            let source = this.message && typeof (this.message) === 'string' && new String(this.message) || this;
+            //            if (typeof (source.alert) === 'function') {
+            //                source.alert.apply(source, args)
+            //            } else if (source !== this && source.render) {
+            //                source.render.apply(source, args)
+            //            } else if (source instanceof Attr) {
+            //                source.value.render()
+            //            } else if (source instanceof Array && source.length) {
+            //                let ul = document.cloneNode().createElement("ul");
+            //                ul.append(...this.map(el => { let li = document.createElement("li"); li.textContent = el; return li }))
+            //                xover.dom.createDialog(ul)
+            //            }
+            //            if (Object.render) {
+            //                return Object.render.apply(this, args)
+            //            }
+            //        },
+            //        writable: true, enumerable: false, configurable: false
+            //    })
+            //}
+
+            if (!String.prototype.hasOwnProperty('render')) {
+                Object.defineProperty(String.prototype, 'render', {
+                    value: function () {
+                        xover.dom.createDialog(this)
                     },
                     writable: true, enumerable: false, configurable: false
                 })
@@ -10519,7 +10528,7 @@ xover.xml.staticMerge = function (node1, node2) {
     if (node1.classList && node2.classList && node1.classList.contains("xo-working")) node2.classList.add("xo-working");
     if (node1.classList && node2.classList && node1.classList.contains("xo-fetching")) node2.classList.add("xo-fetching");
     if (node1.getAttribute("xo-source") != node2.getAttribute("xo-source") && xover.stores[node1.getAttribute("xo-source")] == xover.stores[node2.getAttribute("xo-source")]) {
-        node2.setAttributeNode(node1.getAttributeNode("xo-source").cloneNode(true))
+        node2.importAttributeNode(node1.getAttributeNode("xo-source"))
     }
     if (!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working,.xo-fetching")) || node1.nodeName.toLowerCase() !== node2.nodeName.toLowerCase() || node1.isEqualNode(node2)) return;
     let static = document.firstElementChild.cloneNode().classList;
@@ -10535,7 +10544,7 @@ xover.xml.staticMerge = function (node1, node2) {
     if (static.length && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase()) {
         for (let attr of node1.attributes) {
             if (!(static.contains("@*") && !(static.contains(`-@${attr.name}`)) || static.contains(`@${attr.name}`))) continue;
-            node2.setAttributeNode(attr.cloneNode(true));
+            node2.importAttributeNode(attr);
         }
     }
     if (static.contains("*")) {
@@ -10590,7 +10599,7 @@ xover.xml.combine = function (target, new_node) {
                 //new_node.attributeStyleMap.set(property, source_node.attributeStyleMap.get(property)) /*This method throws an error for some valid styles*/
             }
         } else {
-            new_node.setAttributeNode(static_attribute.cloneNode(), { silent: true })
+            new_node.importAttributeNode(static_attribute, { silent: true })
         }
     }
     let named_slots = new_node instanceof Element && new_node.hasAttribute("xo-source") && !(new_node.hasAttribute("xo-stylesheet")) && new_node.querySelectorAll("slot[name]") || [];
