@@ -669,6 +669,13 @@ xover.init.Observer = function (target_node = window.document) {
                     if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
                 }
             }
+            if (xover.listener.has('removeFrom')) {
+                if (mutation.removedNodes.length) {
+                    let node_event = new xover.listener.Event('removeFrom', { srcElement: active_element, removedNodes: mutation.removedNodes }, target);
+                    window.dispatchEvent(node_event);
+                    if (node_event.defaultPrevented) mutation.removedNodes.splice(0);
+                }
+            }
             if (xover.listener.has('remove')) {
                 for (let node of mutation.removedNodes) {
                     if (target.contains(node)
@@ -681,6 +688,14 @@ xover.init.Observer = function (target_node = window.document) {
                     window.dispatchEvent(remove_event);
                     if (target.contains(node)) continue;
                     if (remove_event.defaultPrevented) target.insertBefore(node, node.formerNextSibling);
+                }
+            }
+            if (xover.listener.has('appendTo') && mutation.addedNodes.length) {
+                let node_event = new xover.listener.Event('appendTo', { srcElement: active_element, addedNodes: mutation.addedNodes }, target);
+                window.dispatchEvent(node_event);
+                if (node_event.defaultPrevented) mutation.addedNodes.splice(0);
+                if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
+                    target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                 }
             }
             if (xover.listener.has('append')) {
@@ -5492,7 +5507,7 @@ xover.modernize = async function (targetWindow) {
                     let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self || el.stylesheet == self || ((el.stylesheet || {}).relatedDocuments || []).flat().find(item => item == self)).sort(el => el.contains(document.activeElement) && -1 || 1);
                     let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement || window.document.createElement('p');;
 
-                    if (instanceOf.call(event,InputEvent)) await xover.delay(1);
+                    if (instanceOf.call(event, InputEvent)) await xover.delay(1);
 
                     //mutationList = mutationList.filter(mutation => !mutation.target.silenced && !mutation.target.disconnected && !(mutation.type == 'attributes' && mutation.target.getAttributeNS(mutation.attributeNamespace, mutation.attributeName) === mutation.oldValue || mutation.type == 'childList' && [...mutation.addedNodes, ...mutation.removedNodes].filter(item => !item.nil).length == 0) && !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))//.filter(mutation => !(mutation.target instanceof Document));
 
@@ -8776,7 +8791,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                             }
                             self.stop && self.stop.then(result => xover.manager.stoped.set(self, result)).finally(() => delete self.stop)
-                            xover.delay(1).then(() => typeof(suspense_node.render) == 'function' && suspense_node.render())
+                            xover.delay(1).then(() => typeof (suspense_node.render) == 'function' && suspense_node.render())
                         }
                         return Promise.resolve(this)
                     }).catch((e) => {
@@ -10833,6 +10848,10 @@ xover.dom.combine = async function (target, new_node) {
     //    new_node.setAttributeNode(target.getAttributeNodeOrMock("xo-source").cloneNode(true))
     //}
 
+    await xover.dom.applyScripts.call(document, [...script_wrapper.children]);
+
+    let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
+    window.dispatchEvent(before_dom);
     if (!(target.hasAttribute("xo-source") || target.hasAttribute("xo-stylesheet")) && (new_node.hasAttribute("xo-source") || new_node.hasAttribute("xo-stylesheet")) && new_node.localName != target.localName) {
         let new_target = target.ownerDocument.createElement("slot");
         new_target.importAttributeNode(new_node.getAttributeNode("xo-source"));
@@ -10841,7 +10860,6 @@ xover.dom.combine = async function (target, new_node) {
         target = new_target
     }
 
-    await xover.dom.applyScripts.call(document, [...script_wrapper.children]);
     target.disconnected = false;
     let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
@@ -10851,9 +10869,6 @@ xover.dom.combine = async function (target, new_node) {
     dependants = dependants.map(el => el.render());
     if (target.matches('[xo-suspense*=Dependants]')) await Promise.all(dependants);
 
-    let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
-    window.dispatchEvent(before_dom);
-    await xover.evaluateReferencers.call(new_node);
     let changes = xover.xml.getDifferences(target, new_node);
     if (!changes.length) return target;
     let preceding_siblings = [];
@@ -10928,8 +10943,9 @@ xover.dom.combine = async function (target, new_node) {
                 selector = active_element.selector;
                 selection = xover.dom.getCaretPosition(active_element)
             }
-            if (document.startViewTransition && (curr_node instanceof Element && curr_node.querySelector("[style*=view-transition-name]") || new_node instanceof Element && new_node.querySelector("[style*=view-transition-name]"))) {
-                curr_node.querySelectorAll("[style*=view-transition-name][id]").toArray().map(item => [item, new_node.querySelector(`[id=${item.id}]`)]).filter(([, matched]) => matched).forEach(([curr, matched]) => matched.style.viewTransitionName = curr.style.viewTransitionName);
+            if (document.startViewTransition && (curr_node instanceof Element && curr_node.closest(`:not(slot)`).querySelector("[style*=view-transition-name]") || new_node instanceof Element && new_node.querySelector("[style*=view-transition-name]"))) {
+                curr_node.closest(`:not(slot)`).querySelectorAll("[style*=view-transition-name][id]").toArray().map(item => [item, new_node.querySelector(`[id=${item.id}]`)]).filter(([, matched]) => matched).forEach(([curr, matched]) => matched.style.viewTransitionName = curr.style.viewTransitionName);
+                new_node.querySelectorAll("[style*=view-transition-name][id]").toArray().map(item => [item, curr_node.closest(`:not(slot)`).querySelector(`[id=${item.id}]`)]).filter(([, matched]) => matched).forEach(([curr, matched]) => matched.style.viewTransitionName = curr.style.viewTransitionName);
                 try {
                     let view_transition = document.startViewTransition(() => result = xover.xml.combine(curr_node, new_node)) || {};
                     await view_transition.finished;//.then(() => img.style.viewTransitionName = '');
