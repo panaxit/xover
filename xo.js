@@ -841,6 +841,7 @@ xover.initializeDOM = async function () {
             class ${class_name} extends HTMLElement {
                 constructor() {
                     super();
+                    if (!this.ownerDocument.contains(this)) return;
                     this.parts = this.parts || {};
                     this.initialFragment = document.createDocumentFragment();
                     this.initialFragment.append(...this.childNodes);
@@ -6755,8 +6756,16 @@ xover.modernize = async function (targetWindow) {
                     if (xover.disablePolyfill.hasOwnProperty("toString")) {
                         return Node.toString.call(this)
                     } else {
-                        return new XMLSerializer().serializeToString(this);
+                        return new XMLSerializer().serializeToString(this)
                     }
+                }
+
+                HTMLElement.prototype.toString = function (...args) { /*added to support some current logic applied to some HTMLElements like bootstrap logic where they expect test if (node.toString() !== '[object Window]'); TODO: remove this logic to standarize toString behavior accross all object types (number, bool, string, etc)*/
+                    return Node.toString.apply(this, args)
+                }
+
+                Node.prototype.stringify = function () {
+                    return new XMLSerializer().serializeToString(this);
                 }
 
                 if (!Node.prototype.hasOwnProperty('xml')) {
@@ -7284,10 +7293,10 @@ xover.modernize = async function (targetWindow) {
                                         //target.attributeStyleMap.set(property, source_node.attributeStyleMap.get(property)) /*This method throws an error for some valid styles*/
                                     }
                                 } else {
-                                    if (["value"].includes(attr.name)) {
+                                    target.setAttributeNode(attr.cloneNode());
+                                    if (["value"].includes(attr.name) && target.getAttribute(attr.name) != attr.value) {
                                         target[attr.name] = attr.value
                                     }
-                                    target.setAttributeNode(attr.cloneNode());
                                 }
                             }
                         }
@@ -7377,6 +7386,30 @@ xover.modernize = async function (targetWindow) {
 
                     attribute_node = attribute_node || this.createAttributeNS(namespace, attribute, value);
                     attribute_node.value = value;
+                    return this;
+                }
+
+                Element.prototype.setAttribute = function (attribute, value, options = {}) {
+                    if (!attribute) return Promise.reject("No attribute set");
+                    if (arguments.length < 2 && !(attribute instanceof Attr)) return Promise.reject("Missing value on setAttribute");
+                    let namespace;
+                    if (attribute instanceof Attr) {
+                        value = [value, attribute.value].coalesce();
+                        namespace = attribute.namespaceURI;
+                        attribute = attribute.name;
+                    }
+                    let target = this;
+                    if (attribute.indexOf(':') != -1) {
+                        let { prefix, name: attribute_name } = xover.xml.getAttributeParts(attribute);
+                        namespace = namespace || this.resolveNS(prefix) || xover.spaces[prefix];
+                        target.setAttributeNS(namespace, attribute, value, options);
+                    } else {
+                        if (!this.reactive || options.silent) {
+                            Element.setAttribute.call(this, attribute, value);
+                        } else {
+                            target.setAttributeNS(namespace || "", attribute, value, options);
+                        }
+                    }
                     return this;
                 }
 
@@ -10640,7 +10673,7 @@ xover.xml.combine = function (target, new_node) {
         if (!instanceOf.call(target, HTMLTemplateElement) && instanceOf.call(new_node, HTMLTemplateElement)) {
             attributes = attributes.concat([...target.attributes])
         }
-        target.combineAttributes(...[...new_node.attributes].filter(attr => !attributes.some(el => el.name == attr.name)));
+        target.combineAttributes(...[...new_node.attributes].filter(attr => (target.attributes[attr.name] || {}).value !== attr.value && !attributes.some(el => el.name == attr.name)));
         if (target.shadowMode) {
             target.replaceChildren(...target.initialChildNodes || []);
             let replacement = target.cloneNode(true);
