@@ -7849,7 +7849,11 @@ xover.modernize = async function (targetWindow) {
                                 event.preventDefault();
                             }
                             if (typeof value === 'function') {
+                                try {
                                 value = value.call(this, this);
+                                } catch (e) {
+                                    console.error(e, this)
+                            }
                             }
                             let old_value = this.value;
                             let set_event = new xover.listener.Event('set', { element: this.parentNode, attribute: this, value: value, old: old_value }, this);
