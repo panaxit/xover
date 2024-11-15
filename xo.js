@@ -1473,7 +1473,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let fns = xover.listener.matches(context, event.type, (event.detail || {}).tag);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         //context.eventHistory = context.eventHistory || new Map();
-        Object.defineProperty(context, 'handlerHistory', {
+        typeof (context) === 'object' && Object.defineProperty(context, 'handlerHistory', {
             enumerable: false, configurable: true, writable: true,
             value: context.handlerHistory || context instanceof Request && new Set() || null
         });
@@ -1983,7 +1983,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
             try {
                 if (key[0] == '#' || key[0] === '^' && key[1] == '#') {
                     return (tag_url.hash || '#').matches(key)
-                } else if (['^','~'].includes(key[0])) {
+                } else if (['^', '~'].includes(key[0])) {
                     return tag_url.resource.slice(1).matches(key)
                 } else if (key[0] === '/') {
                     return input.matches(key) /*should work either with nodes and strings */
@@ -9592,7 +9592,7 @@ xover.Response = function (response, request) {
             if (this.origin == window.location.origin) {
                 pathname = pathname.replace(new RegExp(`^/?${location.basepath}/?`), '');
             }
-            pathname = pathname.replace(new RegExp(`^/?${this.basepath.replace(/^\/|\/$/,'')}/?`), '');
+            pathname = pathname.replace(new RegExp(`^/?${this.basepath.replace(/^\/|\/$/, '')}/?`), '');
             return pathname.replace(/^\/|\/$/, "") + "/"
 
 
