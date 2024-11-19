@@ -3097,7 +3097,8 @@ xover.xml.getDifferences = function (node1, node2) {
         return [new Map([[node1, node2]])];
     }
     if (node1 instanceof Element && (node1.hasAttribute("xo-source") && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") || node1.hasAttribute("xo-stylesheet") && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-source"))) {
-        node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].filter(attr => !["xo-source", "xo-stylesheet", "xo-swap"].includes(attr.name)).map(attr => `@${attr.name}`);
+        node2.combineAttributes(...node1.attributes)
+        //node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].filter(attr => !["xo-source", "xo-stylesheet", "xo-swap"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
@@ -5012,8 +5013,10 @@ xover.modernize = async function (targetWindow) {
 
             if (typeof (Dependants) == 'undefined') Dependants = function () { return this.querySelectorAll('[xo-source],[xo-stylesheet]') };
 
+            if (typeof (XML) == 'undefined') XML = xover.xml.fromString;
             if (typeof (xml) == 'undefined') xml = xover.xml.fromString;
 
+            if (typeof (HTML) == 'undefined') HTML = xover.string.toHTML;
             if (typeof (html) == 'undefined') html = xover.string.toHTML;
 
             if (typeof (CurrentYear) == 'undefined') CurrentYear = () => new Date().getFullYear();
@@ -10662,7 +10665,7 @@ xover.xml.tryParse = function (input) {
 xover.xml.createFragment = function (xml_string) {
     const xmlDoc = new DOMParser().parseFromString("<root/>", 'text/xml');
     const fragment = xmlDoc.createDocumentFragment();
-    fragment.append(...[...xover.string.toHTML(xml_string).childNodes].map(el => [...xover.xml.fromString(el).childNodes]).flat(Infinity));
+    fragment.append(...xover.string.toHTML(xml_string).childNodes);
     return fragment;
 }
 
@@ -10796,6 +10799,7 @@ xover.xml.combine = function (target, new_node) {
     let target_stylesheet = target instanceof Element && target.getAttribute("xo-stylesheet")
     let new_source = new_node instanceof Element && new_node.getAttribute("xo-source")
     let new_stylesheet = new_node instanceof Element && new_node.getAttribute("xo-stylesheet")
+    let new_metaNodes = new_node.metaNodes;
     if (instanceOf.call(new_node, HTMLTemplateElement) || instanceOf.call(target, CustomElement)) {
         target.initialChildNodes = new_node.initialChildNodes || target.initialChildNodes;
         let attributes = [...new_node.attributes].filter(attr => attr.name.slice(0, 10) == "shadowroot" || ["xmlns"].includes(attr.name));
@@ -10823,7 +10827,7 @@ xover.xml.combine = function (target, new_node) {
                 console.error(e)
             }
         } else if (new_node instanceof HTMLTemplateElement) {
-            target.replaceChildren(...new_node.content.childNodes)
+            target.replaceChildren(...new_metaNodes, ...new_node.content.childNodes)
         }
         return target
     } else if (
@@ -10851,7 +10855,8 @@ xover.xml.combine = function (target, new_node) {
         for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
             new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
         }
-        target.replaceWith(new_node)
+        target.metaNodes.remove();
+        target.replaceWith(...new_metaNodes, new_node);
         restore_focus && new_node.focus()
         return new_node
     } else if (
@@ -11043,8 +11048,8 @@ xover.dom.combine = async function (target, new_node) {
 
     let changes = xover.xml.getDifferences(target, new_node);
     if (!changes.length) return target;
-    let preceding_siblings = [];
-    let target_preceding_siblings = [];
+    //let preceding_siblings = [];
+    //let target_preceding_siblings = [];
 
     //target.ownerDocument.disconnect();
     scripts = new_node.selectNodes('descendant-or-self::html:script[not(@src)][text()]').map(el => {
@@ -13447,15 +13452,15 @@ Object.defineProperty(xover.listener, 'contentEdited', {
     }, writable: true, enumerable: false, configurable: false
 })
 
-HTMLElement.relatedNodes = HTMLElement.relatedNodes || HTMLElement.prototype.relatedNodes;
-Object.defineProperty(HTMLElement.prototype, 'relatedNodes', {
+Node.metaNodes = Node.metaNodes || Node.prototype.metaNodes;
+Object.defineProperty(Node.prototype, 'metaNodes', {
     get: function () {
-        if (this._relatedNodes) return this._relatedNodes;
-        let previous_nodes = this.selectNodes('preceding-sibling::*|preceding-sibling::text()|preceding-sibling::comment()|preceding-sibling::processing-instruction()');
+        if (this._metaNodes) return this._metaNodes;
+        let previous_nodes = this.selectNodes('preceding-sibling::*|preceding-sibling::comment()|preceding-sibling::processing-instruction()'); //|preceding-sibling::text()
         return previous_nodes.slice(previous_nodes.findLastIndex(el => el == this.previousElementSibling) + 1)
     }
     , set: function (input) {
-        this._relatedNodes = input;
+        this._metaNodes = input;
     }
 })
 
