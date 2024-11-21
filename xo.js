@@ -8126,6 +8126,12 @@ xover.modernize = async function (targetWindow) {
                     }
                     if (nodes && nodes.length) {
                         this.append(...nodes);
+                        for (let node of nodes) {
+                            if (node.nodeType === Node.DOCUMENT_TYPE_NODE) {
+                                this.appendChild(node)
+                    }
+                        }
+                        this.append(...nodes/*.toArray().filter(node => ![3, 10].includes(node.nodeType))*/)
                     }
                 };
 
@@ -13044,6 +13050,15 @@ xover.network.channel = new BroadcastChannel(`panax-session-sync:${location.orig
 window.addEventListener('beforeunload', () => {
     xover.network.channel.close();
 });
+
+/* Usage example. Check for 
+xover.network.channel.onmessage = (event) => {
+    const status = event.data;
+    console.log("Status received:", status);
+    if (status == 'authorized') {
+        xover.session.status = status;
+    }
+};*/
 
 Object.defineProperty(xover.network, 'connect', {
     value: function (input) {
