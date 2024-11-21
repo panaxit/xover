@@ -8130,9 +8130,9 @@ xover.modernize = async function (targetWindow) {
                                 this.appendChild(node)
                     }
                         }
-                        this.append(...nodes/*.toArray().filter(node => ![3, 10].includes(node.nodeType))*/)
+                        this.append(...nodes.toArray().filter(node => ![/*Node.TEXT_NODE, */Node.DOCUMENT_TYPE_NODE].includes(node.nodeType)))
                     }
-                };
+                }
 
                 if (typeof Node.prototype.replaceChildren !== 'function') {
                     Node.prototype.replaceChildren = function (...nodes) {
