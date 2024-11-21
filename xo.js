@@ -8125,7 +8125,6 @@ xover.modernize = async function (targetWindow) {
                         this.firstChild.remove();
                     }
                     if (nodes && nodes.length) {
-                        this.append(...nodes);
                         for (let node of nodes) {
                             if (node.nodeType === Node.DOCUMENT_TYPE_NODE) {
                                 this.appendChild(node)
