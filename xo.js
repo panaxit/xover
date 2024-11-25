@@ -1664,6 +1664,18 @@ Object.defineProperty(xover.listener, 'off', {
 
 Object.defineProperty(xover.listener, 'on', {
     value: function (name_or_list, handler, options = {}) {
+        let window = this;
+        if (toString.call(window) != '[object Window]') {
+            window = top.window
+        }
+        if (!name_or_list) {
+            for (let [base_event, [[, [[predicate, handler]]]]] of [...xover.listener || []]) {
+                let selector = `${base_event}${predicate && '::' + predicate || ''}`;
+                console.log(`Bound: ${selector}`)
+                xover.listener.on.call(window, selector, handler)
+            }
+            return
+        }
         if (xover.init.status != 'initialized') {
             xover.init();
         }
@@ -1683,8 +1695,8 @@ Object.defineProperty(xover.listener, 'on', {
             predicate = predicate.join("::");
             [scoped_event, ...conditions] = scoped_event.split(/\?/g);
             let [base_event, scope] = scoped_event.split(/:/).reverse();
-            window.top.removeEventListener(base_event, xover.listener.dispatcher);
-            window.top.addEventListener(base_event, xover.listener.dispatcher/*, options --removed for it might cause event to trigger multiple times*/);
+            window.removeEventListener(base_event, xover.listener.dispatcher);
+            window.addEventListener(base_event, xover.listener.dispatcher/*, options --removed for it might cause event to trigger multiple times*/);
             handler.scope = scope && eval(scope) || undefined;
             handler.conditions = handler.conditions || conditions && [] || undefined;
             for (let condition of conditions) {
@@ -1721,8 +1733,8 @@ Object.defineProperty(xover.listener, 'on', {
                         }
                     })
                 }
-                window.top.removeEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
-                window.top.addEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher/*, options*/);
+                window.removeEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher);
+                window.addEventListener(`${base_event}::${predicate}`, xover.listener.dispatcher/*, options*/);
             }
         }
         handler.selectors = handler.selectors.distinct()
@@ -9401,7 +9413,8 @@ xover.modernize = async function (targetWindow) {
     }).catch(e => {
         throw (e)
     }).finally(() => {
-        //if (targetWindow !== top.window) {
+        if (targetWindow !== top.window) {
+            xover.listener.on.call(targetWindow)
         //    /* Copy prototypes to context target in order to instanceof check to pass */
         //    let isConstructor = function (fn) {
         //        try {
@@ -9422,7 +9435,7 @@ xover.modernize = async function (targetWindow) {
         //            }
         //        }
         //    });
-        //}
+        }
         delete this.modernizing
     })
     return this.modernizing;
