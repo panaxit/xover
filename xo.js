@@ -799,6 +799,9 @@ xover.init.Observer = function (target_node = window.document) {
 
 xover.initializeDOM = async function () {
     await xover.ready;
+    for (let iframe of [...document.querySelectorAll("iframe[xo-source]")]) {
+        window.dispatchEvent(new xover.listener.Event('init', {}, iframe));
+    }
     for (let iframe of [...document.querySelectorAll("iframe:not([src])")]) {
         let el = iframe.firstChild;
         if (!(el instanceof Text)) continue;
@@ -926,7 +929,7 @@ xover.initializeDOM = async function () {
                             }
                         }
                     }
-                    await xover.evaluateReferencers.call(shadowRoot || this, (match, key) => this.single('./'+key) || match);
+                    await xover.signal.update.call(shadowRoot || this, (match, key) => this.single('./'+key) || match);
                     if (typeof(this.init)=='function') {
                         this.init(shadowRoot)
                     }
@@ -963,7 +966,7 @@ xover.initializeDOM = async function () {
                                 this._text = newValue; // Update internal property
                                 break;
                         }
-                        xover.evaluateReferencers.call(this, (match, key) => this.single('./'+key) || match);
+                        xover.signal.update.call(this, (match, key) => this.single('./'+key) || match);
                     }
                 }
 
@@ -975,7 +978,7 @@ xover.initializeDOM = async function () {
         `)
     }
 
-    xover.evaluateReferencers()
+    xover.signal.update()
 }
 
 xover.initializeElementListeners = function (document = window.document) {
@@ -1140,41 +1143,50 @@ xover.subscribers = new Structure(new Map(), {
     }
 });
 
-xover.evaluateReferencers = async function (valueParser) {
-    await xover.ready;
+xover.signal = {};
+Object.defineProperties(xover.signal, {
+    "update": {
+        writable: false, configurable: false,
+        value: async function (valueParser) {
     let target = instanceOf.call(this, Node) && this || document;
     target.subscribers = target.subscribers || new Map();
     let subscribers = target.subscribers;
-    target.select(`.//@*[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[contains(.,'{$')]|.//html:slot[not(parent::html:code)]/text()[starts-with(.,'$\{')]`).forEach(attr => subscribers.set(attr, attr.value));
-    for (let [ref, formula] of subscribers.entries()) {
-        if (formula.match(/^\$\{/)) {
-            formula = formula.slice(2, -1);
-            try {
-                ref.textContent = eval(formula)
-            } catch (e) {
-                typeof (e.render) == 'function' ? e.render() : String(e).alert()
+            for (let attr of target.select(`.//@*[contains(.,'{$') or contains(.,'{{')]|.//html:slot[not(ancestor::html:code)]/text()[contains(.,'{$') or contains(.,'{{') or contains(.,'$\{')]`)) {
+                subscribers.set(attr, attr.value)
             }
-            continue;
-        }
-        for (let match of formula.match(/\{\$([^\}]*)\}/g) || []) {
-            match = match.slice(2, -1);
+            for (let [ref, formula] of subscribers.entries()) {
+                formula.replace(/\{[\{\$]([^\}]+)\}\}/g, async (full_match, match) => {
             let [value, else_value] = match.split(/\s*\|\|\s*/);
             let source = ref.source;
             source && source.document && await source.document.ready
-            let [variable, scope = ref.scope] = value.split(":").reverse();
+                    let [variable, scope = ref.scope] = xover.hasOwnProperty(value.split(":")[0]) ? value.split(":").reverse() : [value];
             let subscriber = xover.subscribers[scope || ''][variable];
             subscriber.set(ref, formula);
             subscriber.evaluate(scope, else_value)
+                    try {
+                        return eval(formula)
+                    } catch (e) {
+                        console.log(e)
+                        /*typeof (e.render) == 'function' ? e.render() : String(e).alert()*/
         }
+                })
     }
-    target.select(`.//*[@xo-site]//@src|.//*[@xo-site]//@href`).map(src => src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site"))))
+            for (let src of target.select(`.//*[@xo-site]//@src|.//*[@xo-site]//@href`)) {
+                src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site")))
+            }
 
     // first version of {{@attr}} notation. TODO: Keep record of place holders and be aware of changes
     if (typeof (valueParser) != 'function') return;
     target.mustache = target.mustache || new Map();
     let mustache = target.mustache;
-    target.select(`.//text()[contains(.,'{{')]|.//@*[contains(.,'{{')]`).forEach(ref => mustache.set(ref, ref.value))
+            for (let ref of target.select(`.//text()[contains(.,'{{')]|.//@*[contains(.,'{{')]`)) {
+                mustache.set(ref, ref.value)
+            }
     for (let [ref, formula] of mustache.entries()) {
+                //if (!ref.host) {
+                //    mustache.delete(ref)
+                //    continue
+                //}
         let value = formula.replace(/\{\{([^\}]+)\}\}/g, (match, key) => {
             return valueParser.call(ref, match, key);
         });
@@ -1189,6 +1201,9 @@ xover.evaluateReferencers = async function (valueParser) {
         }
     }
 }
+    }
+});
+xover.evaluateReferencers = xover.signal.update;
 
 xover.json = {};
 
@@ -2215,7 +2230,7 @@ xover.session = new Proxy({}, {
         }
         if (key in self) {
             return_value = self[key];
-            if (!(self[key] instanceof Function) && history.state.context instanceof Array) {
+            if (!(self[key] instanceof Function) && (history.state || {}).context instanceof Array) {
                 history.state.context.push(["session", self, key])
             }
         } else {
@@ -2555,7 +2570,7 @@ window.addEventListener('resize', function () {
 });
 
 Object.defineProperty(xover.site, 'reference', {
-    get() { return (history.state['reference'] || {}) }
+    get() { return ((history.state || {})['reference'] || {}) }
     , set() { throw `State "reference" is readonly` }
     , enumerable: true
 });
@@ -2592,7 +2607,7 @@ Object.defineProperty(xover.site, 'scrollRestoration', {
 });
 
 Object.defineProperty(xover.site, 'history', {
-    get() { return (history.state['history'] || []) }
+    get() { return ((history.state || {})['history'] || []) }
     , set() { throw `State "history" is readonly` }
     , enumerable: true
 });
@@ -2963,7 +2978,7 @@ Object.defineProperty(xover.site, 'replaceState', {
 });
 
 Object.defineProperty(xover.site, 'position', {
-    get() { return [history.state['position'], Number(this.history.length) + 1].coalesce() }
+    get() { return [(history.state || {})['position'], Number(this.history.length) + 1].coalesce() }
     , set(input) { history.go(input - xover.site.position) }
     , enumerable: true
 });
@@ -3985,11 +4000,9 @@ Object.defineProperty(URL.prototype, 'tag', {
 
 Object.defineProperty(URL.prototype, 'toString', {
     value: function () {
-        const basePath = location.basepath || '';
-
-        const normalizedBasePath = basePath ? `/${basePath.replace(/^\/|\/$/g, '')}/` : '';
-
         if (this.origin === window.location.origin) {
+        const basePath = location.basepath || '';
+        const normalizedBasePath = basePath ? `/${basePath.replace(/^\/|\/$/g, '')}/` : '';
             const pathname = this.pathname.startsWith(normalizedBasePath)
                 ? this.pathname 
                 : normalizedBasePath + this.pathname.replace(/^\/+/, '');
@@ -5495,6 +5508,21 @@ xover.modernize = async function (targetWindow) {
                     })
                 }
 
+                if (!Document.prototype.hasOwnProperty("ownerIframe")) {
+                    Object.defineProperty(Document.prototype, 'ownerIframe', {
+                        enumerable: false,
+                        get: function () {
+                            const documentWindow = this.defaultView;
+                            for (const iframe of window.parent.document.querySelectorAll('iframe')) {
+                                if (iframe.contentWindow === documentWindow) {
+                                    return iframe; // Found the containing iframe
+                                }
+                            }
+                            return null;
+                        }
+                    })
+                }
+
                 Object.defineProperty(Object.prototype, 'instanceOf', {
                     enumerable: false,
                     value: function (...constructors) {
@@ -5659,7 +5687,13 @@ xover.modernize = async function (targetWindow) {
                                 let node_event = new xover.listener.Event('change', { srcElement: active_element, element: target, attribute, value: current_value, old: old_value, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, attribute);
                                 window.dispatchEvent(node_event);
                                 if (node_event.defaultPrevented || current_value == null && target.hasAttributeNS(attribute.namespaceURI, attribute.localName)) delete (mutation.attributes[attribute.namespaceURI] || {})[attribute.localName];
-                                if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) delete mutation.attributes[attribute.namespaceURI];
+                                if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) {
+                                    delete mutation.attributes[attribute.namespaceURI];
+                                } else {
+                                    for (let field of [...document.querySelectorAll(`*[xo-slot]:not([onchange]),form *[name]:not([onchange])`)].filter(el => el.scope === attribute && el.value !== current_value)) {
+                                        field.setAttribute("value", current_value)
+                            }
+                        }
                             }
                         }
 
@@ -6595,7 +6629,7 @@ xover.modernize = async function (targetWindow) {
                         let self = this;
                         return function (...args) {
                             let context = this;
-                            if (!self.hasOwnProperty("source")) {
+                            if (!self.source) {
                                 return Promise.reject("Document is not associated to a Source and can't be fetched");
                             }
                             let controller = (context.url || {}).controller;
@@ -7038,8 +7072,8 @@ xover.modernize = async function (targetWindow) {
                             //if (this.ownerDocument instanceof XMLDocument) {
                             //    return undefined
                             //} else { /* Some nodes like processing-instructions have no closest method */
-                            let target = typeof (this.closest) === 'function' ? this.closest("[xo-source],[xo-stylesheet]") : this.ownerDocument.createComment("ack:no-scope");
-                            return target == this ? Object.getOwnPropertyDescriptor(Node.prototype, 'section').get.call(this.parentNode) : target;
+                            let target = this.parentNode && typeof (this.parentNode.closest) === 'function' && this.parentNode.closest("[xo-source],[xo-stylesheet]") || this.ownerDocument;
+                            return target;
                             //}
                         }
                     });
@@ -7511,6 +7545,9 @@ xover.modernize = async function (targetWindow) {
                             target.setAttributeNS(namespace || "", attribute, value, options);
                         }
                     }
+                    if (["value"].includes(attribute) && target[attribute] != value) {
+                        target[attribute] = value
+                    }
                     return this;
                 }
 
@@ -7745,9 +7782,6 @@ xover.modernize = async function (targetWindow) {
                     return this;
                 }
                 //Element.prototype.toggle = Element.prototype.toggleAttribute;
-
-                xover.listener.on('attributeChanged', function ({ target, attribute, value, old: oldValue }) {
-                })
 
                 Element.prototype.removeAttributeNS = function (namespace_URI, attribute, value, refresh = false) {
                     let target = this;
@@ -10836,7 +10870,7 @@ xover.xml.combine = function (target, new_node) {
         }
         return target
     } else if (
-        instanceOf.call(target, HTMLSlotElement)
+        instanceOf.call(target, HTMLSlotElement) && target.constructor == new_node.constructor
         || instanceOf.call(target, Element) && (
             /*`${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope")
             || new_node.getAttributeNode("xo-scope")}` && `${target.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}` == `${new_node.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}`
@@ -11046,6 +11080,7 @@ xover.dom.combine = async function (target, new_node) {
     let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
+    xover.signal.update.call(new_node, (match, key) => target.single('./' + key) || eval(key) || match);
     xover.xml.staticMerge(target, new_node);
     let dependants = [...(new_node.content || new_node).querySelectorAll('[xo-source],[xo-stylesheet]')];
     dependants = dependants.map(el => el.render());
@@ -11215,7 +11250,7 @@ xover.dom.combine = async function (target, new_node) {
     //})
 }
 
-xover.listener.on('append::iframe[xo-source],iframe[xo-stylesheet]', function () {
+xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::iframe[xo-source],iframe[xo-stylesheet]'], function () {
     let iframe = this;
     iframe.onload = function () {
         function loadScript(type, ...files) {
@@ -11262,6 +11297,7 @@ xover.listener.on('append::iframe[xo-source],iframe[xo-stylesheet]', function ()
 
         let custom_scripts = xover.manifest.getSettings(iframe, "scripts")
         loadScriptsSequentially.call(iframeDocument.body, "script", ...custom_scripts);
+        xover.init.Observer(iframeDocument);
     };
 
     Object.entries(xover.listener).filter(([, handler]) => typeof (handler) == 'function').forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
