@@ -819,20 +819,20 @@ xover.initializeDOM = async function () {
         //    console.log(evt.target.result);
         //}
     }
-    let custom_component_listener = async function (mutations, observer) {
+    const custom_component_listener = new MutationObserver(async function (mutations, observer) {
         for (mutation of mutations) {
             if (mutation.addedNodes.length) {
                 return observer.host.render();
             }
         }
-    }
-    let shadow_root_listener = function (mutations, observer) {
+    })
+    const shadow_root_listener = new MutationObserver(function (mutations, observer) {
         for (mutation of mutations) {
             if (mutation.addedNodes.length) {
                 return observer.host.updateSlotContent(mutation.target);
             }
         }
-    }
+    })
     for (let component_name of Object.keys(xover.manifest.sources).filter(el => el.match(/^[a-zA-Z]/))) { /*window.document.select(`//*[starts-with(name(),'px-')]`)*/
         //let component_name = component.nodeName.toLowerCase();
         if (customElements.get(component_name)) continue;
@@ -853,14 +853,14 @@ xover.initializeDOM = async function () {
                     this.initialChildNodes = this.initialChildNodes || [...this.initialFragment.childNodes];
 
                     this.template = xover.sources["${component_name}"];
-                    const observer = new MutationObserver(custom_component_listener);
+                    const observer = custom_component_listener;
                     observer.host = this;
                     observer.observe(this.template, { childList: true, subtree: true });
                 }
                 
                 attachShadow(options) {
                     let shadowRoot = super.attachShadow(options);
-                    const observer = new MutationObserver(shadow_root_listener);
+                    const observer = shadow_root_listener;
                     observer.host = this;
                     observer.observe(shadowRoot, { childList: true, subtree: true });
                     this.append(...this.initialChildNodes);
@@ -872,6 +872,15 @@ xover.initializeDOM = async function () {
                     this.template.ready.then(async (document)=>{
                         await xover.dom.combine(this, document.cloneNode(true));
                         !this.shadowMode && this.updateSlotContent();
+                        let shadowRoot = this.shadowRoot || this;
+                        if (!this.init.initialized && typeof(this.init)=='function') {
+                            //this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
+                                this.init(shadowRoot);
+                            //}).finally(()=>{
+                            //    delete this.init.initializing;
+                            //})
+                        }
+                        this.init.initialized = true
                     }).catch(e => console.error(e, this));
                 }
 
@@ -891,6 +900,7 @@ xover.initializeDOM = async function () {
 
                 connectedCallback() {
                     if (!this.ownerDocument.contains(this)) return;
+                    //if (typeof(this.checkVisibility) == 'function' ? !this.checkVisibility() : !this.ownerDocument.contains(this)) return;
                     this.render()
                 }
 
@@ -929,11 +939,8 @@ xover.initializeDOM = async function () {
                             }
                         }
                     }
-                    await xover.signal.update.call(shadowRoot || this, (match, key) => this.single('./'+key) || match);
-                    if (typeof(this.init)=='function') {
-                        this.init(shadowRoot)
+                    await xover.signal.update.call(this, shadowRoot || this, (key, match) => this.single('./'+key) || match);
                     }
-                }
                 
                 static get observedAttributes() {
                     return ['value', 'text'];
@@ -966,7 +973,7 @@ xover.initializeDOM = async function () {
                                 this._text = newValue; // Update internal property
                                 break;
                         }
-                        xover.signal.update.call(this, (match, key) => this.single('./'+key) || match);
+                        xover.signal.update.call(this, (key, match) => this.single('./'+key) || match);
                     }
                 }
 
@@ -1147,60 +1154,53 @@ xover.signal = {};
 Object.defineProperties(xover.signal, {
     "update": {
         writable: false, configurable: false,
-        value: async function (valueParser) {
-            let target = instanceOf.call(this, Node) && this || document;
+        value: async function (target = document, valueParser) {
+            let context = instanceOf.call(this, Node) && this || target.scope || document;
             target.subscribers = target.subscribers || new Map();
             let subscribers = target.subscribers;
-            for (let attr of target.select(`.//@*[contains(.,'{$') or contains(.,'{{')]|.//html:slot[not(ancestor::html:code)]/text()[contains(.,'{$') or contains(.,'{{') or contains(.,'$\{')]`)) {
+            for (let attr of instanceOf.call(target, Node) && target.select(`.//@*[contains(.,'{$') or contains(.,'{{')][contains(.,'}}')]|.//text()[contains(.,'{$') or contains(.,'{{')][contains(.,'}}')]|.//html:slot[not(ancestor::html:code)]/text()[contains(.,'{$') or contains(.,'{{') or contains(.,'$\{')][contains(.,'}}')]`) || []) {
                 subscribers.set(attr, attr.value)
             }
             for (let [ref, formula] of subscribers.entries()) {
-                formula.replace(/\{[\{\$]([^\}]+)\}\}/g, async (full_match, match) => {
+                let value = formula.replace(/\{[\{\$]([^\}]+)\}\}/g, (full_match, match) => {
                     let [value, else_value] = match.split(/\s*\|\|\s*/);
-                    let source = ref.source;
-                    source && source.document && await source.document.ready
-                    let [variable, scope = ref.scope] = xover.hasOwnProperty(value.split(":")[0]) ? value.split(":").reverse() : [value];
-                    let subscriber = xover.subscribers[scope || ''][variable];
+                    //let source = ref.source;
+                    //source && source.document && await source.document.ready
+                    let [variable, scope = context] = xover.hasOwnProperty(value.split(":")[0]) ? value.split(":").reverse() : [value];
+                    let subscriber;
+                    if (typeof (scope) == 'string') {
+                        subscriber = xover.subscribers[scope || ''][variable];
                     subscriber.set(ref, formula);
                     subscriber.evaluate(scope, else_value)
+                    } else if (instanceOf.call(scope, Node)) {
+                        //await scope.ready
                     try {
-                        return eval(formula)
+                            value = typeof (valueParser) == 'function' ? /*await */valueParser.call(scope, match, full_match) : (scope.documentElement || scope).single(match) || '';
+                            if (instanceOf.call(value, Node)) {
+                                return value
+                            } else {
+                                return xover.xml.encodeEntities(value)
+                            }
                     } catch (e) {
                         console.log(e)
                         /*typeof (e.render) == 'function' ? e.render() : String(e).alert()*/
                     }
+            }
                 })
-            }
-            for (let src of target.select(`.//*[@xo-site]//@src|.//*[@xo-site]//@href`)) {
-                src.set(xover.URL(src.value, src.closest("[xo-site]").getAttribute("xo-site")))
-            }
-
-            // first version of {{@attr}} notation. TODO: Keep record of place holders and be aware of changes
-            if (typeof (valueParser) != 'function') return;
-            target.mustache = target.mustache || new Map();
-            let mustache = target.mustache;
-            for (let ref of target.select(`.//text()[contains(.,'{{')]|.//@*[contains(.,'{{')]`)) {
-                mustache.set(ref, ref.value)
-            }
-            for (let [ref, formula] of mustache.entries()) {
-                //if (!ref.host) {
-                //    mustache.delete(ref)
-                //    continue
-                //}
-                let value = formula.replace(/\{\{([^\}]+)\}\}/g, (match, key) => {
-                    return valueParser.call(ref, match, key);
-                });
-                if (instanceOf.call(ref, Attr)) {
-                    let parentNode = ref.parentNode;
-                    if (parentNode[ref.name] != value) {
-                        ref.parentNode[ref.name] = value
-                    }
-                }
                 if (ref.textContent != value) {
+                    if (value.indexOf("<") != -1 && instanceOf.call(ref, Text, HTMLElement)) {
+                        let node = xover.string.toHTML(value);
+                        ref.replaceWith(node);
+                        target.subscribers.delete(ref);
+                        xover.delay(1).then(() => target.subscribers.set(node, formula));
+                    } else if (value.indexOf("&") != -1) {
+                        ref.textContent = xover.string.htmlDecode(value);
+                    } else {
                     ref.textContent = value;
                 }
             }
         }
+    }
     }
 });
 xover.evaluateReferencers = xover.signal.update;
@@ -1447,10 +1447,13 @@ class EventHistory {
     }
 
     set(handler, item) {
+        if (item instanceof Attr) this.set(handler, item.ownerElement || item.parentNode); // TODO: Check escenarios for attrs without ownerElement
         this.handlers.set(handler, (this.handlers.get(handler) || new Map()))
         let target = this.handlers.get(handler);
-        target.set(item, (target.get(item) || 0) + 1)
-        xover.delay(10).then(() => {
+        let count = (target.get(item) || 0) + 1;
+        count = count < 1 ? 1 : count;
+        target.set(item, count < 0 ? 0 : count)
+        xover.delay(100).then(() => {
             xover.listener.history.delete(handler, item);
         })
     }
@@ -1460,13 +1463,17 @@ class EventHistory {
     }
 
     delete(handler, item) {
+        if (item instanceof Attr) this.delete(handler, item.ownerElement || item.parentNode);
         let target = this.handlers.get(handler) || new Map();
-        target.set(item, (target.get(item) || 0) - 1)
+        let count = (target.get(item) || 0) - 1;
+        count = count < 0 ? 0 : count;
+        target.set(item, count)
     }
 
     has(handler, item) {
-        let count = (this.handlers.get(handler) || new Map()).get(item) || 0;
-        return !!count;
+        //this.handlers = new Map([...(this.handlers.get(handler) || new Map()).entries()].map(([el, count]) => [el.parentNode, count]))
+        let count = (this.handlers.get(handler) || new Map()).get(item) || (this.handlers.get(handler) || new Map()).get(item) || (this.handlers.get(handler) || new Map()).get(item.ownerElement) || 0;
+        return count > 0;
     }
 
     overflowed(handler, item) {
@@ -1481,24 +1488,22 @@ Object.defineProperty(xover.listener, 'dispatcher', {
     value: function (event) {
         if (xover.listener.off === true) return;
         let context = event.context || !(event instanceof CustomEvent) && event.target || null;
-        if (!context) return;
+        if (!context || !context.ownerElement && instanceOf.call(context, Attr)) return;
         if (xover.listener.debug.matches.call(context, null, xover.listener.debugger) && !xover.listener.debug.matches.call(context, null, xover.listener.debuggerExceptions)) {
             debugger;
         }
         let fns = xover.listener.matches(context, event.type, (event.detail || {}).tag);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
+        if (!handlers.size) return;
         //context.eventHistory = context.eventHistory || new Map();
-        typeof (context) === 'object' && Object.defineProperty(context, 'handlerHistory', {
-            enumerable: false, configurable: true, writable: true,
-            value: context.handlerHistory || context instanceof Request && new Set() || null
-        });
-        let returnValue;
+        let target = (!context.ownerElement && instanceOf.call(context, Attr) ? context.parentNode : context);
+        let returnValue = undefined;
         for (let handler of [...handlers.values()].reverse()) {
             try {
                 if (event.propagationStopped || event.cancelBubble) break;
-                if (context.handlerHistory instanceof Set && context.handlerHistory.has(handler)) continue;
-                if (xover.listener.history.overflowed(handler, context)) {
-                    console.warn(`Listener dispatcher overflown`, [handler, context])
+                if (xover.listener.history.has(handler, target)) continue; //TODO: Check between overflowed and this method
+                if (xover.listener.history.overflowed(handler, target)) {
+                    console.warn(`Listener dispatcher overflown`, [handler, target])
                     continue;
                 }
                 if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
@@ -1562,7 +1567,6 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 //if (context.eventHistory.get(handler)) {
                 //    console.warn(`Event ${event.type} recursed`)
                 //}
-                xover.listener.history.set(handler, context);
                 if (returnValue !== undefined && !(returnValue instanceof Promise) && event.detail && event.detail.value) {
                     event.detail.value = returnValue;
                 }
@@ -1586,7 +1590,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 //    && [event.srcEvent || event] || event.detail.args || [])
                 //    || arguments) //former method
                 returnValue = /*await */handler.apply(context, args); /*Events shouldn't be called with await, but can return a promise*/
-                instanceOf.call(context.handlerHistory, Set) && context.handlerHistory.add(handler);
+                xover.listener.history.set(handler, target);
                 if (returnValue !== undefined) {
                     //event.returnValue = returnValue; //deprecated
                     if (event.detail) {
@@ -3187,6 +3191,9 @@ xover.string.toHTML = function (string = '') {
         //} else {
         body.append(...html_doc.head.childNodes, ...html_doc.body.childNodes);
         body = body.hasChildNodes() && body || new Text("")
+        if (body.childElementCount == 1) {
+            body = body.firstElementChild;
+        }
         //}
     } else {
         body = html_doc
@@ -5540,7 +5547,12 @@ xover.modernize = async function (targetWindow) {
                     value: function (...constructors) {
                         if (this == null) return false;
                         if ((this.ownerDocument || this).defaultView) {
-                            constructors.push(...constructors.map(el => (this.ownerDocument || this).defaultView[el.name]));
+                            constructors = constructors.reduce((array, el) => {
+                                array.push((this.ownerDocument || this).defaultView[el.name] || el);
+                                array.push(top.window[el.name] || el);
+                                array.push(el);
+                                return array.distinct();
+                            }, []);
                         }
                         return constructors.some(constructor => {
                             if (constructor == CustomElement) {
@@ -5628,7 +5640,7 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                xover.xml.observer = async function (mutationList, observer) {
+                xover.xml.observer = new MutationObserver(async function (mutationList, observer) {
                     let mutated_targets = new MutationSet(...mutationList).consolidate();
                     if (!mutated_targets.size) return;
                     //observer.disconnect()
@@ -5694,7 +5706,7 @@ xover.modernize = async function (targetWindow) {
 
                         for (let [namespace, attributes] of Object.entries(mutation.attributes || {})) {
                             for (let [attribute_name, [attribute, old_value]] of Object.entries(attributes)) {
-                                let current_value = attribute.value;
+                                let current_value = (attribute.nil && old_value == null || !attribute.nil) ? attribute.value : null;
                                 if (String(current_value) === String(old_value)) continue;
                                 let node_event = new xover.listener.Event('change', { srcElement: active_element, element: target, attribute, value: current_value, old: old_value, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, attribute);
                                 window.dispatchEvent(node_event);
@@ -5729,7 +5741,7 @@ xover.modernize = async function (targetWindow) {
                         }
                         active_element instanceof HTMLElement && [...active_element.querySelectorAll(".xo-working")].concat([active_element]).forEach(element => element.classList.remove("xo-working"))
                     })
-                }
+                })
 
                 if (!Node.prototype.hasOwnProperty('observe')) {
                     Node.prototype.observe = function (...args) {
@@ -5747,7 +5759,7 @@ xover.modernize = async function (targetWindow) {
                             self.connect()
                             return;
                         }
-                        if (!instanceOf.call(observer, MutationObserver)) {
+                        if ((observer.constructor || {}).name !== 'MutationObserver') {
                             observer = new MutationObserver(observer)
                         }
                         observer.observe(self, config);
@@ -5830,7 +5842,7 @@ xover.modernize = async function (targetWindow) {
                         let selector = args[0];
                         try {
                             if (Node.contains && Node.contains.value && (!selector || selector instanceof Node)) {
-                                return Node.contains.value.apply(this, args);
+                                return args.find(el => el === this) || Node.contains.value.apply(this, args.map(arg => arg.ownerElement || arg));
                             }
                             return this.matches(selector) || !!this.querySelector(selector) || null
                         } catch (e) {
@@ -5888,17 +5900,17 @@ xover.modernize = async function (targetWindow) {
                 })
 
                 Node.host = Node.host || Node.prototype, 'host';
-                Object.defineProperty(Node.prototype, 'host', {
+                const host_handler = {
                     get: function () {
                         if (this.hasOwnProperty("_host")) return this._host;
-                        const root = this.getRootNode({ composed: true });
+                        const root = (this.ownerElement || this).getRootNode({ composed: true });
 
-                        if (root instanceof ShadowRoot) {
+                        if (instanceOf.call(root, ShadowRoot)) {
                             return root.host;
                         }
 
                         let current = this.parentNode;
-                        while (instanceOf.call(current, Element) && !instanceOf.call(current, CustomElement)) {
+                        while (instanceOf.call(current, Node) && !instanceOf.call(current, HTMLIFrameElement, CustomElement)) {
                             current = current.parentNode;
                         }
 
@@ -5906,8 +5918,9 @@ xover.modernize = async function (targetWindow) {
                     }, set: function (input) {
                         this._host = input
                     }
-                });
-
+                }
+                Object.defineProperty(Node.prototype, 'host', host_handler);
+                Object.defineProperty(HTMLAnchorElement.prototype, 'host', host_handler);
 
                 HTMLCollection.filter = HTMLCollection.filter || Object.getOwnPropertyDescriptor(HTMLCollection.prototype, 'filter');
                 Object.defineProperty(HTMLCollection.prototype, 'filter', {
@@ -5920,7 +5933,7 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                let xo_handler_toArray = {
+                const xo_handler_toArray = {
                     value: function () {
                         return new NodeSet(...this);
                     }, writable: true, enumerable: false, configurable: false
@@ -5951,11 +5964,12 @@ xover.modernize = async function (targetWindow) {
                     }
                 })
 
-                let xo_handler_Nodes = {
+                const xo_handler_Nodes = {
                     get: function () {
                         return new NodeSet(this);
                     }
                 }
+
                 if (!Array.prototype.hasOwnProperty('Nodes')) Object.defineProperty(Array.prototype, 'Nodes', xo_handler_Nodes);
 
                 if (!Array.prototype.hasOwnProperty('toNodeSet')) Object.defineProperty(Array.prototype, 'toNodeSet', xo_handler_Nodes);
@@ -6095,7 +6109,7 @@ xover.modernize = async function (targetWindow) {
                                 let remove;
                                 let observer = (this.ownerDocument || this).observer;
 
-                                if (!this.ownerElement && this.parentNode) {
+                                if (this.nil && !this.ownerElement && this.parentNode) {
                                     //this.ownerDocument.disconnect(0);
                                     this.parentNode.setAttributeNode(this);
                                     //clonedParent = cloneNodePath(this.formerParentNode);
@@ -6941,35 +6955,43 @@ xover.modernize = async function (targetWindow) {
                             let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
                             let section = this.section;
                             let source = this.source //section && section.source;
-                            if (!source) {
-                                this.scopeNode = null;
-                                return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
-                            } else {
-                                let self = this instanceof Element ? this : this.parentNode;
+                            //if (!source) {
+                            //    this.scopeNode = null;
+                            //    return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
+                            //} else {
+                            let self = this instanceof Element ? this : this.parentNode || this;
                                 let ref = self;
-                                let match, scope
-                                while (!scope) {
-                                    ref = ref.closest("[xo-scope],[id],[xo:id]") //,input[name],textarea[name],select[name]
-                                    if (!ref) {
-                                        scope = source.document.documentElement;
-                                        ref = self;
-                                        continue
-                                    }
+                            let scope, slot;
+                            do {
+                                ref = typeof (ref.closest) == 'function' && ref.closest("[xo\\:id], [xo-scope], [id]") || ref !== self && ref.host || ref.ownerDocument || ref; //,input[name],textarea[name],select[name]
+                                if (ref !== self && instanceOf.call(ref, CustomElement)) {
+                                    scope = ref
+                                    slot = /*typeof (self.getAttributeNode) == 'function' && self.getAttributeNode("part") || */null;
+                                } else if (ref && ref.attributes) {
                                     let attrs = [...ref.attributes || []].filter(attr => ["xo-scope", "xo:id", "id"].includes(attr.localName));
-                                    while (!match && attrs.length) {
+                                    while (scope === undefined && attrs.length) {
                                         let attr = attrs[0];
                                         if (attr.localName == "xo-scope" && attr.value.indexOf('context:') == 0 && (this.context && section.context)) {
                                             scope = section.context.selectFirst(`//*[@xo:id="${attr.value}"]`);
                                         } else {
-                                            scope = source.selectFirst(`//*[@xo:id="${attr}"]`) || section.source.selectFirst(`//*[@xo:id="${attr}"]`) || source.selectFirst(`//*[@id="${attr}"]`) || section.source.selectFirst(`//*[@id="${attr}"]`) || attr.localName == "xo-scope" && section.source.selectFirst(attr.value) || null;
+                                            scope = source.selectFirst(`//*[@xo:id="${attr}"]`) || section.source.selectFirst(`//*[@xo:id="${attr}"]`) || source.selectFirst(`//*[@id="${attr}"]`) || section.source.selectFirst(`//*[@id="${attr}"]`) || attr.localName == "xo-scope" && section.source.selectFirst(attr.value) || undefined;
                                             if (instanceOf.call(scope, Attr) && scope.localName == 'id' && scope.namespaceURI == xover.spaces["xover"]) {
                                                 scope = scope.ownerElement;
                                             }
                                         }
+                                        if (scope === undefined && attr.localName == "xo-scope") {
+                                            scope = null;
+                                        }
                                         attrs.shift()
                                     }
-                                    ref = ref.parentNode
+                                } else {
+                                    scope = ref.source
                                 }
+                                ref = scope !== undefined && ref || ref.parentNode || self
+                            } while (scope === undefined && ref && ref != self)
+                            if (scope === undefined && ref == self) {
+                                scope = source;
+                            }
                                 /*let id = !ref.hasAttribute("xo-scope") && (ref.getAttributeNode("xo:id") || ref.getAttributeNode("id")) || null;*/
                                 //scope = source.selectFirst(`//*[@xo:id="${id}"]`) || section.source.selectFirst(`//*[@xo:id="${id}"]`) || source.selectFirst(`//*[@id="${id}"]`) || section.source.selectFirst(`//*[@id="${id}"]`);
                                 //if (!scope) {
@@ -6979,21 +7001,22 @@ xover.modernize = async function (targetWindow) {
                                 //    //    scope = source.document.documentElement; //return source;
                                 //    //}
                                 //}
-                                let slot = ref.closest('[xo-slot]') || ref.closest('[slot]') || ref.closest('input[name],textarea[name],select[name]');
-                                let attribute;
-                                /*if (!dom_scope) {
-                                    this.scopeNode = null;
-                                    return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                                } else */
-                                if (ref.contains(slot)) {
-                                    slot = slot.getAttributeNode("xo-slot") || slot.getAttributeNode("name");
+                            slot = slot !== undefined ? slot : self.closest('[xo-slot]') || self.closest('[slot]') || self.closest('input[name],textarea[name],select[name]');
+
+                            if (slot && ref.contains(slot)) {
+                                slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || slot.getAttributeNode("name");
                                 } else {
                                     slot = '';
                                 }
                                 if (!slot && this instanceof Text) slot = 'text()';
                                 if (scope && slot) {
+                                if (!instanceOf.call(scope, Element)) {
+                                    scope = scope.documentElement || scope.firstElementChild;
+                                }
                                     slot = slot.value;
-                                    if (slot === 'text()') {
+                                if (!slot) {
+                                    return null;
+                                } else if (slot === 'text()') {
                                         let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
                                         this.scopeNode = textNode;
                                         return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
@@ -7015,10 +7038,10 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 //Implementar para Text $0.select('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.selectFirst('self::xo:r')).pop().getAttributeNode($0.scope.value)
                                 this.scopeNode = scope || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
-                                return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                            }
+                            return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
+                            //}
                         } catch (e) {
-                            return this.ownerDocument.createComment(`ack:${e}`)
+                            return Promise.reject(`ack:${e}`)
                         }
                     }
                 }
@@ -7035,18 +7058,18 @@ xover.modernize = async function (targetWindow) {
                     get: function () {
                         //let section = this.section || this;
                         //if (!(section instanceof HTMLElement && (this.hasAttribute("xo-stylesheet")))) return null;
-                        let source = this.closest("[xo-source]") || this.ownerDocument || this;
+                        let source = this.closest("[xo-source]") || this.host || this.ownerDocument || this;
                         if (source instanceof Element && source.getAttribute("xo-source") == 'inherit') {
                             return (source.parentNode /*|| source.context_source*/ || {}).source;
                         }
-                        if (!(source instanceof HTMLElement)) {
-                            let parent_iframe = source.ownerIframe;
-                            if (parent_iframe) {
-                                return parent_iframe.source
-                            } else {
+                        if (instanceOf.call(source, Document)) {
                                 return xover.stores.seed
+                        } else if (instanceOf.call(source, CustomElement, DocumentFragment)) {
+                            return source
+                        } else if (!instanceOf.call(source, Element)) {
+                            debugger
+                            instanceOf.call(source, Element)
                             }
-                        }
                         source = source.getAttribute("xo-source");
                         if (source && source.indexOf("{$") != -1) {
                             source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
@@ -7113,7 +7136,8 @@ xover.modernize = async function (targetWindow) {
                             //if (this.ownerDocument instanceof XMLDocument) {
                             //    return undefined
                             //} else { /* Some nodes like processing-instructions have no closest method */
-                            let target = this.parentNode && typeof (this.parentNode.closest) === 'function' && this.parentNode.closest("[xo-source],[xo-stylesheet]") || this.ownerDocument;
+                            //let host = this.host;
+                            let target = this.parentNode && typeof (this.parentNode.closest) === 'function' && this.parentNode.closest("[xo-source],[xo-stylesheet]") || this.ownerDocument || this.host;
                             return target;
                             //}
                         }
@@ -7586,7 +7610,7 @@ xover.modernize = async function (targetWindow) {
                             target.setAttributeNS(namespace || "", attribute, value, options);
                         }
                     }
-                    if (["value"].includes(attribute) && target[attribute] != value) {
+                    if (["value"].includes(attribute) && target[attribute] != `${value}`) {
                         target[attribute] = value
                     }
                     return this;
@@ -7919,9 +7943,10 @@ xover.modernize = async function (targetWindow) {
                             return !this.ownerElement ? null : Attr.value.get.call(this);
                         },
                         set: function (value) {
-                            if (!this.ownerDocument.contains(this.parentNode)) {
-                                return Attr.value.set.call(this, value);
-                            }
+                            //if (!this.ownerDocument.contains(this.parentNode)) {
+                            //    return Attr.value.set.call(this, value);
+                            //}
+                            let is_html_element = instanceOf.call(this.parentNode, HTMLElement, SVGElement);
                             if (this.frozen) return this;
                             if (event && (event.type || "").split(/::/, 1).shift() == 'beforeChange' && this.name == ((event.detail || {}).target || {}).name) {
                                 event.preventDefault();
@@ -7950,7 +7975,7 @@ xover.modernize = async function (targetWindow) {
                             //let store = /*this.store || */this.ownerDocument.store;
                             //let source = store && store.source || null;
                             let return_value;
-                            if (value != null) {
+                            if (!(!is_html_element && value == null)) {
                                 value = `${value}`
                             };
 
@@ -7965,11 +7990,11 @@ xover.modernize = async function (targetWindow) {
                             if (!this.ownerElement && value !== undefined && value !== null) {
                                 Attr.value.set.call(this, value);
                                 this.parentNode.setAttributeNode(this);
-                            } else if (value === null || value === undefined) {
-                                //this.nil = true;
+                            } else if ((value === null/* || value === undefined*/) && !is_html_element) {
+                                this.nil = value === null;
                                 this.ownerElement && this.remove()
                             } else {
-                                //this.nil = false;
+                                this.nil = undefined;
                                 Attr.value.set.call(this, value);
                             }
                             //if (old_value !== value) {
@@ -8135,6 +8160,12 @@ xover.modernize = async function (targetWindow) {
                     Text.prototype.get = function (key) { }
                 }
 
+                if (!Document.prototype.hasOwnProperty('set')) {
+                    Document.prototype.set = function (value) {
+                        return this.createComment("ack:no_target")
+                    }
+                }
+
                 if (!Text.prototype.hasOwnProperty('set')) {
                     Text.prototype.set = function (value) {
                         value = typeof value === 'function' && value(this) || value && value.constructor === {}.constructor && JSON.stringify(value) || value != null && String(value) || value;
@@ -8157,6 +8188,14 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Attr.prototype, 'parentNode', {
                         get: function () {
                             return this.ownerElement;
+                        }
+                    })
+                }
+
+                if (!Document.prototype.hasOwnProperty('parentNode')) {
+                    Object.defineProperty(Document.prototype, 'parentNode', {
+                        get: function () {
+                            return this.ownerIframe || null;
                         }
                     })
                 }
@@ -8281,6 +8320,7 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Attr.prototype.remove = function (options = {}) {
+                    this.nil = true;
                     if (!this.reactive || options.silent) {
                         this.removing = true;
                         if (this.namespaceURI) {
@@ -9266,7 +9306,7 @@ xover.modernize = async function (targetWindow) {
                                 let stylesheet_href = stylesheet.href;
                                 let dependants = [];
                                 for (let el of dom.children) {
-                                    el.document = this;
+                                    //el.document = this;
                                     el.context = data;
                                     !instanceOf.call(el, HTMLHtmlElement) && el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove();
                                     if (![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(el.constructor)) {
@@ -9277,7 +9317,7 @@ xover.modernize = async function (targetWindow) {
 
                                 let old = target.cloneNode(true);
                                 target = await xover.dom.combine.call(this, target, dom);
-                                target.document = this;
+                                //target.document = this;
                                 target.context = data;
 
                                 xover.delay(10).then(() => {
@@ -9530,7 +9570,36 @@ class MutationSet extends Array {
     }
 
     consolidate() {
-        let mutationList = this;
+        const distinctMutationRecords = function (mutationList) {
+            const seenRecords = new Map();
+            const distinctRecords = [];
+
+            for (const record of mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))) {
+                if (record.type == "attributes" && record.oldValue === null && !record.target.hasAttributeNS(record.attributeNamespace, record.attributeName)) {
+                    continue;
+                }
+                const serializedRecord = JSON.stringify({
+                    type: record.type,
+                    attributeName: record.attributeName,
+                    oldValue: String(record.oldValue),
+                    addedNodes: Array.from(record.addedNodes).map(node => node.nodeName),
+                    removedNodes: Array.from(record.removedNodes).map(node => node.nodeName)
+                });
+
+                if (!seenRecords.has(record.target)) {
+                    seenRecords.set(record.target, new Set([serializedRecord]));
+                    distinctRecords.push(record);
+                } else {
+                    const serializedSet = seenRecords.get(record.target);
+                    if (!serializedSet.has(serializedRecord)) {
+                        serializedSet.add(serializedRecord);
+                        distinctRecords.push(record);
+                    }
+                }
+            }
+            return distinctRecords;
+        }
+        const mutationList = distinctMutationRecords(this);
         let mutated_targets = new Map();
         for (let mutation of mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))) {
             let inserted_ids = [];
@@ -10694,6 +10763,7 @@ xover.xml.parseValue = function (value) {
 }
 
 xover.xml.staticMerge = function (node1, node2) {
+    node1.subscribers = node2.subscribers;
     if (instanceOf.call(node1, HTMLSlotElement)) return;
     node1.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
     node2.select(`.//text()[normalize-space(.)='']`).forEach(text => !text.nextElementSibling && text.remove());
@@ -10830,7 +10900,7 @@ xover.xml.combine = function (target, new_node) {
         }
         return target
     } else if (
-        instanceOf.call(target, HTMLSlotElement) && target.constructor == new_node.constructor
+        instanceOf.call(target, HTMLSlotElement)// && target.constructor == new_node.constructor
         || instanceOf.call(target, Element) && (
             /*`${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope")
             || new_node.getAttributeNode("xo-scope")}` && `${target.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}` == `${new_node.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}`
@@ -10956,7 +11026,7 @@ xover.dom.applyScripts = async function (scripts = []) {
                                     console.error(e, arguments)
                                 }
                             }
-                        }(`/*${(xover.context.section || document.createElement("p")).getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; let constructor = context.constructor; ${script.textContent}; xover.context = undefined;`));
+                        }(`/*${((xover.context || {}).section || document.createElement("p")).getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; let constructor = context.constructor; ${script.textContent}; xover.context = undefined;`));
                         if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                             let target = document.getElementById(script.id);
                             target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
@@ -11044,7 +11114,7 @@ xover.dom.combine = async function (target, new_node) {
     let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
-    xover.signal.update.call(new_node, (match, key) => target.single('./' + key) || eval(key) || match);
+    await xover.signal.update.call(target, new_node, (key, match) => target.single('./' + key) || /*eval(key) || */match);
     xover.xml.staticMerge(target, new_node);
     let dependants = [...(new_node.content || new_node).querySelectorAll('[xo-source],[xo-stylesheet]')];
     dependants = dependants.map(el => el.render());
@@ -11093,7 +11163,7 @@ xover.dom.combine = async function (target, new_node) {
                 //iframe.addEventListener('focusout', xover.listeners.dom.onfocusout);
                 //iframe.addEventListener('change', xover.listeners.dom.onchange);
             }
-            let html_content = new_node.toString()
+            let html_content = new_node.stringify()
             let iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
             iframeDocument.open();
             iframeDocument.write(html_content.toString());
@@ -11249,7 +11319,7 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
                 loadScriptsSequentially.call(target, type, ...scripts);
             }
         }
-
+        try {
         iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
         iframeDocument.parentFrame = iframe;
         const script = iframeDocument.createElement('script');
@@ -11263,6 +11333,9 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
         let custom_scripts = xover.manifest.getSettings(iframe, "scripts")
         loadScriptsSequentially.call(iframeDocument.body, "script", ...custom_scripts);
         xover.init.Observer(iframeDocument);
+        } catch (e) {
+            console.error(e)
+        }
     };
 
     Object.entries(xover.listener).filter(([, handler]) => typeof (handler) == 'function').forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
@@ -11290,7 +11363,9 @@ xover.xml.fromHTML = function (element) {
 xover.data.createMessage = function (message_content, message_type) {
     let message = xover.xml.createDocument('<xo:message xmlns:xo="http://panax.io/xover" type="' + (message_type || "exception") + '"/>')/*.seed()*/; // seed method is not called automatically
     if (message_content instanceof HTMLElement) {
-        message.documentElement.set(message_content)
+        message.documentElement.append(message_content)
+    } else if (instanceOf.call(message_content, Document, DocumentFragment)) {
+        message.documentElement.append(...message_content.childNodes)
     } else if ({}.constructor === message_content.constructor) {
         message = xover.xml.fromJSON(message_content, { mode: 'elements' });
     } else {
@@ -12242,6 +12317,7 @@ xover.Store = function (xml, ...args) {
             })
             await __document.ready;
             await this.initialize();
+            return __document
         }
     });
 
@@ -13507,16 +13583,17 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     if (event.defaultPrevented) return;
     xover.listener.click.target = event.target;
     xover.delay(250).then(() => xover.listener.click.target = undefined)
-    let srcElement = event.target.closest("[href]");
+    let srcElement = event.target.closest("a");
+    if (!srcElement.getAttributeNode("href")) return true;
     let href = (srcElement ? srcElement.getAttribute("href") : "");
 
-    if (srcElement.getAttribute("target") !== "_self" && !href.match(/^#.|^\?/)) {
+    if (srcElement && srcElement.getAttribute("target") !== "_self" && !href.match(/^#.|^\?/)) {
         return;
     }
 
     let url = xover.URL(href);
     hashtag = url.hash;
-    if (hashtag !== undefined && hashtag != (window.top || window).location.hash) {
+    if (hashtag !== undefined && hashtag != this.ownerDocument.location.hash) {
         let custom_event = new xover.listener.Event('beforeHashChange', [hashtag, (window.top || window).location.hash], url)
         window.dispatchEvent(custom_event);
         if (custom_event.defaultPrevented) {
@@ -13922,12 +13999,9 @@ xover.listener.on(['change::*[xo-slot]:not([onchange])', 'change::*[name]:not([o
     if (!scope) return;
     //let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
     let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : ((srcElement instanceof HTMLSelectElement && srcElement.options[srcElement.selectedIndex].getAttributeNode("value") || srcElement.value));
-    //if (srcElement.defaultPrevented) {
-
-    //}
-    //if (scope instanceof Attr || scope instanceof Text) {
+    if (instanceOf.call(scope, Attr, Text)) {
     scope.set(value);
-    //} else if (scope instanceof Node) {
+    } //else if (scope instanceof Node) {
     //    _attribute && scope.set(_attribute, value);
     //}
 })
@@ -14002,7 +14076,7 @@ xover.listener.on(['load', 'change::meta[name=scroll-restoration]'], function ()
     xover.site.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
 });
 
-xover.listener.on('Response:reject', function ({ response, request = {} }) {
+xover.listener.on('Response:reject', function ({ response = {}, request = {} }) {
     if (!response.ok && ((request.url || {}).pathname || '').indexOf(`.manifest`) != -1) {
         event.preventDefault();
     }
