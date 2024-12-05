@@ -1492,7 +1492,7 @@ xover.listener.history = new EventHistory();
 Object.defineProperty(xover.listener, 'dispatcher', {
     value: function (event) {
         if (xover.listener.off === true) return;
-        let context = event.context || !(event instanceof CustomEvent) && event.target || null;
+        let context = event.context || /*!(event instanceof CustomEvent) && */event.target /*|| null*/;
         if (!context || !context.ownerElement && instanceOf.call(context, Attr)) return;
         if (xover.listener.debug.matches.call(context, null, xover.listener.debugger) && !xover.listener.debug.matches.call(context, null, xover.listener.debuggerExceptions)) {
             debugger;
@@ -3934,13 +3934,14 @@ Object.defineProperty(xover.sources, '#', {
     }
 });
 
-xover.URL = function (url, base, settings = {}) {
-    if (url === null) {
-        return Promise.reject(`${url} is not a valid value for xover.URL`)
+xover.URL = function (href, base, settings = {}) {
+    if (href === null) {
+        return Promise.reject(`${href} is not a valid value for xover.URL`)
     }
-    if (!(this instanceof xover.URL)) return new xover.URL(url, base, settings);
+    if (!(this instanceof xover.URL)) return new xover.URL(href, base, settings);
 
     let method;
+    let url = href;
     if (!(url instanceof URL)) {
         url = url || '';
         [, method, url] = (url.toString() || '').match(/^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)?(.*)/);
@@ -10926,9 +10927,10 @@ xover.xml.combine = function (target, new_node) {
         || instanceOf.call(target, SVGElement) && !instanceOf.call(new_node, SVGElement)
     ) {
         let restore_focus = target.contains(document.activeElement)
-        for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) {
-            new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
-        }
+        new_node.combineAttributes(...target.attributes)
+        //for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) { // TODO: Review this logic
+        //    new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
+        //}
         target.metaNodes.remove();
         target.replaceWith(...new_metaNodes, new_node);
         restore_focus && new_node.focus()
@@ -13614,12 +13616,12 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
         }
     }
 
-    if (url.pathname == location.pathname && srcElement.getAttribute("target") == "_self") {
+    if (srcElement.getAttribute("target") == "_self") {
         xover.site.active = hashtag
-    } else {
+        event.preventDefault();
+    } else if (url.pathname == this.ownerDocument.location.pathname && hashtag != this.ownerDocument.location.hash) {
         xover.site.pushState({ seed: hashtag }, url.toString())
     }
-    event.preventDefault();
 });
 
 //xover.listener.on(["change", "click"], function (event) {
