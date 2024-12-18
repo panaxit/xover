@@ -799,10 +799,7 @@ xover.init.Observer = function (target_node = window.document) {
 
 xover.initializeDOM = async function () {
     await xover.ready;
-    for (let iframe of [...document.querySelectorAll("iframe[xo-source]")]) {
-        window.dispatchEvent(new xover.listener.Event('init', {}, iframe));
-    }
-    for (let iframe of [...document.querySelectorAll("iframe:not([src])")]) {
+    for (const iframe of [...document.querySelectorAll("iframe:not([src])")]) {
         let el = iframe.firstChild;
         if (!(el instanceof Text)) continue;
         let url = xover.dom.getGeneratedPageURL({
@@ -822,8 +819,10 @@ xover.initializeDOM = async function () {
     const custom_component_listener = new MutationObserver(async function (mutations, observer) {
         for (mutation of mutations) {
             if (mutation.addedNodes.length) {
-                return observer.host.render();
+                for (let el of document.querySelectorAll(observer.host.localName)) {
+                    el.render()
             }
+        }
         }
     })
     const shadow_root_listener = new MutationObserver(function (mutations, observer) {
@@ -870,18 +869,11 @@ xover.initializeDOM = async function () {
                 async render() {
                     if (this.disconnected) return;
                     this.template.ready.then(async (document)=>{
-                        await xover.dom.combine(this, document.cloneNode(true));
+                        await xover.dom.combine(this, document.cloneNode(true).documentElement);
                         !this.shadowMode && this.updateSlotContent();
                         let shadowRoot = this.shadowRoot || this;
                         if (typeof(this.init)=='function') {
-                            if (!this.init.initialized) {
-                            //this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
                                 this.init(shadowRoot);
-                            //}).finally(()=>{
-                            //    delete this.init.initializing;
-                            //})
-                        }
-                        this.init.initialized = true
                         }
                     }).catch(e => console.error(e, this));
                 }
@@ -952,9 +944,11 @@ xover.initializeDOM = async function () {
                     return this._value;
                 }
                 set value(newValue) {
+                    if (this._value === newValue) return;
                     this._value = newValue;
                     this.setAttribute('value', newValue); // Sync attribute with property
-                    this.scope.set(newValue)
+                    let scope = this.scope;
+                    if (instanceOf.call(scope, Attr)) scope.set(newValue)
                 }
 
                 get text() {
@@ -963,6 +957,24 @@ xover.initializeDOM = async function () {
                 set text(newText) {
                     this._text = newText;
                     this.setAttribute('text', newText); // Sync attribute with property
+                }
+
+                get initialChildNodes() {
+                    return this._initialChildNodes;
+                }
+                set initialChildNodes(initialChildNodes) {
+                    if (this._initialChildNodes) {
+                        function arraysAreEqual(arr1, arr2) {
+                            if (arr1.length !== arr2.length) return false;
+                            return arr1.every((value, index) => value.isEqualNode(arr2[index]));
+                        }
+                        if (!arraysAreEqual(this._initialChildNodes, initialChildNodes)) {
+                            this._initialChildNodes = initialChildNodes;
+                            this.render()
+                        }
+                    } else {
+                        this._initialChildNodes = initialChildNodes;
+                    }
                 }
 
                 attributeChangedCallback(name, oldValue, newValue) {
@@ -987,6 +999,32 @@ xover.initializeDOM = async function () {
         `)
     }
 
+
+    for (const iframe of [...document.querySelectorAll("iframe")]) {
+        iframe.addEventListener('load', async function () {
+            try {
+                const contentWindow = iframe.contentWindow;
+
+                contentWindow.xover = (xover || parent.xover);
+
+                xover.modernize.call(contentWindow);
+
+                contentWindow.addEventListener('message', function (event) {
+                    if (event.origin === location.origin && event.data.type === 'applyStyles') {
+                        const document = this.document;
+                        const style = document.createElement('style');
+                        style.textContent = event.data.styles;
+                        document.head.appendChild(style);
+                    }
+                });
+            } catch (e) {
+                console.error(e);
+            }
+
+            // Dispatch an init event after iframe is initialized
+            window.dispatchEvent(new xover.listener.Event('init', {}, iframe));
+        });
+    }
     xover.signal.update()
 }
 
@@ -1059,7 +1097,7 @@ class Structure {
         return new Proxy(map, {
             get: function (self, key) {
                 if (self instanceof Node) {
-                    let nodes = [...self.children].filter(el => el.localName == key);
+                    let nodes = [...self.childNodes].filter(el => el.matches(key));
                     if (nodes.length) {
                         self[key] = nodes.map(node => new Structure(node, properties));
                         if (self[key].length == 1) {
@@ -1079,7 +1117,11 @@ class Structure {
                         return result
                     }
                 }
-                if (!(key in self)) {
+                if (self instanceof Node) {
+                    if (!instanceOf.call(self[key], Node)) {
+                        self[key] = new Structure(document.createComment("ack:no-node"));
+                    }
+                } else if (!(key in self)) {
                     self[key] = new Structure(map instanceof Map ? new Map() : {}, properties)
                 }
                 return self[key];
@@ -1092,12 +1134,104 @@ class Structure {
     }
 }
 
+class Subscribers extends Map {
+    constructor(map) {
+        super();
+        return this
+    }
+
+    evaluate(...args) {
+        for (let [ref, formula] of [...this.entries()]) {
+            xover.subscribers.evaluate.apply(this, [ref, ...args])
+        }
+    }
+}
+
 xover.subscribers = new Structure(new Map(), {
     evaluate: {
-        value: function (scope) {
-            evaluate = function (values) {
-                for (let value of values) {
+        value: function (target, valueParser) {
+            let self = this;
+            const evaluate = function (valueParser) {
+                const ref = this;
+                if (this instanceof Node) {
+                    //                    let new_value = formula.replace(/\{[\$\{]([^\}]+)\}?\}/g, (match, prefixed_name) => { //TODO: Consolidate with signal update
+                    //                        let [variable, ...else_value] = prefixed_name.split(/\s*\|\|\s*/g);
+                    //                        let [name, prefix] = xover.hasOwnProperty(variable.split("::")[0]) ? variable.split("::").reverse() : xover.hasOwnProperty(variable.split(":")[0]) ? variable.split(":").reverse() : [variable];
+                    //                        else_value = else_value.concat(match);
+                    //                        if (!prefix) {
+                    //                            if (scope instanceof Node) {
+                    //                                return name && scope.get(name) || evaluate(else_value)
+                    //                            }
+                    //                        } else {
+                    //                            if (instanceOf.call(subscriber, HTMLSlotElement)) {
+                    //                                subscriber.classList.remove("xo-syncing");
+                    //                            } else if (instanceOf.call(subscriber, Text, Attr)) {
+                    //                                subscriber.parentNode.classList.remove("xo-syncing");
+                    //                            }
+                    //                            return xover[prefix][name] || evaluate(else_value)
+                    //                        }
+                    //                    });
+                    //                    if (subscriber.name == 'style') {
+                    //                        if (subscriber.ownerElement) subscriber.ownerElement.style.cssText = new_value;
+                    //                    } else {
+                    //                        subscriber.set(new_value);
+                    //                    }
+                    const formula = this.formula || '';
+                    const value = formula.replace(/\{[\$\{]([^\}]+)\}?\}/g, (full_match, match) => {
+                        let [value, else_value] = match.split(/\s*\|\|\s*/);
+                        //let source = ref.source;
+                        //source && source.document && await source.document.ready
+                        let [variable, scope = ref] = xover.hasOwnProperty(value.split("::")[0]) ? value.split("::").reverse() : xover.hasOwnProperty(value.split(":")[0]) ? value.split(":").reverse() : [value];
+                        let subscriber;
+                        Object.defineProperty(ref, 'formula', {
+                            value: formula
+                        })
+                        if (typeof (scope) == 'string' && scope in xover) {
+                            if (!xover.subscribers[scope || ''][variable].has(ref)) {
+                                xover.subscribers[scope || ''][variable].set(ref, formula);
+                            }
+                            return xover[scope || ''][variable];
+                        } else {/*if (instanceOf.call(scope, Node))*/
+                            //await scope.ready
                     try {
+                                value = typeof (valueParser) == 'function' ? /*await */valueParser.call(scope, match, full_match) : (scope.documentElement || scope).single(match) || '';
+                                if (match == value) {
+                                    try {
+                                        return eval(value)
+                                    } catch (e) {
+                                        return ''
+                                    }
+                                } else if (instanceOf.call(value, Node)) {
+                                    return value
+                                } else {
+                                    return xover.xml.encodeEntities(value)
+                                }
+                            } catch (e) {
+                                return else_value !== undefined ? else_value : full_match
+                                console.log(e)
+                                /*typeof (e.render) == 'function' ? e.render() : String(e).alert()*/
+                            }
+                        }
+                    })
+                    if (ref.textContent != value) {
+                        if (value.indexOf("<") != -1 && instanceOf.call(ref, Text, HTMLElement)) {
+                            let node = xover.string.toHTML(value);
+                            ref.replaceWith(node);
+                            node.formula = formula;
+                            if (instanceOf.call(self, Map)) {
+                                self.delete(ref);
+                                self.set(node, formula);
+                            }
+                        } else if (value.indexOf("&") != -1) {
+                            ref.textContent = xover.string.htmlDecode(value);
+                        } else {
+                            ref.textContent = value;
+                        }
+                    }
+                    ref.closest("*").classList.remove("xo-syncing")
+                } else {
+                    for (let value of args) {
+                        try {
                         let val = eval(`(${value})`);
                         if (val != undefined) {
                             return val;
@@ -1111,100 +1245,112 @@ xover.subscribers = new Structure(new Map(), {
                     }
                 }
             }
-            for (let [subscriber, formula] of [...this, ...Object.entries(this)]) {
-                if (formula instanceof Map && formula.hasOwnProperty("evaluate")) {
-                    formula.evaluate()
+            }
+            for (let [subscriber, subelement] of target instanceof Node && [[target, target.formula]] || this instanceof Map && this.entries() || Object.entries(this) || []) {
+                if (subelement instanceof Map && subelement.hasOwnProperty("evaluate")) {
+                    subelement.evaluate()
                     continue;
                 }
-                if (typeof (formula) !== 'string') continue;
+                if (typeof (subelement) !== 'string') continue;
                 if (subscriber instanceof Attr && !subscriber.ownerElement) {
                     this.delete(subscriber)
                     continue;
                 }
-                if (!subscriber.hasOwnProperty("formula")) {
+                if (!subscriber.hasOwnProperty("evaluate")) {
+                    Object.defineProperty(subscriber, 'evaluate', {
+                        value: evaluate
+                    })
+                }
+                if (!subscriber.hasOwnProperty("formula") && instanceOf.call(subscriber, Node)) {
                     Object.defineProperty(subscriber, 'formula', {
                         value: formula
                     })
                 }
-                if (subscriber.hasOwnProperty("evaluate")) {
-                    subscriber.evaluate()
-                } else {
-                    let new_value = formula.replace(/\{\$([^\}]*)\}/g, (match, prefixed_name) => {
-                        let [variable, ...else_value] = prefixed_name.split(/\s*\|\|\s*/g);
-                        let [name, prefix] = variable.split(/:/).reverse();
-                        else_value = else_value.concat(match);
-                        if (!prefix) {
-                            if (scope instanceof Node) {
-                                return name && scope.get(name) || evaluate(else_value)
+                subscriber.evaluate(valueParser)
                             }
-                        } else {
-                            return xover[prefix][name] || evaluate(else_value)
                         }
-                    });
-                    if (subscriber.name == 'style') {
-                        if (subscriber.ownerElement) subscriber.ownerElement.style.cssText = new_value;
-                    } else {
-                        subscriber.set(new_value);
                     }
-                }
-            }
-        }
-    }
 });
 
 xover.signal = {};
 Object.defineProperties(xover.signal, {
     "update": {
         writable: false, configurable: false,
-        value: async function (target = document, valueParser = function (key) { return this.single('./' + key) || key }) {
+        value: async function (target = document, valueParser = function (key) { return this.single('./' + key) || this.single('./@' + key) || key }) {
             let context = instanceOf.call(this, Node) && this || target.scope || document;
-            target.subscribers = target.subscribers || new Map();
-            let subscribers = target.subscribers;
-            for (let attr of instanceOf.call(target, Node) && target.select(`.//@*[contains(.,'{$') or contains(.,'{{')][contains(.,'}}')]|.//text()[contains(.,'{$') or contains(.,'{{')][contains(.,'}}')]|.//html:slot[not(ancestor::html:code)]/text()[contains(.,'{$') or contains(.,'{{') or contains(.,'$\{')][contains(.,'}}')]`) || []) {
-                subscribers.set(attr, attr.value)
+            let subscribers = target.subscribers || new Subscribers();
+            for (let subscriber of instanceOf.call(target, Node) && target.select(`.//@*[contains(.,'{$') or contains(.,'{{')][contains(.,'}')]|.//text()[contains(.,'{$') or contains(.,'{{')][contains(.,'}}')]|.//html:slot[not(ancestor::html:code)]/text()[contains(.,'{$') or contains(.,'{{') or contains(.,'$\{')][contains(.,'}}')]`).filter(el => !subscribers.has(el)) || []) {
+                if (!subscriber.hasOwnProperty("formula")) {
+                    Object.defineProperty(subscriber, 'formula', {
+                        value: subscriber.value
+                    })
             }
-            for (let [ref, formula] of subscribers.entries()) {
-                const value = formula.replace(/\{[\{\$]([^\}]+)\}\}/g, (full_match, match) => {
-                    let [value, else_value] = match.split(/\s*\|\|\s*/);
-                    //let source = ref.source;
-                    //source && source.document && await source.document.ready
-                    let [variable, scope = context] = xover.hasOwnProperty(value.split(":")[0]) ? value.split(":").reverse() : [value];
-                    let subscriber;
-                    if (typeof (scope) == 'string' && scope in xover) {
-                        subscriber = xover.subscribers[scope || ''][variable];
-                    subscriber.set(ref, formula);
-                    subscriber.evaluate(scope, else_value)
-                    } else {/*if (instanceOf.call(scope, Node))*/
-                        //await scope.ready
-                    try {
-                            value = typeof (valueParser) == 'function' ? /*await */valueParser.call(scope, match, full_match) : (scope.documentElement || scope).single(match) || '';
-                            if (match == value) {
-                                return eval(value)
-                            } else if (instanceOf.call(value, Node)) {
-                                return value
-                            } else {
-                                return xover.xml.encodeEntities(value)
+
+                if (instanceOf.call(subscriber, Attr)) {
+                    subscriber.parentNode.classList.add("xo-syncing")
+                } else if (instanceOf.call(subscriber, Text) && !instanceOf.call(subscriber.closest("*"), HTMLSlotElement)) {
+                    //const value = subscriber.value.replace(/\{[\$\{]([^\}]+)\}?\}/g, (full_match, match, ix, full_string) => {
+                    //    if (full_string == full_match) return full_string;
+                    //    let new_target = document.createElement("slot");
+                    //    new_target.classList.add("xo-syncing");
+                    //    return new_target.stringify();
+                    //})
+
+                    const fragment = document.createDocumentFragment();
+
+                    const placeholderRegex = /\{[\$\{]([^\}]+)\}?\}/g;
+                    let lastIndex = 0;
+                    const text_content = subscriber.value;
+                    let match;
+                    while ((match = placeholderRegex.exec(text_content)) !== null) {
+                        const [fullMatch, placeholderContent] = match;
+                        if (match.index > lastIndex) {
+                            const slot = document.createElement("slot");
+                            const text = text_content.slice(lastIndex, match.index);
+                            slot.textContent = text;
+                            fragment.appendChild(slot);
+                            //const textNode = document.createTextNode(text_content.slice(lastIndex, match.index));
+                            //fragment.appendChild(textNode);
                             }
-                    } catch (e) {
-                            return else_value !== undefined ? else_value : full_match
-                        console.log(e)
-                        /*typeof (e.render) == 'function' ? e.render() : String(e).alert()*/
+
+                        // Create and append a slot for the placeholder
+                        const slot = document.createElement("slot");
+                        slot.classList.add("xo-syncing");
+                        slot.textContent = '';
+                        if (!slot.hasOwnProperty("formula")) {
+                            Object.defineProperty(slot, 'formula', {
+                                value: fullMatch
+                            })
                     }
+                        fragment.appendChild(slot);
+
+                        // Map the slot to its placeholder value
+                        subscribers.set(slot, fullMatch);
+
+                        lastIndex = match.index + fullMatch.length;
             }
-                })
-                if (ref.textContent != value) {
-                    if (value.indexOf("<") != -1 && instanceOf.call(ref, Text, HTMLElement)) {
-                        let node = xover.string.toHTML(value);
-                        ref.replaceWith(node);
-                        target.subscribers.delete(ref);
-                        xover.delay(1).then(() => target.subscribers.set(node, formula));
-                    } else if (value.indexOf("&") != -1) {
-                        ref.textContent = xover.string.htmlDecode(value);
-                    } else {
-                    ref.textContent = value;
+
+                    // Append remaining text after the last placeholder
+                    if (lastIndex < text_content.length) {
+                        const remainingText = text_content.slice(lastIndex);
+                        const textNode = document.createTextNode(remainingText);
+                        fragment.appendChild(textNode);
                 }
+
+                    if (fragment.hasChildNodes()) {
+                        subscriber.replaceWith(...fragment.childNodes);
+                        continue;
             }
         }
+                subscribers.set(subscriber, subscriber.value);
+            }
+            if (subscribers.size) {
+                target.subscribers = subscribers;
+                subscribers.evaluate(valueParser);
+            }
+            //for (let [ref, formula] of subscribers.entries()) {
+            //    ref.evaluate()
+                //}
     }
     }
 });
@@ -1325,6 +1471,10 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             let tag = [_event.detail["tag"], typeof (context) === 'string' && context || undefined, (predicate || '')[0] = '#' && predicate, null].coalesce();
             if (tag != null) _event.detail["tag"] = tag;
         }
+        _event.detail["tags"] = _event.detail["tags"] || new Set();
+        if (_event.detail["tag"]) {
+            _event.detail["tags"].add(_event.detail["tag"]);
+    }
     }
     return _event;
 }
@@ -1344,7 +1494,7 @@ Object.defineProperty(CustomEvent.prototype, 'srcElement', {
 
 
 Object.defineProperty(xover.listener, 'matches', {
-    value: function (context, event_type, event_tag) {
+    value: function (context, event_type, event_tags) {
         let [scoped_event, predicate] = event_type.split(/::/);
         event_type = scoped_event;
         let default_predicate = Object.fromEntries([['change', '@value'], ['remove', '*'], ['append', '*'], ['render', '*']])
@@ -1352,9 +1502,9 @@ Object.defineProperty(xover.listener, 'matches', {
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            let tag = (event_tag || context.tag || '').replace(/^#/, '');
+            let tags = new Set(event_tags, [context.tag]);            
             let handlers = [...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat().map(([predicate, fn]) => [predicate || default_predicate[event_type] || '', fn]);
-            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate === tag || predicate[0] == '#' && tag.matches(predicate.slice(1)) || typeof (context.matches) == 'function' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+            for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate[0] == '#' && tags.has(predicate) || typeof (context.matches) == 'function' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler);
             }
         }
@@ -1472,7 +1622,14 @@ class EventHistory {
         let target = this.handlers.get(handler) || new Map();
         let count = (target.get(item) || 0) - 1;
         count = count < 0 ? 0 : count;
+        if (count) {
         target.set(item, count)
+        } else {
+            target.delete(item)
+    }
+        if (!this.handlers.get(handler).size) {
+            this.handlers.delete(handler)
+        }
     }
 
     has(handler, item) {
@@ -1497,20 +1654,21 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         if (xover.listener.debug.matches.call(context, null, xover.listener.debugger) && !xover.listener.debug.matches.call(context, null, xover.listener.debuggerExceptions)) {
             debugger;
         }
-        let fns = xover.listener.matches(context, event.type, (event.detail || {}).tag);
+        let fns = xover.listener.matches(context, event.type, (event.detail || {}).tags);
         let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
         if (!handlers.size) return;
         //context.eventHistory = context.eventHistory || new Map();
         let target = (!context.ownerElement && instanceOf.call(context, Attr) ? context.parentNode : context);
-        let returnValue = undefined;
+        let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
             try {
                 if (event.propagationStopped || event.cancelBubble) break;
-                if (xover.listener.history.has(handler, target)) continue; //TODO: Check between overflowed and this method
+                if (instanceOf.call(target, Request) && xover.listener.history.has(handler, target)) continue; //TODO: Check between overflowed and this method
                 if (xover.listener.history.overflowed(handler, target)) {
                     console.warn(`Listener dispatcher overflown`, [handler, target])
                     continue;
                 }
+                xover.listener.history.set(handler, target);
                 if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
                     let operator = "="
                     if (["*", "!"].includes(key[key.length - 1])) {
@@ -1595,7 +1753,6 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 //    && [event.srcEvent || event] || event.detail.args || [])
                 //    || arguments) //former method
                 returnValue = /*await */handler.apply(context, args); /*Events shouldn't be called with await, but can return a promise*/
-                xover.listener.history.set(handler, target);
                 if (returnValue !== undefined) {
                     //event.returnValue = returnValue; //deprecated
                     if (event.detail) {
@@ -2174,12 +2331,15 @@ xover.server = new Proxy({}, {
             //}
 
             //url.payload = payload;
+            let server_tag = `#server:${key}`;
             let manifest_settings = xover.json.combine(xover.manifest.getSettings(url));
-            let endpoint_settings = xover.json.combine(xover.manifest.getSettings(`#server:${key}`));
+            let endpoint_settings = xover.json.combine(xover.manifest.getSettings(server_tag));
             url.settings = xover.json.combine(url.settings, manifest_settings, endpoint_settings, settings);
-            request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { request, tag: `server:${key}`, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, request);
-
+            request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { request, tag: `server:${key}`, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url, settings: request.settings }, request);
+            request.before_event.detail.settings = request.settings;
+            request.before_event.detail.tags.add(server_tag);
             window.dispatchEvent(request.before_event);
+            await request.before_event.detail.returnValue;
             try {
                 [return_value, request, response] = await xover.fetch.apply(request, [url, ...args]).then(response => [response.body, response.request, response]);
             } catch (e) {
@@ -2525,6 +2685,12 @@ xover.siteHandler = {
         try {
             xover.site[key];
             let old_value = self[key];
+            if (old_value != input && key[0] != '#') {
+                let beforeEvent = new xover.listener.Event(`beforeChange::#site:${key}`, { attribute: key, value: input, old: old_value }, { tag: `site:${key}` });
+                window.dispatchEvent(beforeEvent);
+                if (beforeEvent.cancelBubble || beforeEvent.defaultPrevented) return;
+            }
+
             self[key] = input;
             history.state[key] = input;
             if (['active', 'seed'].includes(key)) {
@@ -2613,6 +2779,13 @@ Object.defineProperty(xover.site, 'meta', {
                 return (window.document.querySelector(`meta[property="${key}"],meta[name="${key}"]`) || window.document.createElement("p")).getAttribute("content")
             }
         })
+    }
+    , enumerable: true
+});
+
+Object.defineProperty(xover, 'meta', {
+    get() {
+        return xover.site.meta;
     }
     , enumerable: true
 });
@@ -3659,7 +3832,7 @@ xover.Source = function (tag) {
                 }
                 request.parameters = parameters;
                 request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { document: this, tag: tag_string, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url }, request);
-                request.before_event.detail.tag = tag_string;
+                request.before_event.detail.tags.add(tag_string);
                 window.dispatchEvent(request.before_event);
 
                 //if (Array.isArray(parameters) && parameters.length && parameters.every(item => Array.isArray(item) && item.length == 2)) {
@@ -3895,6 +4068,7 @@ xover.sources = new Proxy(new Map(), {
             return self[key];
         }
         key = xover.URL(key).href;
+        key = key.replace(/^\//,'')
         if (key in self) {
             return self[key];
         }
@@ -3902,6 +4076,7 @@ xover.sources = new Proxy(new Map(), {
         let document = new xover.Source(key).document
         document.observe();
         xover.sources[key] = document;
+        xover.sources.set(document, key);
         return self[key];
     },
     set: function (self, key, input) {
@@ -3909,6 +4084,7 @@ xover.sources = new Proxy(new Map(), {
     },
     has: function (self, key) {
         if (!key) return false;
+        key = key.replace(/^\//, '');
         return key in self || !!Object.keys(xover.manifest.sources || {}).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key).pop()
     }
 })
@@ -5016,13 +5192,11 @@ Object.defineProperty(xover.stores, 'clear', {
 });
 
 xover.modernize = async function (targetWindow) {
-
-    this.modernizing = this.modernizing || xover.delay(0).then(async () => {
-        targetWindow = (targetWindow || window);
+    try {
+        targetWindow = targetWindow || toString.call(this) == '[object Window]' ? this : window;
         if (targetWindow.modernized) return;
         targetWindow.modernized = 'modernizing'
         with (targetWindow) {
-
             Attr.value = Attr.value || Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
 
             Node.namespaceURI = Node.namespaceURI || Object.getOwnPropertyDescriptor(Node.prototype, 'namespaceURI');
@@ -5720,7 +5894,7 @@ xover.modernize = async function (targetWindow) {
                                 if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) {
                                     delete mutation.attributes[attribute.namespaceURI];
                                 } else {
-                                    for (let field of [...document.querySelectorAll(`*[xo-slot]:not([onchange]),form *[name]:not([onchange])`)].filter(el => el.scope === attribute && el.value !== current_value)) {
+                                    for (let field of [...document.querySelectorAll(`*[xo-slot][value]:not([onchange]),form *[name][value]:not([onchange])`)].filter(el => el.scope === attribute && el.value !== current_value)) {
                                         field.setAttribute("value", current_value)
                                     }
                                 }
@@ -6313,67 +6487,50 @@ xover.modernize = async function (targetWindow) {
                     return xover.xml.getDifferences(this, document);
                 }
 
+                Window.$ = Window.$ || Window.prototype.$;
+                Object.defineProperty(Window.prototype, '$', {
+                    enumerable: true,
+                    get: function () {
+                        const target = this;
+                        return new Proxy(() => { }, {
+                            // Handle function calls like $(xpath)
+                            apply(self, thisArg, args) {
+                                return new Structure(target.document.querySelector(...args));
+                            },
+
+                            // Handle property access like $.child1.child2
+                            get(self, prop) {
+                                return new Structure(target)[prop]
+                            }
+                        });
+                    }, set: function (input) {
+                        Object.defineProperty(this, '$', {
+                            value: input,
+                            writable: true,
+                            configurable: true,
+                            enumerable: true,
+                        });
+                    }
+                });
+
                 if (!Node.prototype.hasOwnProperty('$')) {
                     Object.defineProperty(Node.prototype, '$', {
                         enumerable: true,
                         get: function () {
-                            return new Structure(this);
-                            //let node = this;
-                            //let handler = {
-                            //    get: function (target, prop) {
-                            //        let new_proxy;
-                            //        if (target === Node.prototype.selectSingleNode) {
-                            //            new_proxy = target.apply(node, [prop]);
-                            //            new_proxy = (new_proxy && new_proxy.selectSingleNode("xson:object|xson:array") || new_proxy);
-                            //        } else if (target[prop] && isFunction(target[prop])) {
-                            //            return (function () {
-                            //                return target[prop].apply(target, arguments);
-                            //            });
-                            //        } else if (typeof (prop) == 'symbol') {
-                            //            return target[prop];
-                            //        } else if (target instanceof Node) {
-                            //            if (target.selectSingleNode("self::xson:object")) {
-                            //                new_proxy = target.selectSingleNode(prop);
-                            //                new_proxy = (new_proxy.selectSingleNode("xson:object|xson:array") || new_proxy);
-                            //            } else if (Number.parseInt(prop) == prop && target.selectSingleNode("self::xson:array")) {
-                            //                new_proxy = target.selectSingleNode("self::xson:array").selectNodes("*")[prop]
-                            //            } else if (Number.parseInt(prop) == prop && target.selectSingleNode("xson:array")) {
-                            //                new_proxy = target.selectSingleNode("xson:array").selectNodes("*")[prop]
-                            //            } else if (target.selectSingleNode("self::*[not(*[2])]/*[self::xson:object or self::xson:array]")) {
-                            //                new_proxy = target.selectSingleNode("*").selectSingleNode(prop);
-                            //            } else {
-                            //                new_proxy = target.selectNodes(prop);
-                            //                if (!new_proxy.length) {
-                            //                    new_proxy = null;
-                            //                }
-                            //            }
-                            //            //}
-                            //            //if (target.constructor == [].constructor) {
-                            //            //    if (target.selectSingleNode("self::xson:object")) {
-                            //            //        return new Proxy(new_proxy.length > 1 || target.getAttribute && target.getAttribute("xsi:type") == 'array' || target.parentNode && target.parentNode.name == 'xson:array' ? new_proxy : new_proxy[0], handler);
-                            //            //    }
-                            //        } else if (prop in target) {
-                            //            new_proxy = target[prop];
-                            //        }
-                            //        if (new_proxy) {
-                            //            return new Proxy(new_proxy, handler);
-                            //        } else if (target instanceof Node && prop === 'node') {
-                            //            return target;
-                            //        }
-                            //        new_proxy = target.constructor == [].constructor && target.find(el => el.nodeName == prop) || target;
-                            //        if (new_proxy.length) {
-                            //            return new Proxy(new_proxy.length > 1 || target.getAttribute && target.getAttribute("xsi:type") == 'array' || target.parentNode && target.parentNode.name == 'xson:array' ? new_proxy : new_proxy[0], handler);
-                            //        } else {
-                            //            return null;
-                            //        }
-                            //    }
-                            //    , set: function (target, prop, value) {
-                            //        return target[prop] = value;
-                            //    }
-                            //}
-                            //return new Proxy(this.selectSingleNode, handler);
-                            ////return new Proxy(this.documentElement && this.selectSingleNode("xson:object|xson:array") || this, handler);
+                            const target = this;
+
+                            return new Proxy(() => { }, {
+                                // Handle function calls like $(xpath)
+                                apply(self, thisArg, args) {
+                                    return target.selectSingleNode(...args);
+                                },
+
+                                // Handle property access like $.child1.child2
+                                get(self, prop) {
+                                    return new Structure(target)[prop];
                         }
+                    });
+                }
                     });
                 }
 
@@ -7010,18 +7167,18 @@ xover.modernize = async function (targetWindow) {
                             slot = slot !== undefined ? slot : self.closest('[xo-slot]') || self.closest('[slot]') || self.closest('input[name],textarea[name],select[name]');
 
                             if (slot && ref.contains(slot)) {
-                                slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || slot.getAttributeNode("name");
+                                slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || instanceOf.call(scope, Element) && slot.getAttributeNode("name");
                                 } else {
                                     slot = '';
                                 }
-                                if (!slot && this instanceof Text) slot = 'text()';
+                            if (!slot && instanceOf.call(this,Text)) slot = 'text()';
                                 if (scope && slot) {
                                 if (!instanceOf.call(scope, Element)) {
                                     scope = scope.documentElement || scope.firstElementChild;
                                 }
                                     slot = slot.value;
                                 if (!slot) {
-                                    return null;
+                                    return scope;
                                 } else if (slot === 'text()') {
                                         let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
                                         this.scopeNode = textNode;
@@ -7064,17 +7221,20 @@ xover.modernize = async function (targetWindow) {
                     get: function () {
                         //let section = this.section || this;
                         //if (!(section instanceof HTMLElement && (this.hasAttribute("xo-stylesheet")))) return null;
-                        let source = this.closest("[xo-source]") || this.host || this.ownerDocument || this;
-                        if (source instanceof Element && source.getAttribute("xo-source") == 'inherit') {
+                        let source = this.closest("[xo-source],[xo-stylesheet]") || this.host || this.ownerDocument || this;
+                        if (source instanceof Element) {
+                            if (source.getAttribute("xo-source") == 'inherit') {
                             return (source.parentNode /*|| source.context_source*/ || {}).source;
+                            } else if (!source.getAttributeNode("xo-source")) {
+                                return this;
+                        }
                         }
                         if (instanceOf.call(source, Document)) {
                                 return xover.stores.seed
                         } else if (instanceOf.call(source, CustomElement, DocumentFragment)) {
                             return source
                         } else if (!instanceOf.call(source, Element)) {
-                            debugger
-                            instanceOf.call(source, Element)
+                            return source;
                             }
                         source = source.getAttribute("xo-source");
                         if (source && source.indexOf("{$") != -1) {
@@ -7263,9 +7423,11 @@ xover.modernize = async function (targetWindow) {
                                 if (this.namespaceURI && this.namespaceURI.indexOf('www.w3.org') != -1 && this.selectSingleNode(`//xsl:comment/text()[contains(.,'Session stylesheet')]`)) {
                                     this.ownerDocument.store.render(); //xover.stores.active.documentElement && xover.stores.active.documentElement.setAttributeNS(xover.spaces["state"], "state:refresh", "true");
                                 }
-                                return Node.textContent.set.call(this, value);
+                                //return Node.textContent.set.call(this, value);
+                                return this.firstChild;
                             } else {
-                                return Node.textContent.set.call(this, value);
+                                Node.textContent.set.call(this, value);
+                                return this.firstChild;
                             }
                         }
                     }
@@ -7616,7 +7778,7 @@ xover.modernize = async function (targetWindow) {
                             target.setAttributeNS(namespace || "", attribute, value, options);
                         }
                     }
-                    if (["value"].includes(attribute) && target[attribute] != `${value}`) {
+                    if (["value"].includes(attribute) && target.hasOwnProperty(attribute) && target[attribute] != `${value}`) {
                         target[attribute] = value
                     }
                     return this;
@@ -9031,6 +9193,9 @@ xover.modernize = async function (targetWindow) {
                                     stylesheet.target = stylesheet.target || self;
                                 }
                                 source_document = source_document && source_document.document || source_document || xover.xml.createDocument(this.cloneNode(true));
+                                if (!instanceOf.call(source_document, Document)) {
+                                    source_document = xover.xml.createDocument(source_document);
+                                }
                                 //if (source_document instanceof Document) {
                                 await source_document.render(stylesheets);
                                 //} else {
@@ -9191,7 +9356,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 for (let stylesheet of stylesheets) {
                                     let document = stylesheet["document"] || stylesheet["srcElement"] || stylesheet["target"] || "";
-                                    document = document instanceof Document ? document : xover.xml.createDocument(document);
+                                    document = document instanceof Document ? document : xover.xml.createDocument(document || window.document.createComment("ack:no-content"));
                                     stylesheet["type"] = 'text/xsl'
                                     stylesheet["href"] = stylesheet["href"] || this.href;
                                     stylesheet["document"] = stylesheet["document"] || this;
@@ -9310,7 +9475,6 @@ xover.modernize = async function (targetWindow) {
                                 dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
 
                                 let stylesheet_href = stylesheet.href;
-                                let dependants = [];
                                 for (let el of dom.children) {
                                     //el.document = this;
                                     el.context = data;
@@ -9484,9 +9648,9 @@ xover.modernize = async function (targetWindow) {
 
             targetWindow.modernized = true;
         }
-    }).catch(e => {
+    } catch (e) {
         throw (e)
-    }).finally(() => {
+    } finally {
         if (targetWindow !== top.window) {
             xover.listener.on.call(targetWindow)
         //    /* Copy prototypes to context target in order to instanceof check to pass */
@@ -9510,9 +9674,7 @@ xover.modernize = async function (targetWindow) {
         //        }
         //    });
         }
-        delete this.modernizing
-    })
-    return this.modernizing;
+}
 }
 
 Object.defineProperty(xover.stores, 'restore', {
@@ -10377,10 +10539,11 @@ xover.fetch = async function (url, ...args) {
         const signal = controller.signal;
         try {
             request.before_event = request.before_event || new xover.listener.Event(`beforeFetch`, {}, request)
+            request.before_event.detail.tags.add(request.url.hash);
             window.dispatchEvent(request.before_event);
+            await request.before_event.detail.returnValue;
             xover.requests.add(request);
             original_response = await fetch(request.clone(), { signal })
-            xover.requests.delete(request);
         } catch (e) {
             //try {
             //    if (!original_response && request.method == 'POST') {
@@ -10413,12 +10576,29 @@ xover.fetch = async function (url, ...args) {
                 receivedLength += value.byteLength;
                 let percent = (receivedLength / contentLength) * 100
                 _progress = percent;
-                progress();
             }
-            window.dispatchEvent(new xover.listener.Event('progress', { controller, settings, percent: _progress }, request));
+            for (let progress_item of (request.settings || {}).progress || []) {
+                try {
+                    progress_item.request = request;
+                    for (let progress_bar of progress_item.querySelectorAll(`progress,[role=progress][value]`)) {
+                        progress_bar.value = _progress;
+                    }
+                    let progress_event = new xover.listener.Event('progress', { url, controller, settings, percent: _progress }, progress_item);
+                    window.dispatchEvent(progress_event);                    
+                } catch (e) {
+                    console.log(percent)
+                }
+            }
+            if (!done) {
+                progress();
+            } else {
+                xover.requests.delete(request);
+            }
         }).catch(e => {
-            if (e.name != 'AbortError') {
-                console.log(e)
+            if (e.name === 'AbortError') {
+                console.log('Fetch aborted', e);
+            } else {
+                console.error('Stream error:', e);
             }
         })
     }
@@ -10927,10 +11107,10 @@ xover.xml.combine = function (target, new_node) {
         || instanceOf.call(target, SVGElement) && !instanceOf.call(new_node, SVGElement)
     ) {
         let restore_focus = target.contains(document.activeElement)
-        new_node.combineAttributes(...target.attributes)
-        //for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) { // TODO: Review this logic
-        //    new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
-        //}
+        //instanceOf.call(target, Element) && new_node.combineAttributes(...[...target.attributes].filter(attr => !(attr.localName == "xo-source" && !["seed","active","inherit"].includes(attr.value))));
+        ////for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) { // TODO: Review this logic
+        ////    new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
+        ////}
         target.metaNodes.remove();
         target.replaceWith(...new_metaNodes, new_node);
         restore_focus && new_node.focus()
@@ -10988,10 +11168,13 @@ xover.utils.getCurrentFileName = function () {
 }
 
 xover.dom.applyScripts = async function (scripts = []) {
-    let targetDocument = instanceOf.call(this, Node) ? this : window.document;
+    let target = this;
+    let targetDocument = target.targetDocument || target.ownerDocument || instanceOf.call(target, Document) && this || window.document;
     for (let script of scripts) {
         let promise;
-        if (script.hasAttribute("defer")) await xover.delay(1);
+        if (script.hasAttribute("defer")) {
+            await xover.manager.render.get(target);
+        }
         if (script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
             if (![...targetDocument.querySelectorAll(script.tagName)].filter(node => node.getAttribute("src") && node.getAttribute("src") == script.getAttribute("src") || node.getAttribute("href") && node.getAttribute("href") == script.getAttribute("href") || node.isEqualNode(script.cloneNode())).length) {
                 let new_element = targetDocument.createElement(script.tagName); /*script.cloneNode(); won't work properly*/
@@ -11025,15 +11208,17 @@ xover.dom.applyScripts = async function (scripts = []) {
                     promise = new Promise(async (resolve, reject) => {
                         if (script.hasAttribute("defer") || script.hasAttribute("async")) await xover.delay(1);
                         xover.context = script.original || script;
+                        let section = (xover.context || {}).section;
+                        let xo_stylesheet = (instanceOf.call(section, HTMLElement) && section || document.createElement("p")).getAttribute("xo-stylesheet");
                         let result = (function () {
                             if (window.document.contains(xover.context)) {
                                 try {
                                     return eval.apply(this, arguments)
                                 } catch (e) {
-                                    console.error(e, arguments)
+                                    return Promise.reject(e)
                                 }
                             }
-                        }(`/*${((xover.context || {}).section || document.createElement("p")).getAttribute("xo-stylesheet")}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; let constructor = context.constructor; ${script.textContent}; xover.context = undefined;`));
+                        }(`/*${xo_stylesheet}*/ let self = xover.context; let context = self.parentNode; let $context = self.parentNode; let constructor = context.constructor; ${script.textContent}; xover.context = undefined;`));
                         if (['string', 'number', 'boolean', 'date'].includes(typeof (result))) {
                             let target = document.getElementById(script.id);
                             target && target.parentNode.replaceChild(target.ownerDocument.createTextNode(result), target);
@@ -11041,7 +11226,7 @@ xover.dom.applyScripts = async function (scripts = []) {
                         resolve()
                     })
                 } catch (message) {
-                    console.error(message)
+                    return Promise.reject(message)
                 }
             }
         } else {
@@ -11056,7 +11241,7 @@ xover.dom.combine = async function (target, new_node) {
     let document = target.ownerDocument || window.document;
     let scripts;
     let script_wrapper = target.ownerDocument.createDocumentFragment();
-    script_wrapper.append(...new_node.selectNodes(`html:style|descendant-or-self::*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
+    script_wrapper.append(...(new_node.content || new_node).selectNodes(`html:style|descendant-or-self::*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
     if (instanceOf.call(target, HTMLElement) && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
         //if (target.tagName != 'CODE' && !(new_node.firstElementChild instanceof HTMLElement)) {
         //    let named_slots = target.querySelectorAll("slot[name]");
@@ -11105,7 +11290,10 @@ xover.dom.combine = async function (target, new_node) {
     //    new_node.setAttributeNode(target.getAttributeNodeOrMock("xo-source").cloneNode(true))
     //}
 
-    await xover.dom.applyScripts.call(document, [...script_wrapper.children]);
+    await xover.dom.applyScripts.call(target, [...script_wrapper.children]);
+    if (new_node.content) {
+        await xover.dom.applyScripts.call(target, new_node.content.selectNodes("script"));
+    }
 
     let before_dom = new xover.listener.Event('beforeRender', { store: target.store, stylesheet: target.stylesheet, target: target, document, context: target.context, dom: new_node.cloneNode(true), element: new_node }, new_node);
     window.dispatchEvent(before_dom);
@@ -11124,7 +11312,10 @@ xover.dom.combine = async function (target, new_node) {
     await xover.signal.update.call(target, new_node);
     xover.xml.staticMerge(target, new_node);
     let dependants = [...(new_node.content || new_node).querySelectorAll('[xo-source],[xo-stylesheet]')];
-    dependants = dependants.map(el => el.render());
+    dependants = dependants.map(el => {
+        el.targetDocument = target.targetDocument || target.ownerDocument;
+        return el.render()
+    });
     if (target.matches('[xo-suspense*=Dependants]')) await Promise.all(dependants);
 
     let changes = xover.xml.getDifferences(target, new_node);
@@ -11252,7 +11443,7 @@ xover.dom.combine = async function (target, new_node) {
         }
         //if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 
-        post_render_scripts.length && xover.delay(1).then(() => xover.dom.applyScripts.call(document, post_render_scripts));
+        post_render_scripts.length && xover.delay(1).then(() => xover.dom.applyScripts.call(target, post_render_scripts));
         //if (other_scripts.length) {
         //    xover.dom.applyScripts.call(document, other_scripts);
         //}
@@ -11280,7 +11471,7 @@ xover.dom.combine = async function (target, new_node) {
     //    console.warn(`There ${invalid_scope.length > 1 ? 'are' : 'is'} ${invalid_scope.length} misconfigured element${invalid_scope.length > 1 ? 's' : ''}`, invalid_scope)
     //}
 
-    xover.dom.applyScripts.call(document, scripts);
+    xover.dom.applyScripts.call(target, scripts);
     xover.initializeElementListeners(target);
     //dependants = [...target.querySelectorAll('[xo-source],[xo-stylesheet]')];
     //dependants.forEach(el => el.render());
@@ -11303,6 +11494,10 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
             target = target.body || target;
             let nodes = [];
             for (let file of files) {
+                if (typeof (file) === 'function') {
+                    file.call(window);
+                    continue;
+                }
                 const node = window.document.createElement(type == 'style' ? 'link' : type);
                 if (instanceOf.call(node, HTMLScriptElement)) {
                     node.type = 'text/javascript';
@@ -11340,6 +11535,7 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
         let custom_scripts = xover.manifest.getSettings(iframe, "scripts")
         loadScriptsSequentially.call(iframeDocument.body, "script", ...custom_scripts);
         xover.init.Observer(iframeDocument);
+            xover.signal.update.call(iframeDocument.scope, iframeDocument);
         } catch (e) {
             console.error(e)
         }
@@ -12313,21 +12509,6 @@ xover.Store = function (xml, ...args) {
         writable: false, enumerable: false, configurable: false
     });
 
-    Object.defineProperty(this, 'ready', {
-        get: async function () {
-            //__document.replaceChildren()
-            !__document.firstChild && await xover.storehouse.read('sources', store.tag).then((stored_document) => {
-                if (stored_document && stored_document.firstChild) {
-                    //__document.disconnect();
-                    __document.replaceContent(...stored_document.childNodes)
-                }
-            })
-            await __document.ready;
-            await this.initialize();
-            return __document
-        }
-    });
-
     Object.defineProperty(this, 'initialize', {
         value: async function () {
             _store_stylesheets.filter(stylesheet => stylesheet.role == 'init' && !__document.selectSingleNode(`comment()[.="Initialized by ${stylesheet.href}"]`)).forEach(async stylesheet => {
@@ -12355,7 +12536,28 @@ xover.Store = function (xml, ...args) {
     if (typeof (__document) == 'string') {
         __document = xover.xml.createDocument(__document)
     }
+
     let render_manager = new Map()
+    Object.defineProperty(this, 'ready', {
+        get: async function () {
+            render_manager.set(__document, render_manager.get(__document) || xover.delay(1).then(async () => {
+                !__document.firstChild && await xover.storehouse.read('sources', store.tag).then((stored_document) => {
+                    if (!__document.firstChild && stored_document && stored_document.firstChild) {
+                        __document.replaceContent(...stored_document.childNodes)
+                    }
+                });
+                return Promise.resolve(document)
+            }).catch((e) => {
+                return Promise.reject(e)
+            }).finally(async () => {
+                render_manager.delete(__document);
+            }));
+            await render_manager.get(__document);
+            await __document.ready;
+            await this.initialize();
+            return __document
+        }
+    });
     Object.defineProperty(this, 'render', {
         value: async function (target) {
             await xover.ready;
@@ -12373,7 +12575,6 @@ xover.Store = function (xml, ...args) {
                     await self.ready;
                 }
                 let document = __document.cloneNode(true);
-                document.window = document.window || this.window || target && target.ownerDocument.defaultView || undefined;
                 window.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
                 let renders = [];
                 let sections = !target && xover.site.sections.filter(el => el.store && el.store === self) || [];
@@ -12391,9 +12592,9 @@ xover.Store = function (xml, ...args) {
                     renders = renders.concat(document.render(stylesheets))
                 }
                 renders = await Promise.all(renders);
-                if (!renders.length && (target || active_store === self)) document.render({ target: target || window.document.body, store: self });
+                if (!renders.length && (target || active_store === self)) return document.render({ target: target || window.document.body, store: self });
                 return renders;
-            }).then((renders = []) => {
+            }).then((...renders) => {
                 window.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
                 return renders.flat().filter(el => el)
             }).catch((e) => {
@@ -13623,6 +13824,13 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
         xover.site.pushState({ seed: hashtag }, url.toString())
     }
 });
+
+    if (event.defaultPrevented) return;
+    if (!this.closest("menu,.autoscroll-disabled")) {
+        window.scrollTo({ top: 0 });
+    }
+    event.preventDefault();
+})
 
 //xover.listener.on(["change", "click"], function (event) {
 //    if (event.defaultPrevented) return;
