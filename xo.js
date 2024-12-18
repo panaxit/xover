@@ -9380,7 +9380,7 @@ xover.modernize = async function (targetWindow) {
                                 xsl instanceof Document && await xsl.ready;
                                 if (xsl instanceof Document) { //TODO: Is there any chance that xsl is not a document?
                                     if (data.documentElement) {
-                                        for (let [prefix, prop] of [...data.documentElement.attributes].map(attr => [attr.prefix, attr.localName]).concat(xsl.select(`//xsl:param[contains(@name,':')]/@name`).map(param => param.value).distinct().map(param => param.split(":", 2))).filter(([prefix]) => prefix in xover)) {
+                                        for (let [prefix, prop] of [...data.documentElement.attributes].map(attr => [attr.prefix, attr.localName]).concat(xsl.select(`//xsl:param[contains(@name,':')]/@name`).map(param => param.value).distinct().map(param => param.split(":", 2))).filter(([prefix, name]) => prefix in xover && name in xover[prefix])) {
                                             data.firstElementChild.setAttributeNS(xover.spaces[prefix], prop, xover[prefix][prop]);
                                         }
                                     }
@@ -13780,14 +13780,6 @@ xover.listener.on('input', function (event) {
     }
 })
 
-xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
-    if (event.defaultPrevented) return;
-    if (!this.closest("menu,.autoscroll-disabled")) {
-        window.scrollTo({ top: 0 });
-    }
-    event.preventDefault();
-})
-
 xover.listener.on('click::*[ancestor-or-self::a[@scroll-restoration]]', function (event) {
     let scrollRestoration = this.closest("a[scroll-restoration]").getAttribute("scroll-restoration");
     xover.delay(100).then(() => {
@@ -13825,6 +13817,7 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
     }
 });
 
+xover.listener.on('click::*[ancestor-or-self::a[@href="#"]]', function (event) {
     if (event.defaultPrevented) return;
     if (!this.closest("menu,.autoscroll-disabled")) {
         window.scrollTo({ top: 0 });
