@@ -821,8 +821,8 @@ xover.initializeDOM = async function () {
             if (mutation.addedNodes.length) {
                 for (let el of document.querySelectorAll(observer.host.localName)) {
                     el.render()
+                }
             }
-        }
         }
     })
     const shadow_root_listener = new MutationObserver(function (mutations, observer) {
@@ -873,7 +873,7 @@ xover.initializeDOM = async function () {
                         !this.shadowMode && this.updateSlotContent();
                         let shadowRoot = this.shadowRoot || this;
                         if (typeof(this.init)=='function') {
-                                this.init(shadowRoot);
+                            this.init(shadowRoot);
                         }
                     }).catch(e => console.error(e, this));
                 }
@@ -934,7 +934,7 @@ xover.initializeDOM = async function () {
                         }
                     }
                     await xover.signal.update.call(this, shadowRoot || this, (key, match) => this.single('./'+key) || match);
-                    }
+                }
                 
                 static get observedAttributes() {
                     return ['value', 'text'];
@@ -1022,7 +1022,7 @@ xover.initializeDOM = async function () {
                     return
                 } else {
                     console.error(e)
-            }
+                }
             }
 
             // Dispatch an init event after iframe is initialized
@@ -1197,7 +1197,7 @@ xover.subscribers = new Structure(new Map(), {
                             return xover[scope || ''][variable];
                         } else {/*if (instanceOf.call(scope, Node))*/
                             //await scope.ready
-                    try {
+                            try {
                                 value = typeof (valueParser) == 'function' ? /*await */valueParser.call(scope, match, full_match) : (scope.documentElement || scope).single(match) || '';
                                 if (match == value) {
                                     try {
@@ -1236,19 +1236,19 @@ xover.subscribers = new Structure(new Map(), {
                 } else {
                     for (let value of args) {
                         try {
-                        let val = eval(`(${value})`);
-                        if (val != undefined) {
-                            return val;
-                        }
-                    } catch (e) {
-                        if (e instanceof ReferenceError) {
-                            return String(value)
-                        } else {
-                            console.error(e)
+                            let val = eval(`(${value})`);
+                            if (val != undefined) {
+                                return val;
+                            }
+                        } catch (e) {
+                            if (e instanceof ReferenceError) {
+                                return String(value)
+                            } else {
+                                console.error(e)
+                            }
                         }
                     }
                 }
-            }
             }
             for (let [subscriber, subelement] of target instanceof Node && [[target, target.formula]] || this instanceof Map && this.entries() || Object.entries(this) || []) {
                 if (subelement instanceof Map && subelement.hasOwnProperty("evaluate")) {
@@ -1271,9 +1271,9 @@ xover.subscribers = new Structure(new Map(), {
                     })
                 }
                 subscriber.evaluate(valueParser)
-                            }
-                        }
-                    }
+            }
+        }
+    }
 });
 
 xover.signal = {};
@@ -1288,7 +1288,7 @@ Object.defineProperties(xover.signal, {
                     Object.defineProperty(subscriber, 'formula', {
                         value: subscriber.value
                     })
-            }
+                }
 
                 if (instanceOf.call(subscriber, Attr)) {
                     subscriber.parentNode.classList.add("xo-syncing")
@@ -1315,7 +1315,7 @@ Object.defineProperties(xover.signal, {
                             fragment.appendChild(slot);
                             //const textNode = document.createTextNode(text_content.slice(lastIndex, match.index));
                             //fragment.appendChild(textNode);
-                            }
+                        }
 
                         // Create and append a slot for the placeholder
                         const slot = document.createElement("slot");
@@ -1325,27 +1325,27 @@ Object.defineProperties(xover.signal, {
                             Object.defineProperty(slot, 'formula', {
                                 value: fullMatch
                             })
-                    }
+                        }
                         fragment.appendChild(slot);
 
                         // Map the slot to its placeholder value
                         subscribers.set(slot, fullMatch);
 
                         lastIndex = match.index + fullMatch.length;
-            }
+                    }
 
                     // Append remaining text after the last placeholder
                     if (lastIndex < text_content.length) {
                         const remainingText = text_content.slice(lastIndex);
                         const textNode = document.createTextNode(remainingText);
                         fragment.appendChild(textNode);
-                }
+                    }
 
                     if (fragment.hasChildNodes()) {
                         subscriber.replaceWith(...fragment.childNodes);
                         continue;
-            }
-        }
+                    }
+                }
                 subscribers.set(subscriber, subscriber.value);
             }
             if (subscribers.size) {
@@ -1354,8 +1354,8 @@ Object.defineProperties(xover.signal, {
             }
             //for (let [ref, formula] of subscribers.entries()) {
             //    ref.evaluate()
-                //}
-    }
+            //}
+        }
     }
 });
 xover.evaluateReferencers = xover.signal.update;
@@ -1478,7 +1478,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
         _event.detail["tags"] = _event.detail["tags"] || new Set();
         if (_event.detail["tag"]) {
             _event.detail["tags"].add(_event.detail["tag"]);
-    }
+        }
     }
     return _event;
 }
@@ -1627,10 +1627,10 @@ class EventHistory {
         let count = (target.get(item) || 0) - 1;
         count = count < 0 ? 0 : count;
         if (count) {
-        target.set(item, count)
+            target.set(item, count)
         } else {
             target.delete(item)
-    }
+        }
         if (!this.handlers.get(handler).size) {
             this.handlers.delete(handler)
         }
@@ -6537,9 +6537,9 @@ xover.modernize = async function (targetWindow) {
                                 // Handle property access like $.child1.child2
                                 get(self, prop) {
                                     return new Structure(target)[prop];
+                                }
+                            });
                         }
-                    });
-                }
                     });
                 }
 
@@ -7132,7 +7132,7 @@ xover.modernize = async function (targetWindow) {
                             //    return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
                             //} else {
                             let self = this instanceof Element ? this : this.parentNode || this;
-                                let ref = self;
+                            let ref = self;
                             let scope, slot;
                             do {
                                 ref = typeof (ref.closest) == 'function' && ref.closest("[xo\\:id], [xo-scope], [id]") || ref !== self && ref.host || ref.ownerDocument || ref; //,input[name],textarea[name],select[name]
@@ -7164,52 +7164,52 @@ xover.modernize = async function (targetWindow) {
                             if (scope === undefined && ref == self) {
                                 scope = source;
                             }
-                                /*let id = !ref.hasAttribute("xo-scope") && (ref.getAttributeNode("xo:id") || ref.getAttributeNode("id")) || null;*/
-                                //scope = source.selectFirst(`//*[@xo:id="${id}"]`) || section.source.selectFirst(`//*[@xo:id="${id}"]`) || source.selectFirst(`//*[@id="${id}"]`) || section.source.selectFirst(`//*[@id="${id}"]`);
-                                //if (!scope) {
-                                //    scope = (ref.closest('[xo-scope]') || ref.closest("input[name],textarea[name],select[name]") || source);
+                            /*let id = !ref.hasAttribute("xo-scope") && (ref.getAttributeNode("xo:id") || ref.getAttributeNode("id")) || null;*/
+                            //scope = source.selectFirst(`//*[@xo:id="${id}"]`) || section.source.selectFirst(`//*[@xo:id="${id}"]`) || source.selectFirst(`//*[@id="${id}"]`) || section.source.selectFirst(`//*[@id="${id}"]`);
+                            //if (!scope) {
+                            //    scope = (ref.closest('[xo-scope]') || ref.closest("input[name],textarea[name],select[name]") || source);
 
-                                //    //if (!(instanceOf.call(scope, Attr) && section.contains(scope.parentNode))) {
-                                //    //    scope = source.document.documentElement; //return source;
-                                //    //}
-                                //}
+                            //    //if (!(instanceOf.call(scope, Attr) && section.contains(scope.parentNode))) {
+                            //    //    scope = source.document.documentElement; //return source;
+                            //    //}
+                            //}
                             slot = slot !== undefined ? slot : self.closest('[xo-slot]') || self.closest('[slot]') || self.closest('input[name],textarea[name],select[name]');
 
                             if (slot && ref.contains(slot)) {
                                 slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || slot.attributes && slot.attributes["name"] || '';
-                                } else {
-                                    slot = '';
-                                }
+                            } else {
+                                slot = '';
+                            }
                             if (!slot && instanceOf.call(this,Text)) slot = 'text()';
-                                if (scope && slot) {
+                            if (scope && slot) {
                                 if (!instanceOf.call(scope.attributes, NamedNodeMap)) {
                                     scope = scope.documentElement || scope.firstElementChild;
                                 }
-                                    slot = slot.value;
+                                slot = slot.value;
                                 if (!slot) {
                                     return scope;
                                 } else if (slot === 'text()') {
-                                        let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
-                                        this.scopeNode = textNode;
-                                        return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                                    } else if (slot.indexOf('::') != -1) {
-                                        let node = scope.selectFirst(slot);
-                                        this.scopeNode = node;
-                                        return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-                                    } else {
-                                        let attribute_node;
+                                    let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
+                                    this.scopeNode = textNode;
+                                    return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
+                                } else if (slot.indexOf('::') != -1) {
+                                    let node = scope.selectFirst(slot);
+                                    this.scopeNode = node;
+                                    return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
+                                } else {
+                                    let attribute_node;
                                     attribute_node = (scope.attributes || {})[slot];
-                                        try {
-                                            attribute_node = attribute_node || scope.createAttribute(slot, null);
-                                            this.scopeNode = attribute_node;
-                                        } catch (e) {
-                                            console.error(e, this)
-                                        }
-                                        return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
+                                    try {
+                                        attribute_node = attribute_node || scope.createAttribute(slot, null);
+                                        this.scopeNode = attribute_node;
+                                    } catch (e) {
+                                        console.error(e, this)
                                     }
+                                    return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
                                 }
-                                //Implementar para Text $0.select('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.selectFirst('self::xo:r')).pop().getAttributeNode($0.scope.value)
-                                this.scopeNode = scope || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
+                            }
+                            //Implementar para Text $0.select('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.selectFirst('self::xo:r')).pop().getAttributeNode($0.scope.value)
+                            this.scopeNode = scope || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
                             return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
                             //}
                         } catch (e) {
@@ -7233,18 +7233,18 @@ xover.modernize = async function (targetWindow) {
                         let source = this.closest("[xo-source],[xo-stylesheet]") || this.host || this.ownerDocument || this;
                         if (source instanceof Element) {
                             if (source.getAttribute("xo-source") == 'inherit') {
-                            return (source.parentNode /*|| source.context_source*/ || {}).source;
+                                return (source.parentNode /*|| source.context_source*/ || {}).source;
                             } else if (!source.getAttributeNode("xo-source")) {
                                 return this;
-                        }
+                            }
                         }
                         if (instanceOf.call(source, Document)) {
-                                return xover.stores.seed
+                            return xover.stores.seed
                         } else if (instanceOf.call(source, CustomElement, DocumentFragment)) {
                             return source
                         } else if (!instanceOf.call(source, Element)) {
                             return source;
-                            }
+                        }
                         source = source.getAttribute("xo-source");
                         if (source && source.indexOf("{$") != -1) {
                             source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
@@ -9247,7 +9247,7 @@ xover.modernize = async function (targetWindow) {
       overflow = _getComputedStyle.overflow,
       overflowX = _getComputedStyle.overflowX,
       overflowY = _getComputedStyle.overflowY;
-
+ 
   return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
                             if (this.scrollHeight > this.clientHeight && (this.scrollTop || this.scrollLeft)) {
                                 return this;
@@ -9662,28 +9662,28 @@ xover.modernize = async function (targetWindow) {
     } finally {
         if (targetWindow !== top.window) {
             xover.listener.on.call(targetWindow)
-        //    /* Copy prototypes to context target in order to instanceof check to pass */
-        //    let isConstructor = function (fn) {
-        //        try {
-        //            return typeof fn === 'function' && fn.prototype && fn.prototype.constructor === fn;
-        //        } catch (e) {
-        //            return false;
-        //        }
-        //    }
+            //    /* Copy prototypes to context target in order to instanceof check to pass */
+            //    let isConstructor = function (fn) {
+            //        try {
+            //            return typeof fn === 'function' && fn.prototype && fn.prototype.constructor === fn;
+            //        } catch (e) {
+            //            return false;
+            //        }
+            //    }
 
-        //    const globalDescriptors = Object.getOwnPropertyDescriptors(top.window);
+            //    const globalDescriptors = Object.getOwnPropertyDescriptors(top.window);
 
-        //    Object.keys(globalDescriptors).forEach((key) => {
-        //        if (isConstructor(top.window[key])) {
-        //            if (targetWindow[key]) {
-        //                //targetWindow[key] = top.window[key];
-        //                Object.setPrototypeOf(top.window[key], targetWindow[key].prototype);
-        //                console.log(`Copied ${key}`)
-        //            }
-        //        }
-        //    });
+            //    Object.keys(globalDescriptors).forEach((key) => {
+            //        if (isConstructor(top.window[key])) {
+            //            if (targetWindow[key]) {
+            //                //targetWindow[key] = top.window[key];
+            //                Object.setPrototypeOf(top.window[key], targetWindow[key].prototype);
+            //                console.log(`Copied ${key}`)
+            //            }
+            //        }
+            //    });
         }
-}
+    }
 }
 
 Object.defineProperty(xover.stores, 'restore', {
@@ -11228,7 +11228,7 @@ xover.dom.applyScripts = async function (scripts = []) {
                         xover.context = script.original || script;
                         let section = (xover.context || {}).section;
                         let xo_stylesheet = (instanceOf.call(section, HTMLElement) && section || document.createElement("p")).getAttribute("xo-stylesheet");
-                        let result = (function () {
+                         let result = (function () {
                             if (window.document.contains(xover.context)) {
                                 try {
                                     return eval.apply(this, arguments)
@@ -11544,19 +11544,19 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
             }
         }
         try {
-        iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
-        iframeDocument.parentFrame = iframe;
-        const script = iframeDocument.createElement('script');
-        script.id = 'xover';
-        script.type = 'text/javascript';
-        script.text = `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; xover.modernize(document.defaultView); [...document.querySelectorAll("script#xover")].forEach(el => el.remove())`;
-        iframeDocument.body.prepend(script);
-        let custom_styles = xover.manifest.getSettings(iframe, "styles")
-        loadScript.call(iframeDocument.head, "style", ...custom_styles);
+            iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+            iframeDocument.parentFrame = iframe;
+            //const script = iframeDocument.createElement('script');
+            //script.id = 'xover';
+            //script.type = 'text/javascript';
+            //script.text = `var xover = (xover || parent.xover); document.xover_global_refresh_disabled=true; xover.modernize(document.defaultView); [...document.querySelectorAll("script#xover")].forEach(el => el.remove())`;
+            //iframeDocument.body.prepend(script);
+            let custom_styles = xover.manifest.getSettings(iframe, "styles")
+            loadScript.call(iframeDocument.head, "style", ...custom_styles);
 
-        let custom_scripts = xover.manifest.getSettings(iframe, "scripts")
-        loadScriptsSequentially.call(iframeDocument.body, "script", ...custom_scripts);
-        xover.init.Observer(iframeDocument);
+            let custom_scripts = xover.manifest.getSettings(iframe, "scripts")
+            loadScriptsSequentially.call(iframeDocument.body, "script", ...custom_scripts);
+            xover.init.Observer(iframeDocument);
             xover.signal.update.call(iframeDocument.scope, iframeDocument);
         } catch (e) {
             console.error(e)
@@ -14238,7 +14238,7 @@ xover.listener.on(['change::*[xo-slot]:not([onchange])', 'change::*[name]:not([o
     //let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
     let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : ((srcElement instanceof HTMLSelectElement && srcElement.options[srcElement.selectedIndex].getAttributeNode("value") || srcElement.value));
     if (instanceOf.call(scope, Attr, Text)) {
-    scope.set(value);
+        scope.set(value);
     } //else if (scope instanceof Node) {
     //    _attribute && scope.set(_attribute, value);
     //}
