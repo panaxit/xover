@@ -1001,33 +1001,7 @@ xover.initializeDOM = async function () {
 
 
     for (const iframe of [...document.querySelectorAll("iframe")]) {
-        iframe.addEventListener('load', async function () {
-            try {
-                const contentWindow = iframe.contentWindow;
-
-                contentWindow.xover = (xover || parent.xover);
-
-                xover.modernize.call(contentWindow);
-
-                contentWindow.addEventListener('message', function (event) {
-                    if (event.origin === location.origin && event.data.type === 'applyStyles') {
-                        const document = this.document;
-                        const style = document.createElement('style');
-                        style.textContent = event.data.styles;
-                        document.head.appendChild(style);
-                    }
-                });
-            } catch (e) {
-                if (e.name == 'SecurityError') {
-                    return
-                } else {
-                    console.error(e)
-                }
-            }
-
-            // Dispatch an init event after iframe is initialized
-            window.dispatchEvent(new xover.listener.Event('init', {}, iframe));
-        });
+        window.dispatchEvent(new xover.listener.Event('init', {}, iframe));
     }
     xover.signal.update()
 }
@@ -1506,7 +1480,7 @@ Object.defineProperty(xover.listener, 'matches', {
         context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
         let fns = new Map();
         if (!context.disconnected && xover.listener.get(event_type)) {
-            let tags = new Set(event_tags, [context.tag]);            
+            let tags = new Set(event_tags, [context.tag]);
             let handlers = [...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat().map(([predicate, fn]) => [predicate || default_predicate[event_type] || '', fn]);
             for (let [, handler] of handlers.filter(([predicate]) => !predicate || predicate[0] == '#' && tags.has(predicate) || typeof (context.matches) == 'function' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler);
@@ -4072,7 +4046,7 @@ xover.sources = new Proxy(new Map(), {
             return self[key];
         }
         key = xover.URL(key).href;
-        key = key.replace(/^\//,'')
+        //key = key.replace(/^\//, '')
         if (key in self) {
             return self[key];
         }
@@ -5898,7 +5872,7 @@ xover.modernize = async function (targetWindow) {
                                 if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) {
                                     delete mutation.attributes[attribute.namespaceURI];
                                 } else {
-                                    for (let field of [...document.querySelectorAll(`*[xo-slot][value]:not([onchange]),form *[name][value]:not([onchange])`)].filter(el => el.scope === attribute && el.value !== current_value)) {
+                                    for (let field of [...document.querySelectorAll(`*[xo-slot][value]:not([onchange],[type=checkbox],[type=radio]),form *[name][value]:not([onchange],[type=checkbox],[type=radio])`)].filter(el => el.scope === attribute && el.value !== current_value)) {
                                         field.setAttribute("value", current_value)
                                     }
                                 }
@@ -7180,7 +7154,7 @@ xover.modernize = async function (targetWindow) {
                             } else {
                                 slot = '';
                             }
-                            if (!slot && instanceOf.call(this,Text)) slot = 'text()';
+                            if (!slot && instanceOf.call(this, Text)) slot = 'text()';
                             if (scope && slot) {
                                 if (!instanceOf.call(scope.attributes, NamedNodeMap)) {
                                     scope = scope.documentElement || scope.firstElementChild;
@@ -10593,7 +10567,7 @@ xover.fetch = async function (url, ...args) {
                         progress_bar.value = _progress;
                     }
                     let progress_event = new xover.listener.Event('progress', { url, controller, settings, percent: _progress }, progress_item);
-                    window.dispatchEvent(progress_event);                    
+                    window.dispatchEvent(progress_event);
                 } catch (e) {
                     console.log(percent)
                 }
@@ -11228,7 +11202,7 @@ xover.dom.applyScripts = async function (scripts = []) {
                         xover.context = script.original || script;
                         let section = (xover.context || {}).section;
                         let xo_stylesheet = (instanceOf.call(section, HTMLElement) && section || document.createElement("p")).getAttribute("xo-stylesheet");
-                         let result = (function () {
+                        let result = (function () {
                             if (window.document.contains(xover.context)) {
                                 try {
                                     return eval.apply(this, arguments)
@@ -11507,7 +11481,7 @@ xover.dom.combine = async function (target, new_node) {
 
 xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::iframe[xo-source],iframe[xo-stylesheet]'], function () {
     let iframe = this;
-    iframe.onload = function () {
+    iframe.addEventListener('load', function () {
         function loadScript(type, ...files) {
             files = files.filter(item => item);
             if (!files.length) return;
@@ -11544,6 +11518,26 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
             }
         }
         try {
+            const contentWindow = iframe.contentWindow;
+            contentWindow.xover = (xover || parent.xover);
+            xover.modernize.call(contentWindow);
+            contentWindow.addEventListener('message', function (event) {
+                if (event.origin === location.origin && event.data.type === 'applyStyles') {
+                    const document = this.document;
+                    const style = document.createElement('style');
+                    style.textContent = event.data.styles;
+                    document.head.appendChild(style);
+                }
+            });
+        } catch (e) {
+            if (e.name == 'SecurityError') {
+                return
+            } else {
+                console.error(e)
+            }
+        }
+
+        try {
             iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
             iframeDocument.parentFrame = iframe;
             //const script = iframeDocument.createElement('script');
@@ -11561,7 +11555,7 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
         } catch (e) {
             console.error(e)
         }
-    };
+    })
 
     Object.entries(xover.listener).filter(([, handler]) => typeof (handler) == 'function').forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
 })
