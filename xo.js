@@ -1120,6 +1120,7 @@ class Subscribers extends Map {
 
     evaluate(...args) {
         for (let [ref, formula] of [...this.entries()]) {
+            ref.closest("*").classList.add("xo-syncing")
             xover.subscribers.evaluate.apply(this, [ref, ...args])
         }
     }
@@ -1258,6 +1259,7 @@ Object.defineProperties(xover.signal, {
             let context = instanceOf.call(this, Node) && this || target.scope || document;
             let subscribers = target.subscribers || new Subscribers();
             for (let subscriber of instanceOf.call(target, Node) && target.select(`.//@*[contains(.,'{$') or contains(.,'{{')][contains(.,'}')]|.//text()[contains(.,'{$') or contains(.,'{{')][contains(.,'}}')]|.//html:slot[not(ancestor::html:code)]/text()[contains(.,'{$') or contains(.,'{{') or contains(.,'$\{')][contains(.,'}}')]`).filter(el => !subscribers.has(el)) || []) {
+                if (subscriber.closest("script")) continue;
                 if (!subscriber.hasOwnProperty("formula")) {
                     Object.defineProperty(subscriber, 'formula', {
                         value: subscriber.value
@@ -1283,7 +1285,7 @@ Object.defineProperties(xover.signal, {
                     while ((match = placeholderRegex.exec(text_content)) !== null) {
                         const [fullMatch, placeholderContent] = match;
                         if (match.index > lastIndex) {
-                            const slot = document.createElement("slot");
+                            const slot = new Text()//document.createElement("slot");
                             const text = text_content.slice(lastIndex, match.index);
                             slot.textContent = text;
                             fragment.appendChild(slot);
@@ -1292,8 +1294,8 @@ Object.defineProperties(xover.signal, {
                         }
 
                         // Create and append a slot for the placeholder
-                        const slot = document.createElement("slot");
-                        slot.classList.add("xo-syncing");
+                        const slot = new Text()//document.createElement("slot");
+                        //slot.closest("*").classList.add("xo-syncing");
                         slot.textContent = '';
                         if (!slot.hasOwnProperty("formula")) {
                             Object.defineProperty(slot, 'formula', {
