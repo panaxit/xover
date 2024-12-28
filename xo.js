@@ -7638,11 +7638,48 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 if (!Element.prototype.hasOwnProperty('combineAttributes')) {
+                    const boolean_attrs = new Set([
+                        "allowfullscreen",  // iframe
+                        "async",            // script
+                        "autofocus",        // input, button, select, textarea
+                        "autoplay",         // audio, video
+                        "checked",          // input (type="checkbox" or "radio")
+                        "controls",         // audio, video
+                        "default",          // track
+                        "defer",            // script
+                        "disabled",         // button, fieldset, input, optgroup, option, select, textarea
+                        "formnovalidate",   // button, input (type="submit")
+                        "hidden",           // global attribute
+                        "ismap",            // img
+                        "itemscope",        // any element (Microdata API)
+                        "loop",            // audio, video
+                        "multiple",         // input (type="file"), select
+                        "muted",            // audio, video
+                        "nomodule",         // script
+                        "novalidate",       // form
+                        "open",            // details, dialog
+                        "readonly",         // input, textarea
+                        "required",         // input, select, textarea
+                        "reversed",         // ol
+                        "selected",         // option
+                        "playsinline",      // video
+                        "draggable",        // global attribute (treated as a boolean in some scenarios)
+                        "spellcheck",       // global attribute (treated as a boolean in some scenarios)
+                        "translate"         // global attribute (treated as a boolean in some scenarios)
+                    ]);
                     Object.defineProperty(Element.prototype, 'combineAttributes', {
                         enumerable: false,
-                        value: function (...attributes) {
-                            let target = this;
-                            for (let attr of attributes) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
+                        value: function (...sources) {
+                            const target = this;
+                            for (const source of sources) {
+                                if (source.attributes && target.id == source.id && target.getAttribute("xo-source") == source.getAttribute("xo-source") && target.getAttribute("xo-stylesheet") == source.getAttribute("xo-stylesheet") && target.getAttribute("xo-scope") == source.getAttribute("xo-scope")) {
+                                    const el = source;
+                                    for (let attr of [...target.attributes].filter(attr => boolean_attrs.has(attr.name) && !el.hasAttribute(attr.name))) {
+                                        target.removeAttribute(attr.name)
+                                    }
+                                    target.combineAttributes(...el.attributes)
+                                } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
+                                    const attr = source;
                                 //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
                                 if (attr.isEqualNode(target.attributes[attr.name])) continue;
                                 if (attr.name == "class") {
@@ -7666,6 +7703,7 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 }
                             }
+                        }
                         }
                     })
                 }
@@ -10964,6 +11002,16 @@ xover.xml.staticMerge = function (node1, node2) {
     if (node1.getAttribute("xo-source") != node2.getAttribute("xo-source") && xover.stores[node1.getAttribute("xo-source")] == xover.stores[node2.getAttribute("xo-source")]) {
         node2.importAttributeNode(node1.getAttributeNode("xo-source"))
     }
+    if (typeof (node1.selectedOptions) != 'undefined') {//fixes selected attribute out of sync
+        const selectedOptions = Array.from(node1.selectedOptions);
+        for (const option of Array.from(node1.querySelectorAll("[selected]")).filter(option => selectedOptions.indexOf(option)==-1)) {
+            option.removeAttribute("selected")
+        }
+        for (const option of selectedOptions.filter(option => !option.hasAttribute("selected"))) {
+            option.setAttribute("selected","")
+        }
+    }
+
     if (/*!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working,.xo-fetching")) || */!(node2.localName == 'template' || node1.nodeName.toLowerCase() == node2.nodeName.toLowerCase()) || node1.isEqualNode(node2)) return;
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
@@ -10976,7 +11024,7 @@ xover.xml.staticMerge = function (node1, node2) {
         )
         || node2.localName == 'template'
     )) {
-        node2.combineAttributes(...node1.attributes);
+        node2.combineAttributes(node1);
         //node1.combineAttributes(...node2.attributes);
     }
     if (static.contains("self::*")) {
