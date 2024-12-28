@@ -3649,7 +3649,7 @@ xover.Source = function (tag) {
     if (!this.hasOwnProperty("clear")) {
         Object.defineProperty(this, 'clear', {
             value: function () {
-                this.relatedDocuments.forEach(href => xover.sources[href].replaceContent());
+                this.relatedDocuments.forEach(document => document.replaceContent());
                 this.document.replaceContent();
             },
             writable: false, enumerable: false, configurable: false
@@ -4057,12 +4057,13 @@ xover.sources = new Proxy(new Map(), {
         if (key in self) {
             return self[key];
         }
+        if (key.indexOf('{$') != -1) return null;
+        if (key.indexOf(".") != -1) {
         key = xover.URL(key).href;
-        //key = key.replace(/^\//, '')
+        }
         if (key in self) {
             return self[key];
         }
-        if (key.indexOf('{$') != -1) return null;
         let document = new xover.Source(key).document
         document.observe();
         xover.sources[key] = document;
@@ -4074,7 +4075,9 @@ xover.sources = new Proxy(new Map(), {
     },
     has: function (self, key) {
         if (!key) return false;
-        key = key.replace(/^\//, '');
+        if (key.indexOf(".") != -1) {
+            key = xover.URL(key).href;
+        }
         return key in self || !!Object.keys(xover.manifest.sources || {}).filter(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key).pop()
     }
 })
@@ -4117,6 +4120,9 @@ xover.URL = function (href, base, settings = {}) {
         }
         method = settings["method"] || method;
         url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+        if (url.origin == location.origin && href[0] == "/") {
+            url.pathname = location.pathname.replace(/\/$/, "") + url.pathname;
+        }
         if (!method && settings["body"]) {
             method = 'POST'
         }
@@ -4179,7 +4185,7 @@ URL.href = URL.href || Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 Object.defineProperty(URL.prototype, 'href', {
     get: function () {
         let href = URL.href.get.call(this);
-        return href.replace(new RegExp(`^${location.origin}`), "").replace(new RegExp(`^${location.pathname.replace(/[^/]+$/, "")}`), "")//.replace(/^\/+/, '');
+        return href.replace(new RegExp(`^${location.origin}${(location.basepath || '').replace(/\/$/,'')}`), "");
     }
 });
 
