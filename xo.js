@@ -843,6 +843,7 @@ xover.initializeDOM = async function () {
             class ${class_name} extends HTMLElement {
                 constructor() {
                     super();
+                    xover.components["${component_name}"] = this.constructor;
                     if (!this.ownerDocument.contains(this)) return;
                     this.parts = this.parts || {};
                     this.initialFragment = document.createDocumentFragment();
@@ -850,8 +851,6 @@ xover.initializeDOM = async function () {
                     let statusElements = this.initialFragment.querySelectorAll(':scope > [role=status]:not([slot])');
                     statusElements.length && this.append(...statusElements);
                     this.initialChildNodes = this.initialChildNodes || [...this.initialFragment.childNodes];
-
-                    this.template = xover.sources["${component_name}"];
                     const observer = custom_component_listener;
                     observer.host = this;
                     observer.observe(this.template, { childList: true, subtree: true });
@@ -869,27 +868,51 @@ xover.initializeDOM = async function () {
                 async render() {
                     if (this.disconnected) return;
                     this.template.ready.then(async (document)=>{
-                        await xover.dom.combine(this, document.cloneNode(true).documentElement);
+                        let template = document.cloneNode(true).documentElement;
+                        template.combineAttributes(...this.attributes);
+                        await xover.signal.update.call(template, template.content, (key)=>{ return this.single('./' + key) || this.single('./@' + key) || key });
+                        await xover.dom.combine(this, template);
                         !this.shadowMode && this.updateSlotContent();
-                        let shadowRoot = this.shadowRoot || this;
-                        if (typeof(this.init)=='function') {
-                            this.init(shadowRoot);
-                        }
                     }).catch(e => console.error(e, this));
                 }
 
                 static extend(methods) {
-                    Object.defineProperties(this.prototype, 
-                        Object.keys(methods).reduce((descriptors, name) => {
-                            descriptors[name] = {
-                                value: methods[name],
+                    for (const [name, descriptor] of Object.entries(methods)) {
+                        if (typeof descriptor === 'function') {
+                            // Define as a method
+                            Object.defineProperty(this.prototype, name, {
+                                value: descriptor,
                                 writable: true,
                                 configurable: true,
-                                enumerable: false
-                            };
-                            return descriptors;
-                        }, {})
-                    );
+                                enumerable: false,
+                            });
+                        } else if (typeof descriptor === 'object') {
+                            const current_descriptor = Object.getOwnPropertyDescriptor(this.prototype, name);
+                            // Define as a getter/setter
+                            Object.defineProperty(this.prototype, name, {
+                                get: descriptor.get || current_descriptor.get,
+                                set: descriptor.set ? function (input, ...args) {
+                                    let return_value = descriptor.set.call(this, input, ...args);
+                                    if (return_value == false) return;
+                                    input = return_value !== undefined ? return_value : \`\${input}\`;
+                                    this["_"+name] = input;
+                                } : current_descriptor.set,
+                                configurable: true,
+                                enumerable: false,
+                            });
+                }
+                    }
+                }
+
+                attributeChangedCallback(name, oldValue, newValue) {
+                    if (oldValue === null || oldValue === newValue) return;
+                    if ('_'+name in this) {
+                        this['_'+name] = newValue;
+                    }
+                    xover.signal.update.call(this, (key, match) => this.single('./'+key) || this.single('./@'+key) || match);
+                    if (name == 'value') {
+                        window.dispatchEvent(new xover.listener.Event('change', {oldValue, newValue}, this));
+                    }
                 }
 
                 connectedCallback() {
@@ -907,6 +930,8 @@ xover.initializeDOM = async function () {
                     for (let el of shadowRoot.querySelectorAll('[part]')) {
                         this.parts[el.getAttribute("part")] = el
                     }
+                    if (!Object.keys(this.parts).length) debugger;
+                    //Object.freeze(this.parts);
                     if (this.initialChildNodes.length) {
                         let attributes = this.attributes;
                         for (let slot of [...(shadowRoot || this).querySelectorAll("slot")].filter(el => !el.assignedNodes().length)) {
@@ -934,33 +959,46 @@ xover.initializeDOM = async function () {
                         }
                     }
                     await xover.signal.update.call(this, shadowRoot || this, (key, match) => this.single('./'+key) || match);
+                    for (const script of [...shadowRoot.querySelectorAll("script")].filter(script => script.textContent)) {
+                        new Function(\`const constructor = this.constructor; let self = this; let parts = this.parts;\${script.textContent}\`).call(this);
+                }
+                    if (typeof(this.init)=='function') {
+                        this.init(shadowRoot);
+                    }
                 }
                 
                 static get observedAttributes() {
                     return ['value', 'text'];
                 }
 
-                get value() {
-                    return this._value;
+                get parts() {
+                    this._parts = this._parts || {};
+                    return this._parts;
                 }
-                set value(newValue) {
-                    if (this._value === newValue) return;
-                    this._value = newValue;
-                    this.setAttribute('value', newValue); // Sync attribute with property
-                    let scope = this.scope;
-                    if (instanceOf.call(scope, Attr)) scope.set(newValue)
+                set parts(input) {
+                    this._parts = input;
+                }
+
+                get template() {
+                    return xover.sources["${component_name}"];
                 }
 
                 get text() {
-                    return this._text;
+                    return "_text" in this ? this._text : this.getAttribute("text");
                 }
-                set text(newText) {
-                    this._text = newText;
-                    this.setAttribute('text', newText); // Sync attribute with property
+                set text(input) {
+                    this._text = input;
+                }
+
+                get value() {
+                    return "_value" in this ? this._value : this.getAttribute("value");
+                }
+                set value(input) {
+                    this._value = input;
                 }
 
                 get initialChildNodes() {
-                    return this._initialChildNodes;
+                    return this._initialChildNodes || [];
                 }
                 set initialChildNodes(initialChildNodes) {
                     if (this._initialChildNodes) {
@@ -975,21 +1013,7 @@ xover.initializeDOM = async function () {
                     } else {
                         this._initialChildNodes = initialChildNodes;
                     }
-                }
-
-                attributeChangedCallback(name, oldValue, newValue) {
-                    if (oldValue !== newValue) {
-                        switch(name) {
-                            case 'value':
-                                this._value = newValue; // Update internal property
-                                break;
-                            case 'text':
-                                this._text = newValue; // Update internal property
-                                break;
-                        }
-                        xover.signal.update.call(this, (key, match) => this.single('./'+key) || match);
                     }
-                }
 
                 disconnectedCallback() {
                     this.disconnected = true;
