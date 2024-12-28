@@ -869,7 +869,7 @@ xover.initializeDOM = async function () {
                     if (this.disconnected) return;
                     this.template.ready.then(async (document)=>{
                         let template = document.cloneNode(true).documentElement;
-                        template.combineAttributes(...this.attributes);
+                        template.applyAttributes(...this.attributes);
                         await xover.signal.update.call(template, template.content, (key)=>{ return this.single('./' + key) || this.single('./@' + key) || key });
                         await xover.dom.combine(this, template);
                         !this.shadowMode && this.updateSlotContent();
@@ -3296,7 +3296,7 @@ xover.xml.getDifferences = function (node1, node2) {
         return [new Map([[node1, node2]])];
     }
     if (node1 instanceof Element && (node1.hasAttribute("xo-source") && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") || node1.hasAttribute("xo-stylesheet") && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-source"))) {
-        node2.combineAttributes(...node1.attributes)
+        node2.applyAttributes(...node1.attributes)
         //node1.staticAttributes = node1.staticAttributes || [...node1.attributes || []].filter(attr => !["xo-source", "xo-stylesheet", "xo-swap"].includes(attr.name)).map(attr => `@${attr.name}`);
     }
     let static = document.firstElementChild.cloneNode().classList;
@@ -7637,7 +7637,7 @@ xover.modernize = async function (targetWindow) {
                     })
                 }
 
-                if (!Element.prototype.hasOwnProperty('combineAttributes')) {
+                if (!Element.prototype.hasOwnProperty('applyAttributes')) {
                     const boolean_attrs = new Set([
                         "allowfullscreen",  // iframe
                         "async",            // script
@@ -7667,7 +7667,7 @@ xover.modernize = async function (targetWindow) {
                         "spellcheck",       // global attribute (treated as a boolean in some scenarios)
                         "translate"         // global attribute (treated as a boolean in some scenarios)
                     ]);
-                    Object.defineProperty(Element.prototype, 'combineAttributes', {
+                    Object.defineProperty(Element.prototype, 'applyAttributes', {
                         enumerable: false,
                         value: function (...sources) {
                             const target = this;
@@ -7677,7 +7677,7 @@ xover.modernize = async function (targetWindow) {
                                     for (let attr of [...target.attributes].filter(attr => boolean_attrs.has(attr.name) && !el.hasAttribute(attr.name))) {
                                         target.removeAttribute(attr.name)
                                     }
-                                    target.combineAttributes(...el.attributes)
+                                    target.applyAttributes(...el.attributes)
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                 //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
@@ -11024,8 +11024,8 @@ xover.xml.staticMerge = function (node1, node2) {
         )
         || node2.localName == 'template'
     )) {
-        node2.combineAttributes(node1);
-        //node1.combineAttributes(...node2.attributes);
+        node2.applyAttributes(node1);
+        //node1.applyAttributes(...node2.attributes);
     }
     if (static.contains("self::*")) {
         node2.replaceWith(node1.cloneNode(true))
@@ -11116,7 +11116,7 @@ xover.xml.combine = function (target, new_node) {
         if (!instanceOf.call(target, HTMLTemplateElement) && instanceOf.call(new_node, HTMLTemplateElement)) {
             attributes = attributes.concat([...target.attributes])
         }
-        target.combineAttributes(...[...new_node.attributes].filter(attr => (target.attributes[attr.name] || {}).value !== attr.value && !attributes.some(el => el.name == attr.name)));
+        target.applyAttributes(...[...new_node.attributes].filter(attr => (target.attributes[attr.name] || {}).value !== attr.value && !attributes.some(el => el.name == attr.name)));
         if (target.shadowMode) {
             target.replaceChildren(...target.initialChildNodes || []);
             let replacement = target.cloneNode(true);
@@ -11162,7 +11162,7 @@ xover.xml.combine = function (target, new_node) {
         || instanceOf.call(target, SVGElement) && !instanceOf.call(new_node, SVGElement)
     ) {
         let restore_focus = target.contains(document.activeElement)
-        //instanceOf.call(target, Element) && new_node.combineAttributes(...[...target.attributes].filter(attr => !(attr.localName == "xo-source" && !["seed","active","inherit"].includes(attr.value))));
+        //instanceOf.call(target, Element) && new_node.applyAttributes(...[...target.attributes].filter(attr => !(attr.localName == "xo-source" && !["seed","active","inherit"].includes(attr.value))));
         ////for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) { // TODO: Review this logic
         ////    new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
         ////}
@@ -11183,7 +11183,7 @@ xover.xml.combine = function (target, new_node) {
             }
             attr.remove({ silent: true })
         }
-        target.combineAttributes(...new_node.attributes)
+        target.applyAttributes(...new_node.attributes)
         //let active_element = new_node.children.toArray().find(node => node.isEqualNode(document.activeElement))
         try {
             target.replaceChildren(...new_node.childNodes)
