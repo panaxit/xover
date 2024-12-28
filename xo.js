@@ -1293,12 +1293,6 @@ Object.defineProperties(xover.signal, {
                 if (instanceOf.call(subscriber, Attr)) {
                     subscriber.parentNode.classList.add("xo-syncing")
                 } else if (instanceOf.call(subscriber, Text) && !instanceOf.call(subscriber.closest("*"), HTMLSlotElement)) {
-                    //const value = subscriber.value.replace(/\{[\$\{]([^\}]+)\}?\}/g, (full_match, match, ix, full_string) => {
-                    //    if (full_string == full_match) return full_string;
-                    //    let new_target = document.createElement("slot");
-                    //    new_target.classList.add("xo-syncing");
-                    //    return new_target.stringify();
-                    //})
 
                     const fragment = document.createDocumentFragment();
 
@@ -1317,7 +1311,6 @@ Object.defineProperties(xover.signal, {
                             //fragment.appendChild(textNode);
                         }
 
-                        // Create and append a slot for the placeholder
                         const slot = new Text()//document.createElement("slot");
                         //slot.closest("*").classList.add("xo-syncing");
                         slot.textContent = '';
@@ -1327,15 +1320,11 @@ Object.defineProperties(xover.signal, {
                             })
                         }
                         fragment.appendChild(slot);
-
-                        // Map the slot to its placeholder value
                         subscribers.set(slot, fullMatch);
-
                         lastIndex = match.index + fullMatch.length;
                     }
 
-                    // Append remaining text after the last placeholder
-                    if (lastIndex < text_content.length) {
+                    if (lastIndex < text_content.length) {// Append remaining text after the last placeholder
                         const remainingText = text_content.slice(lastIndex);
                         const textNode = document.createTextNode(remainingText);
                         fragment.appendChild(textNode);
@@ -1352,9 +1341,6 @@ Object.defineProperties(xover.signal, {
                 target.subscribers = subscribers;
                 subscribers.evaluate(valueParser);
             }
-            //for (let [ref, formula] of subscribers.entries()) {
-            //    ref.evaluate()
-            //}
         }
     }
 });
@@ -5602,9 +5588,9 @@ xover.modernize = async function (targetWindow) {
                     if (this instanceof HTMLTextAreaElement && xpath == undefined) {
                         return HTMLTextAreaElement.select.apply(this)
                     }
-                    if (this instanceof DocumentFragment || this instanceof HTMLTemplateElement && xpath.replace(/^\//, '').search(/^\.\/@|^@|^\.\.|^\//) != 0) {
-                        let children = new DocumentFragment();
                         let matches = [];
+                    if (instanceOf.call(this, DocumentFragment) && !(instanceOf.call(this, ShadowRoot))) {
+                        let children = new DocumentFragment();
                         const temp_doc = this.firstElementChild instanceof HTMLElement ? window.document.cloneNode() : new DOMParser().parseFromString("<root/>", 'text/xml');
                         if (!temp_doc.firstElementChild) temp_doc.append(window.document.body.cloneNode());
                         let original_root = temp_doc.firstElementChild;
@@ -5621,7 +5607,9 @@ xover.modernize = async function (targetWindow) {
                             if (!temp_doc.firstChild) temp_doc.append(original_root);
                         }
                         (this.content || this).append(...children.childNodes)
+                        if (instanceOf.call(this, DocumentFragment)) {
                         return matches;
+                    }
                     }
                     let remove = false;
                     //let store = this.ownerDocument.store;
@@ -5697,6 +5685,7 @@ xover.modernize = async function (targetWindow) {
                             }
                         }
                     }
+                    selection = selection.concat(matches);
 
                     Object.setPrototypeOf(selection, NodeSet.prototype)
                     return selection
@@ -6024,6 +6013,7 @@ xover.modernize = async function (targetWindow) {
                 Object.defineProperty(Node.prototype, 'contains', {
                     value: function (...args) {
                         let selector = args[0];
+                        if (!selector) return false;
                         try {
                             if (Node.contains && Node.contains.value && (!selector || instanceOf.call(selector, Node))) {
                                 return args.find(el => el === this) || Node.contains.value.apply(this.contentDocument || this.content || this, args.map(arg => arg.ownerElement || arg));
@@ -10022,7 +10012,7 @@ xover.Response = function (response, request) {
                 case "html":
                     if (content_type.indexOf("xhtml") != -1 && response_content.trimStart().indexOf("<template") == 0) {
                         try {
-                            let new_string = response_content.replace(/<(script|style)([^>]*)>([\S\s]*)<\/\1/g, `<$1$2><![CDATA[$3]]></$1`).replace(/"[^"]*\{\{[^"]*"/, (match) => match.replace(/([\{\}])/g, '$1$1'));
+                            let new_string = response_content.replace(/<(script|style)([^>]*)>([\S\s]*)<\/\1/g, `<$1$2><![CDATA[$3]]></$1`).replace(/"[^"]*\{\{[^"]*"/g, (match) => match.replace(/([\{\}])/g, '$1$1'));
                             body = new DOMParser().parseFromString("<root/>", 'text/xml').transform(new DOMParser().parseFromString(`<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns="http://www.w3.org/1999/xhtml"><xsl:output method="xml" indent="no" /><xsl:template match="/">${new_string}</xsl:template></xsl:stylesheet>`, 'text/xml'));
                             break
                         } catch (e) { }
@@ -10473,7 +10463,7 @@ xover.Request = function (request, ...args) {
     let parameters = [];
     let parameters_handler = {
         get: function (self, key) {
-            return self[key];
+            return url.searchParams.get(key)
         },
         set: function (self, key, value) {
             if (value && value.constructor == {}.constructor) {
@@ -10978,14 +10968,13 @@ xover.xml.staticMerge = function (node1, node2) {
     let static = document.firstElementChild.cloneNode().classList;
     static.value = node1 instanceof Element && node1.getAttribute("xo-static") || "";
 
-    if (node1.attributes && (node1.id == node2.id
+    if (node1.attributes && (node1.id && node1.id == node2.id
         || node1.localName == node2.localName && (
-            node1.attributes["xo-source"] == node2.attributes["xo-source"]
-            || node1.attributes["xo-stylesheet"] == node2.attributes["xo-stylesheet"]
-            || node1.attributes["xo-scope"] == node2.attributes["xo-scope"]
+            node1.attributes["xo-source"] == node2.attributes["xo-source"] //TODO: Consider seed, active, inherit 
+            && node1.attributes["xo-stylesheet"] == node2.attributes["xo-stylesheet"]
+            && node1.attributes["xo-scope"] == node2.attributes["xo-scope"]
         )
         || node2.localName == 'template'
-        || instanceOf.call(node1, CustomElement) && instanceOf.call(node2, CustomElement)
     )) {
         node2.combineAttributes(...node1.attributes);
         //node1.combineAttributes(...node2.attributes);
@@ -11346,7 +11335,8 @@ xover.dom.combine = async function (target, new_node) {
     //let target_preceding_siblings = [];
 
     //target.ownerDocument.disconnect();
-    scripts = new_node.selectNodes('descendant-or-self::html:script[not(@src)][text()]').map(el => {
+
+    scripts = !instanceOf.call(new_node, HTMLTemplateElement, CustomElement) && new_node.selectNodes('descendant-or-self::html:script[not(@src)][text()]').map(el => {
         let cloned = el.cloneNode(true);
         cloned.original = el;
         el.textContent = ''
@@ -11354,7 +11344,7 @@ xover.dom.combine = async function (target, new_node) {
             value: el.parentNode
         });
         return cloned;
-    });
+    }) || [];
     if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
     if (new_node && (new_node.tagName || '').toLowerCase() == "html") {
         //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
