@@ -8759,10 +8759,10 @@ xover.modernize = async function (targetWindow) {
                 HTMLScriptElement.cloneNode = HTMLScriptElement.cloneNode || HTMLScriptElement.prototype.cloneNode;
                 HTMLScriptElement.prototype.cloneNode = function (deep = false, inert = false) {
                     if (!inert) return HTMLScriptElement.cloneNode.call(this, deep);
-                    const script = this.ownerDocument.createElement('script');
-                    [...script.attributes].map(attr => script.setAttributeNode(attr.cloneNode(true)));
-                    script.textContent = this.textContent;
-                    return script;
+                    let children = new DocumentFragment();
+                    const temp_doc = this.ownerDocument.cloneNode();
+                    const new_script = temp_doc.appendChild(HTMLScriptElement.cloneNode.call(this, deep));                    
+                    return new_script;
                 }
 
                 Element.prototype.seed = function (reseed_or_config = {}) {
@@ -11231,7 +11231,9 @@ xover.xml.combine = function (target, new_node) {
                     }
                 }
                 new_node.content.querySelectorAll("slot").forEach(slot => slot.addEventListener('slotchange', slot_change));
-                target.attachShadow({ mode: 'open', ...Object.fromEntries(attributes.map(attr => [(attr.name.replace(/^shadowroot/, '') || "mode").replace(/focus/g, (match) => match[0].toUpperCase() + match.slice(1)), attr.value])) }).replaceChildren(...new_node.content.childNodes);
+                let shadowRoot = target.attachShadow({ mode: 'open', ...Object.fromEntries(attributes.map(attr => [(attr.name.replace(/^shadowroot/, '') || "mode").replace(/focus/g, (match) => match[0].toUpperCase() + match.slice(1)), attr.value])) });
+                new_node.content.querySelectorAll("script").forEach(el => el.replaceWith(el.cloneNode(true, true)));
+                shadowRoot.replaceChildren(...new_node.content.childNodes)
             } catch (e) {
                 console.error(e)
             }
@@ -13378,7 +13380,33 @@ xover.json.fromAttributes = function (attributes) {
 //    return json
 //}
 
-xover.xml.getXpath = function (node) {
+//function getXPath(node) {
+//    if (!node || node.nodeType === Node.DOCUMENT_NODE) {
+//        return '';
+//    }
+
+//    switch (node.nodeType) {
+//        case Node.ELEMENT_NODE: {
+//            const index = [...node.parentNode.children].filter(n => n.localName === node.localName).indexOf(node) + 1;
+//            const tagName = node.localName;
+//            return `${getXPath(node.parentNode)}/${tagName}[${index}]`;
+//        }
+//        case Node.ATTRIBUTE_NODE: {
+//            return `${getXPath(node.ownerElement)}/@${node.nodeName}`;
+//        }
+//        case Node.TEXT_NODE: {
+//            const index = [...node.parentNode.childNodes].filter(n => n.nodeType === Node.TEXT_NODE).indexOf(node) + 1;
+//            return `${getXPath(node.parentNode)}/text()[${index}]`;
+//        }
+//        case Node.COMMENT_NODE: {
+//            const index = [...node.parentNode.childNodes].filter(n => n.nodeType === Node.COMMENT_NODE).indexOf(node) + 1;
+//            return `${getXPath(node.parentNode)}/comment()[${index}]`;
+//        }
+//        default:
+//            return '';
+//    }
+//}
+xover.xml.getXpath = function (node) {//TODO: Refactor using code above to consider several cases and positions
     let xpath = '';
     xpath = (node.firstElementChild || node).nodeName;
     if (node.parentElement) {
