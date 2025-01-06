@@ -976,7 +976,6 @@ xover.initializeDOM = async function () {
                     if (this.ownerDocument.disconnected) return; //methods like matches reattaches deleted node to test selector
                     //if (typeof(this.checkVisibility) == 'function' ? !this.checkVisibility() : !this.ownerDocument.contains(this)) return;
                     this.#template_observer = this.#template_observer || new MutationObserver(async (mutations, observer) => {
-                        debugger
                         for (const mutation of mutations) {
                             if (mutation.removedNodes.length) {
                                 this.compose();
@@ -4664,7 +4663,7 @@ xover.dom.alert = async function (message) {
             dom = await xMessage.transform();
             dom.documentElement.select('//text()').filter(text => text.data.trim()).forEach(text => text.replaceWith(xover.string.toHTML(text)))
             dom.select(`//@xo-scope[starts-with(.,'context:')]`).remove();
-            if (![...document.querySelectorAll(`${dom.firstElementChild.tagName}`)].map(el => el.select(".//text()").filter(text => text.data.trim()).join("\n")).includes(dom.select(".//text()").filter(text => text.data.trim()).join("\n"))) {
+            if (![...document.querySelectorAll(`${dom.firstElementChild.localName}`)].map(el => el.select(".//text()").filter(text => text.data.trim()).join("\n")).includes(dom.select(".//text()").filter(text => text.data.trim()).join("\n"))) {
                 document.body && document.body.appendChild(dom.documentElement)
             }
             return dom.documentElement;
@@ -5630,22 +5629,35 @@ xover.modernize = async function (targetWindow) {
                         if (!temp_doc.firstElementChild) temp_doc.append(window.document.body.cloneNode());
                         let original_root = temp_doc.firstElementChild;
                         for (let child of [...fragment.childNodes]) {
+                            cloned_child = child.cloneNode(true);
                             let target = temp_doc;
-                            if ([3].includes(child.nodeType)) {
-                                temp_doc.firstElementChild.replaceChildren(child);
+                            if ([Node.TEXT_NODE].includes(child.nodeType)) {
+                                temp_doc.firstElementChild.replaceChildren(cloned_child);
                                 target = temp_doc.firstElementChild;
                             } else {
-                                temp_doc.firstElementChild.replaceWith(child);
+                                temp_doc.firstElementChild.replaceWith(cloned_child);
                             }
-                            matches = matches.concat(target.selectNodes(xpath));
-                            children.appendChild(child);
+                            let local_matches = target.selectNodes(xpath, resultType);
+                            if (local_matches.length) {
+                                for (let match of local_matches) {
+                                    let selector = (match.ownerElement || match).selector//getXPath(match).replace(/^\//,'self::');
+                                    if (child.matches(selector)) {
+                                        actualMatch = child;
+                                    } else {
+                                        actualMatch = this.querySelector(selector);
+                                    }
+                                    if (match.nodeType === Node.ATTRIBUTE_NODE) {
+                                        actualMatch = actualMatch.getAttributeNode(match.nodeName);
+                                    }
+                                    if (!actualMatch) debugger;//child.single(selector);
+                                    matches.push(actualMatch);
+                                }
+                            }
+                            //matches = matches.concat(local_matches);
+                            children.appendChild(cloned_child);
                             if (!temp_doc.firstChild) temp_doc.append(original_root);
                         }
-                        fragment.append(...children.childNodes)
                         xover.listener.history.set(`selectNodes:${xpath}`, this)
-                        //if (matches.length) {
-                        //    debugger
-                        //}
                         return matches;
                     }
                     let remove = false;
@@ -8742,6 +8754,15 @@ xover.modernize = async function (targetWindow) {
                     //cloned_element.href = this.href;
                     cloned_element.url = this.url;
                     return cloned_element;
+                }
+
+                HTMLScriptElement.cloneNode = HTMLScriptElement.cloneNode || HTMLScriptElement.prototype.cloneNode;
+                HTMLScriptElement.prototype.cloneNode = function (deep = false, inert = false) {
+                    if (!inert) return HTMLScriptElement.cloneNode.call(this, deep);
+                    const script = this.ownerDocument.createElement('script');
+                    [...script.attributes].map(attr => script.setAttributeNode(attr.cloneNode(true)));
+                    script.textContent = this.textContent;
+                    return script;
                 }
 
                 Element.prototype.seed = function (reseed_or_config = {}) {
