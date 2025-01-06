@@ -6631,14 +6631,14 @@ xover.modernize = async function (targetWindow) {
                                 if (!(this && this.parentNode)) {
                                     return path.filter(el => el).join(" > ");
                                 } else if (this.id) {
-                                    path.unshift(`${this.tagName}[id='${this.id}']`);
+                                    path.unshift(`${this.localName}[id='${this.id}']`);
                                 } else if ((this.classList || []).length && !(selector_method == 'full')) {
                                     let classes = [...this.classList].filter(class_name => !(config.ignore.includes(`.${class_name}`) || class_name.match("[.]")));
-                                    path.unshift(this.tagName + (classes.length && '.' + classes.join(".") || ""));
+                                    path.unshift(this.localName + (classes.length && '.' + classes.join(".") || ""));
                                 } else if (this.nodeName == '#text') {
                                     path.unshift(buildQuerySelector.call(this.parentNode, target, path.flat()));
                                 } else {
-                                    path.unshift(this.tagName || '*');
+                                    path.unshift(this.localName || '*');
                                 }
                                 if (this instanceof Element && this.hasAttribute("xo-stylesheet")) {
                                     path[0] = path[0] + `[xo-stylesheet='${this.getAttribute("xo-stylesheet")}']`;
@@ -6675,14 +6675,14 @@ xover.modernize = async function (targetWindow) {
                                 if (!(target && target.parentNode)) {
                                     return path.filter(el => el).join(" > ");
                                 } else if (target.id) {
-                                    path.unshift(`${target.tagName}[id='${target.id}']`);
+                                    path.unshift(`${target.localName}[id='${target.id}']`);
                                 } else if ((target.classList || []).length && selector_type != 'full_path') {
                                     let classes = [...target.classList].filter(class_name => !["xo-working"].includes(class_name) && class_name.match(/^[a-zA-Z_][a-zA-Z0-9_\-]*$/));
-                                    path.unshift(target.tagName + (classes.length && '.' + classes.join(".") || ""));
+                                    path.unshift(target.localName + (classes.length && '.' + classes.join(".") || ""));
                                 } else if (target.nodeName == '#text') {
                                     path.unshift(buildQuerySelector(target.parentNode, path.flat()));
                                 } else {
-                                    path.unshift(target.tagName || '*');
+                                    path.unshift(target.localName || '*');
                                 }
                                 if (target instanceof Element && target.hasAttribute("xo-stylesheet")) {
                                     path[0] = path[0] + `[xo-stylesheet='${target.getAttribute("xo-stylesheet")}']`;
@@ -11334,8 +11334,8 @@ xover.dom.applyScripts = async function (scripts = []) {
         }
         let attribute = script.getAttributeNode("src") || script.getAttributeNode("href");
         if (attribute && script.selectSingleNode(`self::*[self::html:script[@src] or self::html:link[@href] or self::html:meta]`)) {
-            if (attribute && ![...targetDocument.querySelectorAll(script.tagName + `[${attribute.name}]`)].filter(node => node.isEqualNode(script.cloneNode()) || xover.URL(node.getAttribute(attribute.name)).href == xover.URL(script.getAttribute(attribute.name)).href || false).length) {
-                let new_element = targetDocument.createElement(script.tagName); /*script.cloneNode(); won't work properly*/
+            if (attribute && ![...targetDocument.querySelectorAll(script.localName + `[${attribute.name}]`)].filter(node => node.isEqualNode(script.cloneNode()) || xover.URL(node.getAttribute(attribute.name)).href == xover.URL(script.getAttribute(attribute.name)).href || false).length) {
+                let new_element = targetDocument.createElement(script.localName); /*script.cloneNode(); won't work properly*/
                 [...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
                 let on_load = script.textContent;
                 new_element.setAttribute(attribute.name, attribute.value.replace(/^\//, location.basepath));
@@ -11353,9 +11353,9 @@ xover.dom.applyScripts = async function (scripts = []) {
             script.innerHTML = xover.string.htmlDecode(script.innerHTML); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
             if (script.selectSingleNode(`self::html:style`)) {
                 let target = instanceOf.call(this, Document) && targetDocument.querySelector("head,body") || targetDocument.firstElementChild || targetDocument;
-                if (![...target.querySelectorAll(script.tagName)].find(node => node.isEqualNode(script))) {
+                if (![...target.querySelectorAll(script.localName)].find(node => node.isEqualNode(script))) {
                     target.appendChild(script);
-                    //let new_element = target.createElement(script.tagName); /*script.cloneNode(); won't work properly*/
+                    //let new_element = target.createElement(script.localName); /*script.cloneNode(); won't work properly*/
                     //[...script.attributes].map(attr => new_element.setAttributeNode(attr.cloneNode(true)));
                     //new_element.innerHTML = script.textContent;
                     //target.appendChild(new_element);
@@ -11401,7 +11401,7 @@ xover.dom.combine = async function (target, new_node) {
     let script_wrapper = target.ownerDocument.createDocumentFragment();
     script_wrapper.append(...(new_node.content || new_node).selectNodes(`html:style|descendant-or-self::*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
     if (instanceOf.call(target, HTMLElement) && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
-        //if (target.tagName != 'CODE' && !(new_node.firstElementChild instanceof HTMLElement)) {
+        //if (target.localName != 'code' && !(new_node.firstElementChild instanceof HTMLElement)) {
         //    let named_slots = target.querySelectorAll("slot[name]");
         //    if (named_slots.length) {
         //        for (let slot of named_slots) {
@@ -11413,7 +11413,7 @@ xover.dom.combine = async function (target, new_node) {
         //        return target;
         //    }
         //}
-        let named_slots = target.tagName != 'CODE' && (new_node.content || new_node).querySelectorAll("slot[name]") || [];
+        let named_slots = target.localName != 'code' && (new_node.content || new_node).querySelectorAll("slot[name]") || [];
         for (let slot of named_slots) {
             if (target.hasAttribute(slot.getAttribute("name"))) {
                 slot.replaceChildren(target.getAttribute(slot.getAttribute("name")))
@@ -11497,18 +11497,18 @@ xover.dom.combine = async function (target, new_node) {
         return cloned;
     }) || [];
     if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
-    if (new_node && (new_node.tagName || '').toLowerCase() == "html") {
+    if (new_node && (new_node.localName || '') == "html") {
         //dom.namespaceURI == "http://www.w3.org/1999/xhtml"
         //xover.dom.setEncryption(new_node, 'UTF-7');
         new_node.select('//text()[.="�"]').remove();
         let iframe;
-        if (document.activeElement.tagName.toLowerCase() == 'iframe') {
+        if (document.activeElement.localName == 'iframe') {
             iframe = document.activeElement;
             target = (document.activeElement || {}).contentDocument.querySelector('main,table,div,span');
-            target.parentElement.replaceChild(new_node.querySelector(target.tagName.toLowerCase()), target);
+            target.parentElement.replaceChild(new_node.querySelector(target.localName), target);
         } else {
             //target.replaceChildren();
-            if (target.tagName.toLowerCase() == "iframe") {
+            if (target.localName == "iframe") {
                 iframe = target;
             } else {
                 let tag = (new_node.store || {}).tag;
@@ -13739,7 +13739,7 @@ xover.listener.on('hotreload', async function (file_path) {
     let urls = [...window.document.select(`//html:link/@href|//@src`), ...[...this.querySelectorAll(`iframe`)].map(el => el.contentDocument && typeof (el.contentDocument.select) === 'function' && el.contentDocument.select(`//html:link/@href|//@src`)).flat()];
     for (let src of urls.filter(script => script && new xover.URL(script.value).href == file.href)) {
         let old_script = src.parentNode;
-        let new_script = document.createElement(old_script.tagName); /*script.cloneNode(); won't work properly*/
+        let new_script = document.createElement(old_script.localName); /*script.cloneNode(); won't work properly*/
         [...old_script.attributes].map(attr => new_script.setAttributeNode(attr.cloneNode(true)));
         new_script[src.name] += `#${Date.now()}`
         old_script.parentNode.replaceChild(new_script, old_script);
