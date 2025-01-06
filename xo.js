@@ -11206,6 +11206,7 @@ xover.xml.combine = function (target, new_node) {
     let new_metaNodes = new_node.metaNodes;
     //if (instanceOf.call(target, CustomElement) && !instanceOf.call(new_node, HTMLTemplateElement)) debugger;
     if (instanceOf.call(new_node, HTMLTemplateElement)) {
+        new_node.content.querySelectorAll("script").forEach(el => el.replaceWith(el.cloneNode(true, true)));
         let attributes = [...new_node.attributes].filter(attr => attr.name.slice(0, 10) == "shadowroot" || ["xmlns"].includes(attr.name));
         if (!instanceOf.call(target, HTMLTemplateElement) && instanceOf.call(new_node, HTMLTemplateElement)) {
             attributes = attributes.concat([...target.attributes])
@@ -11232,7 +11233,6 @@ xover.xml.combine = function (target, new_node) {
                 }
                 new_node.content.querySelectorAll("slot").forEach(slot => slot.addEventListener('slotchange', slot_change));
                 let shadowRoot = target.attachShadow({ mode: 'open', ...Object.fromEntries(attributes.map(attr => [(attr.name.replace(/^shadowroot/, '') || "mode").replace(/focus/g, (match) => match[0].toUpperCase() + match.slice(1)), attr.value])) });
-                new_node.content.querySelectorAll("script").forEach(el => el.replaceWith(el.cloneNode(true, true)));
                 shadowRoot.replaceChildren(...new_node.content.childNodes)
             } catch (e) {
                 console.error(e)
