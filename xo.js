@@ -374,10 +374,18 @@ Object.defineProperty(xover.storehouse, 'sources', {
             _add(file, record_key);
         }
         let _put = store.put;
-        store.put = function (source, name = '', type) {
+        store.put = function (source, key = '', type) {
+            let file_name, name;
+            if (instanceOf.call(key, URL)) {
+                file_name = key.href
+                name = key.hash
+            } else {
+                file_name = key
+                name = key
+            }
             if (source.constructor === {}.constructor) source = JSON.stringify(source);
             if (source instanceof Node) source = source.outerHTML || source.innerHTML || source.toString();
-            let file = new File([`${source}`], name, {
+            let file = new File([`${source}`], file_name, {
                 type: (type || "text/plain").split(",")[0],
             });
             _put(file, name);
@@ -409,7 +417,7 @@ Object.defineProperties(xover.storehouse, {
                 console.log(e)
             }
             if (document instanceof Document && record) {
-                document.href = record.name
+                document.url = xover.URL(record.name)
                 document.lastModifiedDate = record.lastModified;
             }
             return document
@@ -4152,6 +4160,9 @@ xover.sources = new Proxy(new Map(), {
         return self[key];
     },
     set: function (self, key, input) {
+        if (key.indexOf(".") != -1) {
+            key = xover.URL(key).href;
+        }
         self[key] = input;
     },
     has: function (self, key) {
@@ -12077,7 +12088,7 @@ xover.Store = function (xml, ...args) {
                 //    xover.session.setKey(store.tag, { source: source.tag });
                 //    source.save();
                 //} else {
-                await xover.storehouse.write('sources', store.tag, __document);
+                await xover.storehouse.write('sources', store.url, __document);
                 //}
             },
             writable: false, enumerable: false, configurable: false
@@ -12313,13 +12324,13 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'searchParams', {
         get: function () {
-            return _store_url.searchParams;
+            return this.url.searchParams;
         }
     });
 
     Object.defineProperty(this, 'url', {
         get: function () {
-            return _store_url
+            return __document.url || _store_url
         }
     });
 
@@ -12726,10 +12737,12 @@ xover.Store = function (xml, ...args) {
             render_manager.set(__document, render_manager.get(__document) || xover.delay(1).then(async () => {
                 !__document.firstChild && await xover.storehouse.read('sources', store.tag).then((stored_document) => {
                     if (!__document.firstChild && stored_document && stored_document.firstChild) {
-                        __document.replaceContent(...stored_document.childNodes)
+                        __document = stored_document;
+                        xover.sources[store.tag] = __document;
+                        //__document.replaceContent(...stored_document.childNodes)
                     }
                 });
-                return Promise.resolve(document)
+                return Promise.resolve(__document)
             }).catch((e) => {
                 return Promise.reject(e)
             }).finally(async () => {
