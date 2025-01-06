@@ -958,7 +958,6 @@ xover.initializeDOM = async function () {
                     if ('_'+name in this) {
                         this['_'+name] = newValue;
                     }
-                    debugger
                     xover.signal.update.call(this.getAttributeNode(name));
                     if (name == 'value') {
                         window.dispatchEvent(new xover.listener.Event('change', {oldValue, newValue}, this));
@@ -997,7 +996,6 @@ xover.initializeDOM = async function () {
                         this.parts[el.getAttribute("part")] = el
                     }
                     if (!Object.keys(this.parts).length) debugger;
-                    //Object.freeze(this.parts);
                     if (this.initialChildNodes.hasChildNodes()) {
                         let attributes = this.attributes;
                         for (let slot of [...(shadowRoot || this).querySelectorAll("slot")].filter(el => !el.assignedNodes().length)) {
@@ -1020,7 +1018,7 @@ xover.initializeDOM = async function () {
                                     }
                                 }
                             } else if (!slot.attributes.length) {
-                                slot.replaceWith([...this.initialChildNodes.childNodes].filter(el => !el.attributes || !el.hasAttribute("slot")))
+                                slot.replaceWith(...[...this.initialChildNodes.childNodes].filter(el => !el.attributes || !el.hasAttribute("slot")))
                             }
                         }
                     }
