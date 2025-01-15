@@ -637,6 +637,17 @@ xover.init.Observer = function (target_node = window.document) {
     elementsToObserve.forEach(element => {
         intersection_observer.observe(element);
     });
+    const updateSections = function () {
+        const target_node = this;
+        for (const el of [...xover.sections].filter(el => !el.checkVisibility())) {
+            xover.sections.delete(el);
+        }
+        for (const el of [...target_node.querySelectorAll("[xo-source],[xo-stylesheet]")].filter(el => !xover.sections.has(el) && el.checkVisibility())) {
+            xover.sections.add(el);
+            el.shadowRoot && xover.init.Observer(el.shadowRoot);
+            el.render()
+        }
+    }
 
     const observer = new MutationObserver((mutationsList, observer) => {
         //if ([MouseEvent, TransitionEvent].includes((event || {}).constructor)) return; // Should these events be skipped? 
@@ -662,9 +673,14 @@ xover.init.Observer = function (target_node = window.document) {
         let mutation_event = new xover.listener.Event('mutate', { document: target_node, srcElement: active_element, mutations }, target_node);
         window.dispatchEvent(mutation_event);
         mutations = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue) : mutations;
-        for (let [target, mutation] of mutations) {
+        for (const [target, mutation] of mutations) {
             for (let [attr, oldValue] of Object.values((mutation.attributes || {})[""] || {})) {
                 window.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue, parentNode: (attr.parentNode || target) }, attr));
+                if (attr.name === "shadowrootmode" && target.shadowRoot && attr.value === null) {
+                    const initialChildNodes = target.initialChildNodes || target.shadowRoot.childNodes;
+                    target.replaceWith(target.cloneNode(true));
+                    target.replaceContent(...initialChildNodes)
+            }
             }
             if (mutation.removedNodes.length && mutation.addedNodes.length) {
                 let replace_event = new xover.listener.Event('replaceChildren', { addedNodes: mutation.addedNodes, removedNodes: mutation.removedNodes }, target);
@@ -702,7 +718,7 @@ xover.init.Observer = function (target_node = window.document) {
                 let node_event = new xover.listener.Event('appendTo', { srcElement: active_element, addedNodes: mutation.addedNodes }, target);
                 window.dispatchEvent(node_event);
                 if (node_event.defaultPrevented) mutation.addedNodes.splice(0);
-                if (target instanceof Element && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
+                if (target.nodeType === Node.ELEMENT_NODE && target.getAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil") && (target.firstElementChild || target.textContent)) {
                     target.removeAttributeNS("http://www.w3.org/2001/XMLSchema-instance", "nil");
                 }
             }
@@ -727,6 +743,7 @@ xover.init.Observer = function (target_node = window.document) {
                 }
             }
         }
+        updateSections.call(target_node);
         for (let section of [...mutations].filter(([node, mutations]) =>
             !mutations.addedNodes.length && !mutations.removedNodes.length && !(mutations.attributes || {})[""] && node.matches("[xo-source],[xo-stylesheet]")
             || mutations.attributes && ["xo-source", "xo-stylesheet"].some(attribute => ((mutations.attributes || {})[""] || {}).hasOwnProperty(attribute))
@@ -803,6 +820,7 @@ xover.init.Observer = function (target_node = window.document) {
         }
     });
     observer.observe(target_node, config);
+    updateSections.call(target_node);
 }
 
 xover.initializeDOM = async function () {
