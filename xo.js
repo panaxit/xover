@@ -680,7 +680,7 @@ xover.init.Observer = function (target_node = window.document) {
                     const initialChildNodes = target.initialChildNodes || target.shadowRoot.childNodes;
                     target.replaceWith(target.cloneNode(true));
                     target.replaceContent(...initialChildNodes)
-            }
+                }
             }
             if (mutation.removedNodes.length && mutation.addedNodes.length) {
                 let replace_event = new xover.listener.Event('replaceChildren', { addedNodes: mutation.addedNodes, removedNodes: mutation.removedNodes }, target);
@@ -2033,8 +2033,10 @@ Object.defineProperty(xover.listener, 'on', {
     writable: true, enumerable: false, configurable: false
 });
 
-xover.listener.on('hashchange', function () {
-    xover.site.active = location.hash;
+xover.listener.on('hashchange', function (event) {
+    if (!(event instanceof HashChangeEvent && !location.hash)) {
+        xover.site.active = location.hash;
+    }
 });
 
 xover.listener.on('render?location.hash', function () {
@@ -3324,7 +3326,7 @@ Object.defineProperty(xover.site, 'active', {
                     section.render()
                 }
             } else {
-        xover.stores.active.render()
+                xover.stores.active.render()
             }
         }
         /*
@@ -3448,19 +3450,19 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
             }
             return all_differences;
         } else {
-        let customComponents = [Node.ELEMENT_NODE, Node.DOCUMENT_FRAGMENT_NODE, Node.DOCUMENT_NODE].includes(node1.nodeType) && Object.keys(xover.components).length && node1.querySelectorAll(Object.keys(xover.components).join(",")) || [];
-        if (customComponents.length) {
-            for (let component of customComponents) {
-                let comparing_component = node2.querySelector(component.selector);
-                if (!comparing_component.initialChildNodes.isEqualNode(component.initialChildNodes)) {
+            let customComponents = [Node.ELEMENT_NODE, Node.DOCUMENT_FRAGMENT_NODE, Node.DOCUMENT_NODE].includes(node1.nodeType) && Object.keys(xover.components).length && node1.querySelectorAll(Object.keys(xover.components).join(",")) || [];
+            if (customComponents.length) {
+                for (let component of customComponents) {
+                    let comparing_component = node2.querySelector(component.selector);
+                    if (!comparing_component.initialChildNodes.isEqualNode(component.initialChildNodes)) {
                         all_differences.push(new Map([[component, comparing_component]]))
+                    }
                 }
-            }
                 return all_differences;
-        } else {
-            return []
+            } else {
+                return []
+            }
         }
-    }
     };
     //if (node1 === top.document.activeElement || [HTMLSelectElement].includes(node1.constructor)) { //This should be done in the staticMerge function
     //    all_differences.push(new Map([[node1, node2]]));
@@ -3469,11 +3471,11 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
     const node1_children = [...node1.childNodes].filter(el => ![Node.TEXT_NODE, Node.COMMENT_NODE].includes(el.nodeType) || el.nodeType === Node.TEXT_NODE && el.value.trim());
     const node2_children = [...node2.childNodes].filter(el => ![Node.TEXT_NODE, Node.COMMENT_NODE].includes(el.nodeType) || el.nodeType === Node.TEXT_NODE && el.value.trim());
     if (node1_children.length && node1_children.length == node2_children.length) {
-            if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor)) {
+        if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor)) {
             const attr_differences = !node1.attributes ? [] : [...node1.attributes, ...node2.attributes].map(attr => attr.name).distinct().filter(attr_name => node1.getAttribute(attr_name) != node2.getAttribute(attr_name)).map(attr_name => new Map([[node1.getAttributeNode(attr_name) || node1, node2.getAttributeNode(attr_name) || node2]]));
             if (attr_differences.length) {
                 all_differences.push(attr_differences);
-                }
+            }
             const child_differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item).flat(Infinity);
             if (child_differences.length) {
                 all_differences.push(child_differences);
@@ -5729,19 +5731,19 @@ xover.modernize = async function (targetWindow) {
                                         actualMatch = child;
                                     } else {
                                         try {
-                                        actualMatch = this.querySelector(selector);
+                                            actualMatch = this.querySelector(selector);
                                             if (!actualMatch) {
                                                 console.error(`Node.prototype.selectNodes couldn't match actual node on xpath: ${xpath}`, child)
                                             } else if (match.nodeType === Node.ATTRIBUTE_NODE) {
-                                        actualMatch = actualMatch.getAttributeNode(match.nodeName);
+                                                actualMatch = actualMatch.getAttributeNode(match.nodeName);
                                             } else {
                                                 actualMatch = [...actualMatch.childNodes].find(el => el.isEqualNode(child));
-                                    }
+                                            }
                                         } catch (e) {
                                             if (xover.session.debug) {
                                                 debugger
-                                }
-                            }
+                                            }
+                                        }
                                     }
                                     actualMatch && matches.push(actualMatch);
                                 }
@@ -8929,7 +8931,7 @@ xover.modernize = async function (targetWindow) {
                     if (!inert) return HTMLScriptElement.cloneNode.call(this, deep);
                     let children = new DocumentFragment();
                     const temp_doc = this.ownerDocument.cloneNode();
-                    const new_script = temp_doc.appendChild(HTMLScriptElement.cloneNode.call(this, deep));                    
+                    const new_script = temp_doc.appendChild(HTMLScriptElement.cloneNode.call(this, deep));
                     return new_script;
                 }
 
@@ -9667,8 +9669,12 @@ xover.modernize = async function (targetWindow) {
                             let data;
                             let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
                             stylesheets = self_stylesheets.concat(stylesheets);
-                            for (let stylesheet of stylesheets.filter(stylesheet => stylesheet.role != "init" && stylesheet.role != "binding")) {
-                                let xsl = stylesheet instanceof XMLDocument && stylesheet || stylesheet instanceof ProcessingInstruction && stylesheet.document || stylesheet.href && xover.sources[stylesheet.href];
+                            stylesheets.forEach(stylesheet => {
+                                const document = stylesheet instanceof XMLDocument && stylesheet || stylesheet instanceof ProcessingInstruction && stylesheet.document || stylesheet.href && xover.sources[stylesheet.href] || stylesheet.document;
+                                return stylesheet.document = document;
+                            });
+                            for (const stylesheet of stylesheets) {
+                                const xsl = stylesheet.document;
                                 //if (xsl instanceof Document && xsl.selectSingleNode('xsl:*')) {
                                 //    xsl.href = xsl.href || ""
                                 //}
@@ -9737,6 +9743,11 @@ xover.modernize = async function (targetWindow) {
                                 data.target = target;
                                 //data.disconnected = false;
                                 target.tag = data.tag;
+
+                                //if ([...target.queryChildren(`[xo-source]`)].find(el => el.store === store && !stylesheets.map(stylesheet => stylesheet.document).includes(el.stylesheet))) {
+                                //    debugger
+                                //}
+                                /*if (target.localName !== 'slot' && (!(target.id == new_node.id && target.getAttribute("xo-source") == new_node.getAttribute("xo-source") && target.getAttribute("xo-stylesheet") == new_node.getAttribute("xo-stylesheet") && new_node.constructor == target.constructor))) {*/
                                 let dom;
                                 if (xsl instanceof Document) {
                                     xsl.target = target;
@@ -9752,6 +9763,15 @@ xover.modernize = async function (targetWindow) {
                                     dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode.removeAttributeNode(el));
                                     if (target.shadowRoot) {
                                         !target.adoptedStyleSheets && await target.adoptStylesheets(...[...target.ownerDocument.adoptedStyleSheets, ...target.ownerDocument.querySelectorAll(`link[rel="stylesheet"]`)].map(el => xover.URL(el.href)));
+                                        //if (dom.nodeType === Node.DOCUMENT_NODE) {
+                                        //    const fragment = dom.createDocumentFragment();
+                                        //    fragment.append(...dom.childNodes);
+                                        //    dom = fragment;
+                                        //}
+                                        //for (const el of [...dom.queryChildren('[xo-source]')].filter(el => el.source === target.source && el.stylesheet == target.stylesheet)) {
+                                        //    debugger
+                                        //    //dom.replaceContent(...el.childNodes)
+                                        //}
                                     }
                                     //target.classList.remove('xo-loading');
                                     //if (!target_class && !target.classList.length) target.removeAttribute("class")
@@ -11166,9 +11186,9 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
                     let custom_event = new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, this);
                     window.dispatchEvent(custom_event);
                     if (!custom_event.defaultPrevented) {
-                    return Promise.reject(e);
+                        return Promise.reject(e);
+                    }
                 }
-            }
             }
             if (return_value.documentElement && return_value.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
                 return_value = return_value.consolidate();
@@ -11510,15 +11530,15 @@ xover.xml.combine = function (target, new_node) {
         || target.attributes && target.hasAttribute("xo-stylesheet") && target_stylesheet == new_stylesheet
         || target.parentNode && target.parentNode.matches(".xo-swap")
     ) {
-        let swap_attributes = (new_node.getAttribute("xo-swap") || '').split(" ");
-        let remove_attributes = [...target.attributes].filter(attr => swap_attributes.includes(`@${attr.name}`) && !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name));
-        for (let attr of remove_attributes) {
-            if (["checked"].includes(attr.name) && target[attr.name]) {
-                target[attr.name] = false
-            }
-            attr.remove({ silent: true })
-        }
-        target.applyAttributes(...new_node.attributes)
+        //let swap_attributes = (new_node.attributes && new_node.getAttribute("xo-swap") || '').split(" ");
+        //let remove_attributes = [...target.attributes || []].filter(attr => swap_attributes.includes(`@${attr.name}`) && !static.contains(`@${attr.name}`) && ![...new_node.attributes].map(NodeName).concat(["id", "class", "xo-source", "xo-stylesheet", "xo-suspense", "xo-stop", "xo-site", "xo-schedule", "xo-static"]).includes(attr.name));
+        //for (let attr of remove_attributes) {
+        //    if (["checked"].includes(attr.name) && target[attr.name]) {
+        //        target[attr.name] = false
+        //    }
+        //    attr.remove({ silent: true })
+        //}
+        target.attributes && target.applyAttributes(new_node)
         if (instanceOf.call(new_node, CustomElement)) {
             target.initialChildNodes = new_node.initialChildNodes;
         } else if (new_node.shadowRoot) {
@@ -13044,18 +13064,18 @@ xover.Store = function (xml, ...args) {
                         renders.push(section.render());
                     }
                 } else {
-                if (sections.length) {
-                    renders = renders.concat(sections.map(el => el.render()));
-                }
-                if (stylesheets.length) {
-                    stylesheets = stylesheets.map(stylesheet => Object.fromEntries(Object.entries(stylesheet).concat([["document", stylesheet.document], ["store", tag]])));
-                    if (target) {
-                        for (let stylesheet of stylesheets) {
-                            stylesheet.srcElement = target;
-                        }
+                    if (sections.length) {
+                        renders = renders.concat(sections.map(el => el.render()));
                     }
-                    renders = renders.concat(document.render(stylesheets))
-                }
+                    if (stylesheets.length) {
+                        stylesheets = stylesheets.map(stylesheet => Object.fromEntries(Object.entries(stylesheet).concat([["document", stylesheet.document], ["store", tag]])));
+                        if (target) {
+                            for (let stylesheet of stylesheets) {
+                                stylesheet.srcElement = target;
+                            }
+                        }
+                        renders = renders.concat(document.render(stylesheets))
+                    }
                 }
                 renders = await Promise.all(renders);
                 return renders;
