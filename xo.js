@@ -937,7 +937,7 @@ xover.initializeDOM = async function () {
                         this.#composing = true;
                         let template_document = await this.template.ready;
                         let template = template_document.cloneNode(true).documentElement;
-                        template.applyAttributes(...this.attributes);
+                        template.applyAttributes(this.attributes);
                         if ([...template.attributes].some(attr => attr.name.slice(0, 10) == "shadowroot")) {
                             await this.adoptStylesheets(...(template.content || template).querySelectorAll("style[adopt],style[href]"));
                         }
@@ -7808,30 +7808,42 @@ xover.modernize = async function (targetWindow) {
                     ]);
                     Object.defineProperty(Element.prototype, 'applyAttributes', {
                         enumerable: false,
-                        value: function (...sources) {
+                        value: function (source = [], options = { static: [], swap: [] }) {
+                            const { static = [], swap = [] } = options;
                             const target = this;
-                            for (const source of sources) {
+                            let sources = source;
+                            if (!instanceOf.call(sources, Array)) {
+                                if (sources.length) {
+                                    sources = [...sources];
+                                } else {
+                                    sources = [sources];
+                                }
+                            }
+                            for (const source of sources.flat(Infinity)) {
                                 if (source.attributes && target.id == source.id && target.getAttribute("xo-source") == source.getAttribute("xo-source") && target.getAttribute("xo-stylesheet") == source.getAttribute("xo-stylesheet") && target.getAttribute("xo-scope") == source.getAttribute("xo-scope")) {
                                     const el = source;
-                                    for (let attr of [...target.attributes].filter(attr => boolean_attrs.has(attr.name) && !el.hasAttribute(attr.name))) {
+                                    for (let attr of [...target.attributes].filter(attr => !static.includes(`@${attr.name}`) && boolean_attrs.has(attr.name) && !el.hasAttribute(attr.name))) {
                                         target.removeAttribute(attr.name)
                                     }
-                                    target.applyAttributes(...el.attributes)
+                                    target.applyAttributes([...el.attributes].filter(attr => !static.includes(`@${attr.name}`)), { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                     //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
                                     if (attr.isEqualNode(target.attributes[attr.name])) continue;
+                                    const source_node = attr.ownerElement;
                                     if (attr.name == "class") {
-                                        let source_node = attr.ownerElement;
-                                        for (let class_name of attr.ownerElement.classList) {
+                                        for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static.includes("@class") && (!swap.length || swap.includes(`.${class_name}`)))) {
+                                            target.classList.remove(class_name)
+                                        }
+                                        for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static.includes("@class") && (!swap.length || swap.includes(`.${class_name}`)))) {
                                             if (class_name[0] == "-") {
                                                 target.classList.remove(class_name.slice(1))
                                             }
                                             target.classList.add(class_name)
                                         }
+                                        if (swap.length || static.length) { debugger }
                                     } else if (attr.name == "style") {
-                                        let source_node = attr.ownerElement;
-                                        for (let [property] of [...source_node.attributeStyleMap]) {
+                                        for (const [property] of [...source_node.attributeStyleMap]) {
                                             target.style[property] = source_node.style[property];
                                             //target.attributeStyleMap.set(property, source_node.attributeStyleMap.get(property)) /*This method throws an error for some valid styles*/
                                         }
@@ -11295,7 +11307,7 @@ xover.xml.combine = function (target, new_node) {
         if (!instanceOf.call(target, HTMLTemplateElement) && instanceOf.call(new_node, HTMLTemplateElement)) {
             attributes = attributes.concat([...target.attributes])
         }
-        target.applyAttributes(...[...new_node.attributes].filter(attr => (target.attributes[attr.name] || {}).value !== attr.value && !attributes.some(el => el.name == attr.name)));
+        target.applyAttributes([...new_node.attributes].filter(attr => (target.attributes[attr.name] || {}).value !== attr.value && !attributes.some(el => el.name == attr.name)));
         let shadow_mode = new_node.hasAttribute("shadowroot") || new_node.hasAttribute("shadowrootmode");
         if (shadow_mode && target.shadowMode && target.composing) {
             let replacement = target.cloneNode(true, true);
@@ -11346,7 +11358,7 @@ xover.xml.combine = function (target, new_node) {
         || instanceOf.call(target, SVGElement) && !instanceOf.call(new_node, SVGElement)
     ) {
         let restore_focus = target.contains(document.activeElement)
-        //instanceOf.call(target, Element) && new_node.applyAttributes(...[...target.attributes].filter(attr => !(attr.localName == "xo-source" && !["seed","active","inherit"].includes(attr.value))));
+        //target.nodeType === Node.ELEMENT_NODE && new_node.applyAttributes([...target.attributes].filter(attr => !(attr.localName == "xo-source" && !["seed","active","inherit"].includes(attr.value))));
         ////for (let item of [...static].filter(item => item != "@*" && item[0] == "@")) { // TODO: Review this logic
         ////    new_node.setAttributeNode(target.removeAttributeNode(target.getAttributeNode(item.slice(1))))
         ////}
