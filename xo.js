@@ -4285,8 +4285,8 @@ xover.URL = function (href, base, settings = {}) {
         }
         method = settings["method"] || method;
         url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
-        if (url.origin == location.origin && href[0] == "/") {
-            url.pathname = location.pathname.replace(/\/$/, "") + url.pathname;
+        if (url.origin == location.origin && href[0] == "/" && location.basepath) {
+            url.pathname = location.pathname.replace(/\/[^\/]*$/, "") + url.pathname;
         }
         if (!method && settings["body"]) {
             method = 'POST'
@@ -9805,12 +9805,12 @@ xover.modernize = async function (targetWindow) {
                                 if (!target.getAttributeNode("id") && !target.getAttributeNode("xo-stylesheet")) {
                                     const xo_source = documentElement.getAttribute("xo-source") || target.store.tag;
                                     const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || stylesheet.href;
-                                    documentElement.id = documentElement.id || target.getAttribute("id");
+                                    documentElement.id = documentElement.id || target.getAttribute("id") || "";
                                     documentElement.setAttribute("xo-source", xo_source);
                                     documentElement.setAttribute("xo-stylesheet", xo_stylesheet);
 
                                     const new_target = target.queryChildren(`[xo-source="${xo_source}"][xo-stylesheet="${xo_stylesheet}"],[id="${documentElement.id}"]`)[0] || documentElement.cloneNode();
-                                    new_target.importAttributeNode(documentElement.getAttributeNode("id"));
+                                    new_target.id = documentElement.id;
                                     new_target.importAttributeNode(documentElement.getAttributeNode("xo-source"));
                                     new_target.importAttributeNode(documentElement.getAttributeNode("xo-stylesheet"));
                                     !target.contains(new_target) && target.appendChild(new_target);
