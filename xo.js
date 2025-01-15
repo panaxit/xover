@@ -4286,7 +4286,7 @@ xover.URL = function (href, base, settings = {}) {
         method = settings["method"] || method;
         url = new URL(url.trim()/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
         if (url.origin == location.origin && href[0] == "/") {
-            url.pathname = location.pathname.replace(/\/$/, "") + url.pathname;
+            url.pathname = location.pathname.replace(/\/[^\/]*$/, "") + url.pathname;
         }
         if (!method && settings["body"]) {
             method = 'POST'
