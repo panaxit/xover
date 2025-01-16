@@ -11741,6 +11741,7 @@ xover.dom.combine = async function (target, new_node) {
     post_render_scripts.forEach(script => script_wrapper.append(script));
 
     await xover.signal.update.call(new_node, function (key) { return new_node.single('./' + key) || new_node.single('./@' + key) || key });
+    [...target.querySelectorAll("input[type=text][value]")].filter(input => input !== document.activeElement && input.value != input.getAttribute("value")).forEach(input => input.setAttribute("value", input.value)); //This code syncs the value (usually visible) with its attribute
     xover.xml.staticMerge(target, new_node);
 
     new_node.select(`.//@src|.//@href`).filter(attr => attr.value.search(/\.\./) != -1).forEach(attr => {
@@ -11812,7 +11813,6 @@ xover.dom.combine = async function (target, new_node) {
         //let coordinates = active_element.scrollPosition;
 
         ////target.observer && target.observer.disconnect();
-        [...target.querySelectorAll("input[type=text][value]")].filter(input => input !== document.activeElement && input.value != input.getAttribute("value")).forEach(input => input.value = input.getAttribute("value"));
         for (let [[current, change]] of changes) {
             ////if ((current instanceof HTMLElement || current instanceof SVGElement) && current !== target && current.hasAttribute("xo-stylesheet")) {
             ////    continue;
