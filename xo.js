@@ -566,7 +566,7 @@ xover.init = async function () {
     this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
         try {
             await xover.modernize();
-            xover.init.Observer();
+            xover.dom.Observer();
             await xover.manifest.init();
             Object.assign(xover.spaces, xover.manifest.spaces);
             if (history.state) delete history.state.active;
@@ -620,7 +620,7 @@ Object.defineProperty(xover, 'ready', {
     }
 })
 
-xover.init.Observer = function (target_node = window.document) {
+xover.dom.Observer = function (target_node = window.document) {
     const config = { characterData: true, attributeOldValue: true, childList: true, subtree: true }; /*attributeFilter: ["xo-source", "xo-stylesheet", "xo-slot", "xo-suspense", "xo-schedule", "xo-static", "xo-stop", "xo-site", "xo-id", "class"], */
 
     const intersection_observer = new IntersectionObserver(entries => {
@@ -644,7 +644,7 @@ xover.init.Observer = function (target_node = window.document) {
         }
         for (const el of [...target_node.querySelectorAll("[xo-source],[xo-stylesheet]")].filter(el => !xover.sections.has(el) && el.checkVisibility())) {
             xover.sections.add(el);
-            el.shadowRoot && xover.init.Observer(el.shadowRoot);
+            el.shadowRoot && xover.dom.Observer(el.shadowRoot);
             el.render()
         }
     }
@@ -12065,7 +12065,7 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
 
             let custom_scripts = xover.manifest.getSettings(iframe, "scripts")
             loadScriptsSequentially.call(iframeDocument.body, "script", ...custom_scripts);
-            xover.init.Observer(iframeDocument);
+            xover.dom.Observer(iframeDocument);
             xover.signal.update.call(iframeDocument, iframeDocument.scope);
         } catch (e) {
             console.error(e)
