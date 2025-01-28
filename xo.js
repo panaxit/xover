@@ -2307,7 +2307,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
         if (!Object.entries(this.settings || {}).length) return [];
         let tag = typeof (input) == 'string' && input || input && input.tag || input instanceof Node && (input.documentElement || input).nodeName || "";
         //let tag_url = input instanceof URL && xover.URL(input.toString()) || input instanceof Response && xover.URL(input.url.toString()) || xover.URL(tag);
-        let tag_url = xover.URL(input instanceof URL && input.toString() || (input.ownerDocument || input).url || tag);
+        let tag_url = instanceOf.call(input, xover.URL) && input || xover.URL(input instanceof URL && input.toString() || (input.ownerDocument || input).url || tag);
         //if (location.origin == tag_url.origin) { //removes current folder so it can be evaluated 
         //    tag_url.pathname = tag_url.pathname.replace(new RegExp("^" + location.pathname), "");
         //}
@@ -2427,6 +2427,7 @@ xover.server = new Proxy({}, {
             //        args.splice(i, 1)
             //    }
             //}
+            const server_tag = `#server:${key}`;
             if (!(xover.manifest.server && xover.manifest.server[key])) {
                 return Promise.reject(`Endpoint "${key}" not configured in manifest`);
             }
@@ -2473,7 +2474,6 @@ xover.server = new Proxy({}, {
             //}
 
             //url.payload = payload;
-            let server_tag = `#server:${key}`;
             let manifest_settings = xover.json.combine(xover.manifest.getSettings(url));
             let endpoint_settings = xover.json.combine(xover.manifest.getSettings(server_tag));
             url.settings = xover.json.combine(url.settings, manifest_settings, endpoint_settings, settings);
@@ -4238,14 +4238,14 @@ xover.sources = new Proxy(new Map(), {
         if (key.indexOf(".") != -1) {
             key = xover.URL(key).href;
         }
-        if (key in self) {
-            return self[key];
+        if (self.has(key)) {
+            return self.get(key);
         }
         let document = new xover.Source(key).document
         document.observe();
-        self[key] = document;
-        xover.sources.set(document, key);
-        return self[key];
+        self.set(key, document);
+        self.set(document, key);
+        return self.get(key);
     },
     set: function (self, key, input) {
         if (key.indexOf(".") != -1) {
@@ -7372,7 +7372,7 @@ xover.modernize = async function (targetWindow) {
                 if (!Node.prototype.hasOwnProperty('queryChildren')) {
                     Object.defineProperty(Node.prototype, 'queryChildren', {
                         value: function (selector) {
-                            return [...this.children].find((child) => child.matches(selector))
+                            return [...this.children || []].find((child) => child.matches(selector))
                         },
                         writable: false, enumerable: false, configurable: false
                     });
@@ -9856,7 +9856,7 @@ xover.modernize = async function (targetWindow) {
 
                                 //dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
                                 let stylesheet_href = stylesheet.href;
-                                for (let el of dom.children) {
+                                for (let el of dom.children || []) {
                                     //el.document = this;
                                     el.context = data;
                                     !instanceOf.call(el, HTMLHtmlElement) && el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove();
@@ -11072,7 +11072,7 @@ xover.fetch = async function (url, ...args) {
             }
         });
     }
-    let self = this;
+                    const self = this;
     if (this instanceof xover.Source) {
         Object.defineProperty(return_value, 'source', {
             get: function () {
@@ -11297,10 +11297,10 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
     }
 }
 
-xover.fetch.json = async function (url, settings) {
-    let self = [{}.constructor, [].constructor].includes(this.constructor) ? this : {};
+xover.fetch.json = async function (url, settings = {}) {
+    const self = [{}.constructor, [].constructor].includes(this.constructor) ? this : {};
     if (!(url instanceof xover.URL)) {
-        url = new xover.URL(url);
+        url = new xover.URL(url, settings);
     }
     url.settings["headers"].append("Accept", "application/json");
     if (url.pathname.indexOf(".manifest") != -1) {
@@ -13684,7 +13684,7 @@ xover.json.merge = function (...args) {
 }
 
 xover.json.combine = function (...args) { /*experimental*/
-    let result = {};
+    let result = this !== xover.json && this.constructor === {}.constructor ? this : {};
     for (let item of args) {
         if (Array.isArray(item) && item.length && item.every(subitem => Array.isArray(subitem) && subitem.length == 2)) { //if it's an array of entries
             item = xover.json.combine(...item)
@@ -13692,7 +13692,7 @@ xover.json.combine = function (...args) { /*experimental*/
         if (Array.isArray(item) && item.length == 2) {
             item = Object.fromEntries([item])
         }
-        if (item && typeof (item) == 'object') {
+        if (item && item.constructor !== [].constructor) {
             for (let prop in item) {
                 if (typeof (result[prop]) == 'object' && !(result[prop] instanceof Node) && typeof (item[prop]) == 'object') {
                     for (let [key, value] of item[prop].entries ? item[prop].entries() : Object.entries(item[prop])) {
