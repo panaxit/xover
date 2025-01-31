@@ -4311,6 +4311,7 @@ xover.URL = function (href, base, settings = {}) {
             method = 'POST'
         }
     }
+    Object.setPrototypeOf(url, this);
     let query = new URLSearchParams(settings["query"] || settings["payload"] || {});
     [...query.entries()].forEach(([key, value]) => url.searchParams.append(key, value));
     delete settings["query"];
@@ -4359,7 +4360,6 @@ xover.URL = function (href, base, settings = {}) {
             }
         })
     }
-    Object.setPrototypeOf(url, this);
     return url;
 }
 
@@ -4368,16 +4368,17 @@ xover.URL.prototype = Object.create(URL.prototype);
 URL.href = URL.href || Object.getOwnPropertyDescriptor(URL.prototype, 'href');
 Object.defineProperty(xover.URL.prototype, 'href', {
     get: function () {
-        let href = URL.href.get.call(this);
-        return href.replace(/#.*/, '').replace(new RegExp(`^${location.origin}${location.pathname.replace(/[^\/]$/, '')}`), "");
+        const href = URL.href.get.call(this);
+        const pathname = URL.pathname.get.call(this);
+        return href.replace(/#.*/, '').replace(new RegExp(`^${this.origin}${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '') + '/'}`), "");
     }
 });
 
 URL.pathname = URL.pathname || Object.getOwnPropertyDescriptor(URL.prototype, 'pathname');
 Object.defineProperty(xover.URL.prototype, 'pathname', {
     get: function () {
-        let pathname = URL.pathname.get.call(this);
-        return pathname.replace(/#.*/, '').replace(new RegExp(`^${location.pathname.replace(/[^\/]$/, '')}`), "");
+        const pathname = URL.pathname.get.call(this);
+        return pathname.replace(/#.*/, '').replace(new RegExp(`^${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '') + '/'}`), "");
     }
 });
 
@@ -4391,16 +4392,15 @@ Object.defineProperty(xover.URL.prototype, 'tag', {
     }
 });
 
-Object.defineProperty(URL.prototype, 'toString', {
+Object.defineProperty(xover.URL.prototype, 'toString', {
     value: function () {
         if (this.origin === window.location.origin) {
-            const basePath = location.basepath || '';
-            const normalizedBasePath = basePath ? `/${basePath.replace(/^\/|\/$/g, '')}/` : '';
-            const pathname = this.pathname.startsWith(normalizedBasePath)
-                ? this.pathname
-                : normalizedBasePath + this.pathname.replace(/^\/+/, '');
-
-            return `${this.origin}${pathname}${this.search}${this.hash}`;
+            //const basePath = location.basepath || '';
+            //const normalizedBasePath = basePath ? `/${basePath.replace(/^\/|\/$/g, '')}/` : '';
+            //const pathname = this.pathname.startsWith(normalizedBasePath)
+            //    ? this.pathname
+            //    : normalizedBasePath + this.pathname.replace(/^\/+/, '');
+            return `${this.origin}${this.basepath}${this.pathname}${this.search}${this.hash}`;
         }
         return URL.href.get.call(this);
     },
@@ -4416,9 +4416,11 @@ Object.defineProperty(URL.prototype, 'resource', {
     }
 });
 
-Object.defineProperty(URL.prototype, 'basepath', {
+Object.defineProperty(xover.URL.prototype, 'basepath', {
     get: function () {
-        return this._basepath || '';
+        const pathname = URL.pathname.get.call(this);
+        const basepath = `${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '') + '/'}`;
+        return basepath + (this._basepath || '');
     }, set: function (value) {
         Object.defineProperty(this, '_basepath', {
             enumerable: false, configurable: false, writable: true,
@@ -11091,7 +11093,7 @@ xover.fetch = async function (url, ...args) {
             }
         });
     }
-                    const self = this;
+    const self = this;
     if (this instanceof xover.Source) {
         Object.defineProperty(return_value, 'source', {
             get: function () {
@@ -11446,7 +11448,7 @@ xover.xml.staticMerge = function (node1, node2) {
     //    xover.xml.staticMerge(node1.shadowRoot, node2.shadowRoot)
     //}
     if (instanceOf.call(node1, HTMLSlotElement)) return;
-    if (node1.nodeType !== node2.nodeType || node1.nodeType === Node.ELEMENT_NODE && 
+    if (node1.nodeType !== node2.nodeType || node1.nodeType === Node.ELEMENT_NODE &&
         node1.getAttribute("xo-xsl-source") !== node2.getAttribute("xo-xsl-source")) {
         return false;
     }
@@ -11489,14 +11491,14 @@ xover.xml.staticMerge = function (node1, node2) {
     if (node1.nodeType === Node.ELEMENT_NODE
         && node1.getAttribute("xo-xsl-source") === node2.getAttribute("xo-xsl-source")
         && (node1.id && node1.id == node2.id
-        || node1.localName == node2.localName && (
-            node1.id == (node2.id || node1.id)
-            && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") //TODO: Consider seed, active, inherit 
-            && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
-            && (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '').replace(/^context:.*/, '') == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '').replace(/^context:.*/, '')
-        )
-        || node2.localName == 'template'
-    )) {
+            || node1.localName == node2.localName && (
+                node1.id == (node2.id || node1.id)
+                && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") //TODO: Consider seed, active, inherit 
+                && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
+                && (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '').replace(/^context:.*/, '') == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '').replace(/^context:.*/, '')
+            )
+            || node2.localName == 'template'
+        )) {
         node2.applyAttributes(node1, { static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*///
         //node1.applyAttributes(...node2.attributes);
     }
