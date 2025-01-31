@@ -7924,6 +7924,26 @@ xover.modernize = async function (targetWindow) {
                     })
                 }
 
+                if (!Node.prototype.hasOwnProperty('applyAttributes')) {
+
+                    Object.defineProperty(Node.prototype, 'applyAttributes', {
+                        enumerable: false,
+                        value: function () {
+                            return null
+                        }
+                    })
+                }
+
+                if (!Node.prototype.hasOwnProperty('hasAttribute')) {
+
+                    Object.defineProperty(Node.prototype, 'hasAttribute', {
+                        enumerable: false,
+                        value: function () {
+                            return null
+                        }
+                    })
+                }
+
                 if (!Element.prototype.hasOwnProperty('applyAttributes')) {
                     const boolean_attrs = new Set([
                         "allowfullscreen",  // iframe
@@ -9880,56 +9900,58 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 }
 
-                                if (!(
-                                    (target.id || documentElement.id) === (documentElement.id || target.id)
-                                    && (target.hasAttribute("xo-source") && target.source || documentElement.source) === documentElement.source
-                                    && `${target.getAttributeNode("xo-stylesheet") || documentElement.getAttributeNode("xo-stylesheet")}` == `${documentElement.getAttributeNode("xo-stylesheet")}`
-                                    && target.constructor === documentElement.constructor
-                                )) {
-                                    const xo_source = documentElement.getAttributeNode("xo-source") || target.getAttributeNode("xo-source");
-                                    const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || stylesheet.href;
-                                    const id = documentElement.id || target.getAttribute("id") || "";
-                                    xo_source && documentElement.setAttribute("xo-source", xo_source);
-                                    xo_stylesheet && documentElement.setAttribute("xo-stylesheet", xo_stylesheet);
+                                if (documentElement.nodeType === Node.ELEMENT_NODE) {
+                                    if (!(
+                                        (target.id || documentElement.id) === (documentElement.id || target.id)
+                                        && (target.hasAttribute("xo-source") && target.source || documentElement.source) === documentElement.source
+                                        && `${target.getAttributeNode("xo-stylesheet") || documentElement.getAttributeNode("xo-stylesheet")}` == `${documentElement.getAttributeNode("xo-stylesheet")}`
+                                        && target.constructor === documentElement.constructor
+                                    )) {
+                                        const xo_source = documentElement.getAttributeNode("xo-source") || target.getAttributeNode("xo-source");
+                                        const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || stylesheet.href;
+                                        const id = documentElement.id || target.getAttribute("id") || "";
+                                        xo_source && documentElement.setAttribute("xo-source", xo_source);
+                                        xo_stylesheet && documentElement.setAttribute("xo-stylesheet", xo_stylesheet);
 
-                                    let new_target = target.queryChildrenAll(`[xo-source="${xo_source}"][xo-stylesheet="${xo_stylesheet}"],[id="${id}"]`)[0] || documentElement.cloneNode();
-                                    if (id) {
-                                        documentElement.id = id;
-                                        new_target.id = id;
-                                    }
-                                    new_target.importAttributeNode(documentElement.getAttributeNode("xo-source"));
-                                    new_target.importAttributeNode(documentElement.getAttributeNode("xo-stylesheet"));
-                                    if (target.contains(new_target)) {
-                                        if (target.source !== new_target.source) {
-                                            let node_copy = documentElement.cloneNode();
-                                            new_target.replaceWith(node_copy);
-                                            new_target = node_copy;
+                                        let new_target = target.queryChildrenAll(`[xo-source="${xo_source}"][xo-stylesheet="${xo_stylesheet}"],[id="${id}"]`)[0] || documentElement.cloneNode();
+                                        if (id) {
+                                            documentElement.id = id;
+                                            new_target.id = id;
                                         }
-                                    } else {
-                                        target.appendChild(new_target)
+                                        new_target.importAttributeNode(documentElement.getAttributeNode("xo-source"));
+                                        new_target.importAttributeNode(documentElement.getAttributeNode("xo-stylesheet"));
+                                        if (target.contains(new_target)) {
+                                            if (target.source !== new_target.source) {
+                                                let node_copy = documentElement.cloneNode();
+                                                new_target.replaceWith(node_copy);
+                                                new_target = node_copy;
+                                            }
+                                        } else {
+                                            target.appendChild(new_target)
+                                        }
+                                        target = new_target
                                     }
-                                    target = new_target
-                                }
-                                documentElement.applyAttributes([...target.attributes].filter(attr => !documentElement.hasAttribute(attr.name)));
-                                //render_manager.set(target, render_manager.get(target) || xover.delay(1).then(async () => {
-                                const shadow_dependants = [...dom.querySelectorAll('[shadowrootmode]:not(template):not([shadowrootmode="composed"])')/*, ...[...dom.queryChildrenAll('[xo-source]')].filter(el => el.source !== target.source || target.shadowRoot && el.source == target.source)*/];
-                                for (const el of shadow_dependants) {
-                                    typeof (el.encapsulate) == 'function' && el.encapsulate();
-                                }
-                                const suspense_dependants = [];
-                                const dependants = [...documentElement.querySelectorAll('[xo-source],[xo-stylesheet]')].filter(el => !el.shadowRoot && !(el.hasAttribute("xo-source") && el.hasAttribute("xo-stylesheet") && el.closest("*").parentNode.closest(`[xo-source="${el.getAttribute("xo-source")}"][xo-stylesheet="${el.getAttribute("xo-stylesheet")}"]`)));
-                                for (el of dependants) {
-                                    el.targetDocument = target.targetDocument || target.ownerDocument;
-                                    //if (typeof (target.checkVisibility) === 'function' && target.checkVisibility()) {
-                                    //    xover.sections.add(el);
-                                    //}
-                                    if (el.matches(`[shadowrootmode="composed"]`)) {
-                                        suspense_dependants.push(el.render())
-                                    } else {
-                                        el.render()
+                                    documentElement.applyAttributes([...target.attributes].filter(attr => !documentElement.hasAttribute(attr.name)));
+                                    //render_manager.set(target, render_manager.get(target) || xover.delay(1).then(async () => {
+                                    const shadow_dependants = [...dom.querySelectorAll('[shadowrootmode]:not(template):not([shadowrootmode="composed"])')/*, ...[...dom.queryChildrenAll('[xo-source]')].filter(el => el.source !== target.source || target.shadowRoot && el.source == target.source)*/];
+                                    for (const el of shadow_dependants) {
+                                        typeof (el.encapsulate) == 'function' && el.encapsulate();
                                     }
-                                };
-                                await Promise.allSettled(suspense_dependants);
+                                    const suspense_dependants = [];
+                                    const dependants = [...documentElement.querySelectorAll('[xo-source],[xo-stylesheet]')].filter(el => !el.shadowRoot && !(el.hasAttribute("xo-source") && el.hasAttribute("xo-stylesheet") && el.closest("*").parentNode.closest(`[xo-source="${el.getAttribute("xo-source")}"][xo-stylesheet="${el.getAttribute("xo-stylesheet")}"]`)));
+                                    for (el of dependants) {
+                                        el.targetDocument = target.targetDocument || target.ownerDocument;
+                                        //if (typeof (target.checkVisibility) === 'function' && target.checkVisibility()) {
+                                        //    xover.sections.add(el);
+                                        //}
+                                        if (el.matches(`[shadowrootmode="composed"]`)) {
+                                            suspense_dependants.push(el.render())
+                                        } else {
+                                            el.render()
+                                        }
+                                    };
+                                    await Promise.allSettled(suspense_dependants);
+                                }
 
                                 let old = target.cloneNode(true);
                                 target = await xover.dom.combine.call(this, target, dom);
