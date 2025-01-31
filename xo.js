@@ -4370,7 +4370,7 @@ Object.defineProperty(xover.URL.prototype, 'href', {
     get: function () {
         const href = URL.href.get.call(this);
         const pathname = URL.pathname.get.call(this);
-        return href.replace(/#.*/, '').replace(new RegExp(`^${this.origin}${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '') + '/'}`), "");
+        return href.replace(/#.*/, '').replace(new RegExp(`^${this.origin}${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '')}${location.pathname.replace(/[^\/]+$/, "")}`), "");
     }
 });
 
@@ -4378,7 +4378,7 @@ URL.pathname = URL.pathname || Object.getOwnPropertyDescriptor(URL.prototype, 'p
 Object.defineProperty(xover.URL.prototype, 'pathname', {
     get: function () {
         const pathname = URL.pathname.get.call(this);
-        return pathname.replace(/#.*/, '').replace(new RegExp(`^${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '') + '/'}`), "");
+        return pathname.replace(/#.*/, '').replace(new RegExp(`^${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '')}${location.pathname.replace(/[^\/]+$/, "")}`), "");
     }
 });
 
@@ -4400,7 +4400,8 @@ Object.defineProperty(xover.URL.prototype, 'toString', {
             //const pathname = this.pathname.startsWith(normalizedBasePath)
             //    ? this.pathname
             //    : normalizedBasePath + this.pathname.replace(/^\/+/, '');
-            return `${this.origin}${this.basepath}${this.pathname}${this.search}${this.hash}`;
+            const pathname = URL.pathname.get.call(this);
+            return `${this.origin}${pathname}${this.search}${this.hash}`;
         }
         return URL.href.get.call(this);
     },
