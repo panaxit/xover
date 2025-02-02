@@ -9120,21 +9120,21 @@ xover.modernize = async function (targetWindow) {
 
                 if (!Node.prototype.hasOwnProperty('transform')) {
                     Object.defineProperty(Node.prototype, 'transform', {
-                        value: function (xml_document) {
+                        value: function (xsl_document) {
                             let self = this;
-                            if (xml_document instanceof Document && !xml_document.childNodes.length) {
-                                let ready = xml_document.ready;
-                                return ready.then(() => self.transform(xml_document));
+                            if (xsl_document instanceof Document && !xsl_document.childNodes.length) {
+                                let ready = xsl_document.ready;
+                                return ready.then(() => self.transform(xsl_document));
                             }
-                            if (xml_document instanceof Promise) {
-                                return xml_document.then((document) => self.transform(document));
+                            if (xsl_document instanceof Promise) {
+                                return xsl_document.then((document) => self.transform(document));
                             }
-                            if (typeof (xml_document) == "string") {
-                                let xsl = xml_document;
+                            if (typeof (xsl_document) == "string") {
+                                let xsl = xsl_document;
                                 if (xsl in xover.sources) {
-                                    xml_document = xover.sources[xsl];
+                                    xsl_document = xover.sources[xsl];
                                 } else if (xsl in xover.sources.defaults) {
-                                    xml_document = xover.sources.defaults[xsl];
+                                    xsl_document = xover.sources.defaults[xsl];
                                 } else {
                                     if (xover.browser.isIphone()) { //Probablemente esto tiene que cambiar
                                         return this.transform(xover.sources.load(xsl));
@@ -9143,7 +9143,7 @@ xover.modernize = async function (targetWindow) {
                                         //    xsl = xover.sources[xsl];
                                         //})();
                                     } else {
-                                        xml_document = xover.xml.createDocument(`                          
+                                        xsl_document = xover.xml.createDocument(`                          
                 <xsl:stylesheet version="1.0"                        
                     xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
                     <xsl:import href="${xsl}" />
@@ -9151,18 +9151,18 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 }
                             }
-                            if (xml_document && !((xml_document.ownerDocument || xml_document) instanceof XMLDocument)) {
+                            if (xsl_document && !((xsl_document.ownerDocument || xsl_document) instanceof XMLDocument)) {
                                 throw (new Error("Document must be a valid xml document."));
                             };
-                            if (this.selectSingleNode('xsl:*') && !(xml_document && xml_document.selectSingleNode('xsl:*'))) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
-                                return (xml_document || xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed()).transform(this);
+                            if (this.selectSingleNode('xsl:*') && !(xsl_document && xsl_document.selectSingleNode('xsl:*'))) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
+                                return (xsl_document || xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed()).transform(this);
                             }
-                            let xsl = xml_document;
+                            let xsl = xsl_document;
                             let xml = this;
                             let result = undefined;
                             if (!xsl/* && ((arguments || {}).callee || {}).caller != Node.prototype.transform*/) {
                                 //return new Promise(async (resolve, reject) => {
-                                //    return resolve(self.transform(await xml_document.source.fetch()));
+                                //    return resolve(self.transform(await xsl_document.source.fetch()));
                                 //})
                                 for (let stylesheet of xml.stylesheets) {
                                     xml = xml.transform(stylesheet.document || stylesheet.href);
