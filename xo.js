@@ -7031,7 +7031,7 @@ xover.modernize = async function (targetWindow) {
 
                 Object.defineProperty(XMLDocument.prototype, `fetch`, {
                     get: function () {
-                        let self = this;
+                        const self = this;
                         return function (...args) {
                             let context = this;
                             if (!self.source) {
@@ -7672,6 +7672,11 @@ xover.modernize = async function (targetWindow) {
                     //window.dispatchEvent(new xover.listener.Event('remove', { listeners: matching_listeners }, this));
                     //}
                     /*!(this instanceof HTMLElement) && xover.site.sections.filter(el => el.store && el.store === this.store).forEach((el) => el.render())*/
+                    return this;
+                }
+
+                Node.prototype.modify = function (fn, ...args) {
+                    fn.call(this, this, ...args);
                     return this;
                 }
 
@@ -9165,7 +9170,8 @@ xover.modernize = async function (targetWindow) {
                                 return xml;
                             }
                             xsl = xsl.cloneNode(true);
-                            let high_priority_scripts = xsl.select(`//html:script[@fetchpriority="high"]`);
+                            let high_priority_scripts = xsl.select(`//html:script[@fetchpriority="high"]`).map(script =>   script.modify(node => node.select(`descendant::xsl:*`).remove()));
+
                             if (high_priority_scripts.length) {
                                 let apply_scripts = xover.dom.applyScripts(high_priority_scripts);
                                 for (let script of high_priority_scripts) {
@@ -13121,7 +13127,7 @@ xover.Store = function (xml, ...args) {
         value: async function (...args) {
             __document.settings.merge(...args);
             await __document.fetch();
-            await this.initialize();
+            await self.initialize();
         },
         writable: false, enumerable: false, configurable: false
     });
