@@ -27,6 +27,7 @@ xover.app = {};
 xover.debug = {};
 xover.browser = {};
 xover.cache = {};
+xover.cache.manifest = new Map();
 xover.cryptography = {};
 xover.cryptography.generateUUID = function () {//from https://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid
     // Public Domain/MIT -- For https we can use Crypto web api
@@ -2334,10 +2335,11 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                 } else if (key[0] === '/') {
                     return input.matches(key) /*should work either with nodes and strings */
                 } else {
-                    let key_url = new xover.URL(!(input instanceof Node) ? key : '');
+                    let key_url = xover.cache.manifest.get(key) || new xover.URL(!(input instanceof Node) ? key : '');
                     //if (location.origin == key_url.origin) { //removes current folder so it can be evaluated 
                     //    key_url.href = key_url.pathname.replace(new RegExp("^" + location.pathname), "");
                     //}
+                    xover.cache.manifest.set(key, key_url);
                     return value.constructor === {}.constructor
                         && (
                             url.protocol == key_url.protocol
