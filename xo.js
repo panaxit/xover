@@ -1597,6 +1597,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
             _event.detail["searchParams"] = _event.detail["searchParams"] || context.searchParams || url.searchParams;
             _event.detail["search"] = _event.detail["search"] || context.search || url.search;
             _event.detail["tag"] = _event.detail["tag"] || context.tag || context.hash || url.hash;
+            _event.detail["tags"] = _event.detail["tags"] || context.tags || url.tags;
             _event.detail["hash"] = _event.detail["hash"] || context.hash || url.hash;
             _event.detail["host"] = _event.detail["host"] || context.host || url.host;
             _event.detail["href"] = _event.detail["href"] || context.href || url.href;
@@ -1796,9 +1797,8 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             debugger;
         }
         let fns = xover.listener.matches(context, event.type, (event.detail || {}).tags);
-        let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)]);
+        let handlers = new Map([...fns, ...new Map((event.detail || {}).listeners)].sort((a, b) => (a[1].priority || 0) - (b[1].priority || 0)));
         if (!handlers.size) return;
-        //context.eventHistory = context.eventHistory || new Map();
         let target = (!context.ownerElement && instanceOf.call(context, Attr) ? context.parentNode : context);
         let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
@@ -1996,6 +1996,7 @@ Object.defineProperty(xover.listener, 'on', {
         }
         handler.selectors = handler.selectors || [];
         for (let event_name of name_or_list) {
+            Object.defineProperties(handler, Object.fromEntries(Object.entries(options).map(([key, value]) => [key, { value, enumerable: false, configurable: true, writable: true }])));
             handler.selectors.push(event_name);
             let conditions;
             let [scoped_event, ...predicate] = event_name.split(/::/);
