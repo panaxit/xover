@@ -4197,6 +4197,12 @@ Object.defineProperty(xover.URL.prototype, 'href', {
     }
 });
 
+Object.defineProperty(xover.URL.prototype, 'clone', {
+    value: function () {
+        return new xover.URL(this.toString(), undefined, this.request || {});
+    }
+});
+
 Object.defineProperty(xover.URL.prototype, 'settings', {
     get: function () {
         return this.request;
@@ -4315,7 +4321,7 @@ Object.defineProperty(URL.prototype, 'params', {
 
 Object.defineProperty(URL.prototype, 'fetch', {
     value: async function (...args) {
-        return xover.fetch.apply(this, args);
+        return xover.fetch(this, args);
     }
 });
 
@@ -10583,7 +10589,7 @@ xover.Request = function (request, ...args) {
                 url = new xover.URL(`local:${request}`, undefined, {});
             } else if (source.constructor === {}.constructor) {
                 url = new xover.URL(request, undefined, {});
-                fn = function (...args) {
+                fn = async function (...args) {
                     const entries = Object.entries(source);
                     const requests = [];
                     for (let [key, params] of entries) {
@@ -10592,6 +10598,7 @@ xover.Request = function (request, ...args) {
                         request.tags.add(...url.tags)
                         requests.push(request.fetch.apply(this, args));
                     }
+                    await Promise.allSettled(requests)
                     return requests.length <= 1 ? requests[0] : requests;
                 }
             } else if (source.constructor === [].constructor) {
@@ -10637,10 +10644,12 @@ xover.Request = function (request, ...args) {
         fn = request;
     } else if (instanceOf.call(request, xover.URL)) {
         url = request;
+    } else if (instanceOf.call(request, xover.Request)) {
+        url = request.url;
     } else {
         url = new xover.URL(request);
     }
-    if (request[0] === "#") {
+    if (typeof (request) === 'string' && request[0] === "#") {
         url.hash = request
     }
     request = url.request || new Request(url, ...args);
@@ -14818,8 +14827,9 @@ xover.listener.on('Response:reject?status=401', function ({ response, request })
     if (response.url.origin == xover.URL(xover.manifest.server.login).origin) {
         xover.session.status = 'unauthorized'
     }
-    if (response.response_value.message) {
-        response.response_value.message.render()
+    const json = response.json;
+    if (json.message) {
+        json.message.render()
     } else {
         console.error(`Unauthorized access to ${response.href}`)
     }
