@@ -1978,7 +1978,7 @@ Object.defineProperty(xover.listener, 'on', {
         if (!name_or_list) {
             for (let [base_event, [[, [[predicate, handler]]]]] of [...xover.listener || []]) {
                 let selector = `${base_event}${predicate && '::' + predicate || ''}`;
-                console.log(`Bound: ${selector}`)
+                //console.log(`Bound: ${selector}`)
                 xover.listener.on.call(window, selector, handler)
             }
             return
@@ -4426,6 +4426,7 @@ xover.spaces["xson"] = "http://panax.io/xson"
 xover.spaces["xsl"] = "http://www.w3.org/1999/XSL/Transform"
 xover.spaces["env"] = "http://panax.io/state/environment"
 xover.spaces["globalization"] = "http://xover.dev/globalization"
+xover.spaces["v"] = "urn:schemas-microsoft-com:vml"
 xover.spaces["x"] = "urn:schemas-microsoft-com:office:excel"
 xover.spaces["o"] = "urn:schemas-microsoft-com:office:office"
 
@@ -5618,54 +5619,9 @@ xover.modernize = async function (targetWindow) {
                                 if (self.source) {
                                     //self.observe();
                                     await self.fetch();
-                                    //await xover.xml.initialize(self);
                                 }
                             }
-
-                            const url = this.url;
-                            const imports = self.documentElement && self.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.value); return arr; }, []) || [];
-                            if (imports.length) {
-                                await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
-                                function assert(condition, message) {
-                                    if (!condition) {
-                                        throw new Error(message);
-                                    }
-                                }
-                                try {
-                                    let rejections = []
-                                    await self.consolidate();
-                                    if (xover.session.debug) {
-                                        self.select(`//xsl:*[xsl:param]`).forEach(template => {
-                                            let param_names = [...template.select(`xsl:param/@name`).map(param => param.value)];
-                                            try {
-                                                assert(param_names.length == [...new Set(param_names)].length, `Los nombres de los parámetros deben ser únicos en: ${template.nodeName} ${template.select(`@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}>`)
-                                            } catch (e) {
-                                                rejections.push(e)
-                                            }
-                                        })
-                                    }
-                                    if (rejections.length) {
-                                        return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
-                                    }
-                                } catch (e) {
-                                    const url = e.url;
-                                    let custom_event = new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, self);
-                                    window.dispatchEvent(custom_event);
-                                    if (!custom_event.defaultPrevented) {
-                                        return Promise.reject(e);
-                                    }
-                                }
-                            }
-                            if (self.documentElement && self.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
-                                self.documentElement.set("exclude-result-prefixes", self.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "));
-                                for (let attr of [...self.documentElement.attributes].filter(attr => attr.prefix && attr.namespaceURI === "http://www.w3.org/2000/xmlns/")) {
-                                    if (attr.localName in xover.spaces && xover.spaces[attr.localName] != attr.value) {
-                                        console.warn(`Prefix ${attr.localName} can't be redefined to "${attr.value}" "${instanceOf.call(url, URL) ? ` at file ${url.href}` : ''}" because it is already assigned to ${xover.spaces[attr.localName]} `)
-                                        continue;
-                                    }
-                                    xover.spaces[attr.localName] = attr.value
-                                }
-                            }
+                            await xover.xml.initialize.call(self);
                             return self;
                         } catch (e) {
                             if (e instanceof Response && e.status == 499) {
@@ -6684,7 +6640,7 @@ xover.modernize = async function (targetWindow) {
                     let processed = {};
                     while (imports.length) {
                         for (let node of imports) {
-                            const named_params = xsl.select(`//xsl:param[@name]`).map(node => node.getAttribute("name"));
+                            const named_params = xsl.select(`//xsl:stylesheet/xsl:param[@name]`).map(node => node.getAttribute("name"));
                             const named_templates = xsl.select(`//xsl:template[@name]`).map(node => node.getAttribute("name"));
                             let href = node.getAttribute("href");
                             let source = xover.sources[href];
@@ -6693,7 +6649,7 @@ xover.modernize = async function (targetWindow) {
                             if (xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${href}" ===')]`)) {
                                 node.remove();
                             } else if (source && source.documentElement && source.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
-                                source.select(`//xsl:param[@name]`).filter(node => named_params.includes(node.getAttribute("name"))).remove();
+                                source.select(`//xsl:stylesheet/xsl:param[@name]`).filter(node => named_params.includes(node.getAttribute("name"))).remove();
                                 source.select(`//xsl:template[@name]`).filter(node => named_templates.includes(node.getAttribute("name"))).remove();
                                 //xsltProcessor.importStylesheet(source);
                                 let fragment = document.createDocumentFragment();
@@ -7169,7 +7125,8 @@ xover.modernize = async function (targetWindow) {
                         try {
                             let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
                             let section = this.section;
-                            let source = this.source //section && section.source;
+                            let source = this.source;
+                            if (!source) return (this.ownerDocument || this).createComment("ack:no-source"); //section && section.source;
                             //if (!source) {
                             //    this.scopeNode = null;
                             //    return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
@@ -7258,7 +7215,7 @@ xover.modernize = async function (targetWindow) {
                             return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
                             //}
                         } catch (e) {
-                            return Promise.reject(`ack:${e}`)
+                            return Promise.reject(e)
                         }
                     }
                 }
@@ -10902,32 +10859,34 @@ xover.Request = function (request, ...args) {
                 }
                 progress();
                 let return_value;
-                if (!controller.signal.aborted) {
-                    return_value = await response.body;
-                    if (!["opaque"].includes(response.type)) {
-                        let fetch_event = new xover.listener.Event('fetch', { body: response.body, document: response.document, json: response.json, result: return_value, url: response.url, response }, return_value); //document: return_value, tag: tag_string, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url
-                        window.dispatchEvent(fetch_event);
-                        if (fetch_event.detail.returnValue instanceof Error) {
-                            return Promise.reject(fetch_event.detail.returnValue);
-                        }
+                if (controller.signal.aborted) return Promise.reject(new Response(null, { status: 499, statusText: "Client Closed Request" }));
+                return_value = await response.body;
+                if (!["opaque"].includes(response.type)) {
+                    let fetch_event = new xover.listener.Event('fetch', { body: response.body, document: response.document, json: response.json, result: return_value, url: response.url, response }, return_value); //document: return_value, tag: tag_string, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url
+                    window.dispatchEvent(fetch_event);
+                    if (fetch_event.detail.returnValue instanceof Error) {
+                        return Promise.reject(fetch_event.detail.returnValue);
                     }
-
-                    return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()").map(async node => { //urls are interpreted to 
-                        let href = `${node.href || node}`;
-                        //if (href.match(/^[\.\/]/)) {
-                        let url = xover.URL(href, response.url);
-                        let new_href = url.href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
-                        if (href != new_href) {
-                            if (node instanceof ProcessingInstruction) {
-                                node.href = new_href;
-                            } else {
-                                node.set(new_href);
-                            }
-                        }
-                    });
                 }
 
-                response.tag = ((`${url.pathname || url}`).replace(/^\//, ''));
+                return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()").map(async node => { //urls are interpreted to 
+                    let href = `${node.href || node}`;
+                    //if (href.match(/^[\.\/]/)) {
+                    let url = xover.URL(href, response.url);
+                    let new_href = url.href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
+                    if (href != new_href) {
+                        if (node instanceof ProcessingInstruction) {
+                            node.href = new_href;
+                        } else {
+                            node.set(new_href);
+                        }
+                    }
+                });
+
+                if ((request.headers.get('Accept') || '').toLowerCase().indexOf("xml") != -1 && (response.headers.get('Content-Type') || '').toLowerCase().indexOf("json") != -1) {
+                    return_value = xover.xml.fromJSON(return_value);
+                }
+
                 let manifest_settings = xover.manifest.getSettings(response, "stylesheets");
                 return_value instanceof XMLDocument && manifest_settings.reverse().map(stylesheet => {
                     return_value.addStylesheet(stylesheet);
@@ -11101,123 +11060,135 @@ xover.fetch.json = async function (url, settings = {}) {
     }
 }
 
-xover.fetch.xml = async function (url, ...args) {
-    if (!url) return null;
-    if (!(url instanceof xover.URL)) {
-        url = new xover.URL(url);
-    }
-    url.settings["headers"].append("Accept", "text/xml,application/xml,text/xsl,application/xslt+xml")
-
-    try {
-        let response = await xover.fetch.apply(this, [url, ...args]);
-        let return_value = response.document || response;
-        return_value.seed(false, `//xsl:template|//xsl:when|//xsl:otherwise`);
-        if (return_value instanceof Response && return_value.headers.get('Content-Type').toLowerCase().indexOf("json") != -1) {
-            return_value = xover.xml.fromJSON(return_value.body);
-        }
-        if (return_value instanceof Document) {
-            const dynamic_attribute_xpath = "xsl:attribute[xsl:if|xsl:choose|xsl:apply-templates|xsl:call-template]|xsl:choose/xsl:when/xsl:attribute|xsl:choose/xsl:otherwise/xsl:attribute|xsl:if/xsl:attribute|@*[contains(.,'{')]";
-            for (const el of return_value.select(`//html:*[not(@xo-swap)][${dynamic_attribute_xpath}]|//svg:*[not(@xo-swap)][${dynamic_attribute_xpath}]`)) {//elements that has some logic over attributes
-                let attributes = el.select(dynamic_attribute_xpath);
-                dynamic_attributes = attributes.map(attr => `@${attr.nodeType == Node.ATTRIBUTE_NODE ? attr.nodeName : attr.getAttribute("name")}`).distinct().join(" ")
-                el.setAttribute("xo-swap", dynamic_attributes)
+xover.xml.initialize = async function (target) {
+    target = instanceOf.call(target, Node) ? target.cloneNode(true) : this;
+    if (!instanceOf.call(target, Node)) return Promise.reject(`xover.xml.initialize: target is not a node`);
+    const url = target.url;
+    const imports = target.documentElement && target.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.value); return arr; }, []) || [];
+    if (imports.length) {
+        await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
+        function assert(condition, message) {
+            if (!condition) {
+                throw new Error(message);
             }
+        }
+        try {
+            let rejections = []
+            await target.consolidate();
+            if (xover.session.debug) {
+                target.select(`//xsl:*[xsl:param]`).forEach(template => {
+                    let param_names = [...template.select(`xsl:param/@name`).map(param => param.value)];
+                    try {
+                        assert(param_names.length == [...new Set(param_names)].length, `Los nombres de los parámetros deben ser únicos en: ${template.nodeName} ${template.select(`@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}>`)
+                    } catch (e) {
+                        rejections.push(e)
+                    }
+                })
+            }
+            if (rejections.length) {
+                return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
+            }
+        } catch (e) {
+            const url = e.url;
+            let custom_event = new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, target);
+            window.dispatchEvent(custom_event);
+            if (!custom_event.defaultPrevented) {
+                return Promise.reject(e);
+            }
+        }
+    }
+    if (target.documentElement && target.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
+        target.documentElement.set("exclude-result-prefixes", target.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "));
+        for (let attr of [...target.documentElement.attributes].filter(attr => attr.prefix && attr.namespaceURI === "http://www.w3.org/2000/xmlns/")) {
+            if (attr.localName in xover.spaces && xover.spaces[attr.localName] != attr.value) {
+                console.warn(`Prefix ${attr.localName} can't be redefined to "${attr.value}" "${instanceOf.call(url, URL) ? ` at file ${url.href}` : ''}" because it is already assigned to ${xover.spaces[attr.localName]} `)
+                continue;
+            }
+            xover.spaces[attr.localName] = attr.value
+        }
+    }
 
-            for (const el of return_value.select(`//xsl:template/*[not(self::xsl:*) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute)] or self::xsl:comment[not(preceding-sibling::xsl:comment)]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
-                const ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
-                const debug_node = await xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
+    if (target.documentElement && target.selectFirst(`//xsl:template[not(@xo:id)]`)) {
+        target.seed(false, `//xsl:template|//xsl:when|//xsl:otherwise`);
+        const dynamic_attribute_xpath = "xsl:attribute[xsl:if|xsl:choose|xsl:apply-templates|xsl:call-template]|xsl:choose/xsl:when/xsl:attribute|xsl:choose/xsl:otherwise/xsl:attribute|xsl:if/xsl:attribute|@*[contains(.,'{')]";
+        for (const el of target.select(`//html:*[not(@xo-swap)][${dynamic_attribute_xpath}]|//svg:*[not(@xo-swap)][${dynamic_attribute_xpath}]`)) {//elements that has some logic over attributes
+            let attributes = el.select(dynamic_attribute_xpath);
+            dynamic_attributes = attributes.map(attr => `@${attr.nodeType == Node.ATTRIBUTE_NODE ? attr.nodeName : attr.getAttribute("name")}`).distinct().join(" ")
+            el.setAttribute("xo-swap", dynamic_attributes)
+        }
+
+        for (const el of target.select(`//xsl:template/*[not(self::xsl:*) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute)] or self::xsl:comment[not(preceding-sibling::xsl:comment)]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
+            const ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
+            const debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
 file="${new xover.URL(url).href.replace(/&/g, '&amp;')}"
 >${ancestor.localName == 'template' ? '' : `
 &lt;!- -${ancestor.cloneNode().toString().replace(/ xmlns:(\w+)=(["'])([^\2]+?)\2/ig, '').replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/--/g, '- -')}- -&gt;`}
 ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
-                const ancestor_id = ancestor.getAttributeNS(xover.spaces["xover"], "id")
-                const source_node = await xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-xsl-source"><![CDATA[${ancestor_id}]]></xsl:attribute>`);
-                if (source_node && el.nodeType === Node.ELEMENT_NODE) {
-                    el.prepend(source_node)
-                }
-                if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
-                    el.replaceWith(debug_node)
-                } else if (debug_node.selectSingleNode('self::xsl:attribute') && el.selectSingleNode('self::html:*')) {
-                    el.prepend(debug_node)
-                } else if (el.selectSingleNode('self::xsl:attribute')) {
-                    el.select('following-sibling::xsl:attribute').concat(el).forEach(attr => attr.before(debug_node.cloneNode(true).setAttribute("name", `xo-debug-${attr.getAttribute("name")}`)))
-                } else {
-                    el.before(debug_node);
-                }
+            const ancestor_id = ancestor.getAttributeNS(xover.spaces["xover"], "id")
+            const source_node = xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-xsl-source"><![CDATA[${ancestor_id}]]></xsl:attribute>`);
+            if (source_node && el.nodeType === Node.ELEMENT_NODE) {
+                el.prepend(source_node)
+            }
+            if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
+                el.replaceWith(debug_node)
+            } else if (debug_node.selectSingleNode('self::xsl:attribute') && el.selectSingleNode('self::html:*')) {
+                el.prepend(debug_node)
+            } else if (el.selectSingleNode('self::xsl:attribute')) {
+                el.select('following-sibling::xsl:attribute').concat(el).forEach(attr => attr.before(debug_node.cloneNode(true).setAttribute("name", `xo-debug-${attr.getAttribute("name")}`)))
+            } else {
+                el.before(debug_node);
             }
         }
-        if (return_value.documentElement && return_value.selectFirst('xsl:*')) {
-            //if (!return_value.documentElement.resolveNS('')) {
-            //    return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns", xover.spaces["xhtml"])
-            //}/*doesn't work properly as when declared from origin */
+        //if (!document.documentElement.resolveNS('')) {
+        //    document.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns", xover.spaces["xhtml"])
+        //}/*doesn't work properly as when declared from origin */
 
-            /*sets xhtml namespace by default */
-            if (!return_value.documentElement.hasAttribute("xmlns")) {
-                return_value.documentElement.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns", "http://www.w3.org/1999/xhtml");
-            }
-            /*Fixes naamespace for svg with missing xmlns*/
-            for (let svg of [...return_value.documentElement.querySelectorAll(`svg, svg > *`)].filter(svg => !svg.attributes.xmlns && svg.namespaceURI == 'http://www.w3.org/1999/xhtml')) {
-                let new_svg = document.createElementNS('http://www.w3.org/2000/svg', svg.nodeName);
-                Array.from(svg.attributes).forEach(attr => {
-                    new_svg.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
-                });
-                new_svg.append(...svg.childNodes)
-                svg.replaceWith(new_svg)
-            }
-
-            /* Preserve significant spaces*/
-            for (let text of return_value.select(`.//text()[.!='' and normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement && text.previousElementSibling instanceof HTMLElement && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.previousElementSibling) && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.nextElementSibling))) {
-                text.replaceWith(xover.xml.createNode(`<xsl:text xmlns:xsl="http://www.w3.org/1999/XSL/Transform"> </xsl:text>`))
-            }
-
-            if (!return_value.documentElement.resolveNS('xo')) {
-                return_value.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
-            }
-
-            for (let el of return_value.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
-                el.set("xo-slot", el.getAttribute("type") == "search" ? "search:{local-name(current())}" : "{name(current()[not(self::*)])}")
-            }
-
-            for (let el of return_value.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
-                el.prepend(xover.xml.createNode(`<xsl:param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="."/>`));
-            }
-
-            for (let el of return_value.select(`//xsl:template[xsl:param/@name="xo:context"]//xsl:apply-templates[not(xsl:with-param/@name="xo:context")]|//xsl:template[xsl:param/@name="xo:context"]//xsl:call-template[not(xsl:with-param/@name="xo:context")]`)) {
-                el.prepend(xover.xml.createNode(`<xsl:with-param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="$xo:context"/>`));
-            }
-
-            for (let el of return_value.select(`(//xsl:*[not(@match="/")]/html:*[not(self::html:script or self::html:style or self::html:link or self::html:br or self::html:hr)]|//xsl:*/svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
-                el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
-            }
-
-            for (let el of return_value.select(`//xsl:template[not(@match="/")]//xsl:element`)) {
-                el.prepend(xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
-                //el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
-            }
+        /*sets xhtml namespace by default */
+        if (!target.documentElement.hasAttribute("xmlns")) {
+            target.documentElement.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns", "http://www.w3.org/1999/xhtml");
         }
-        if (location.host == url.host) {
-            //return_value.documentElement && return_value.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//html:link/@href|//html:script/@src|//processing-instruction()").map(async node => {
-            //    let href = `${node.href || node}`;
-            //    if (!href.match(/^[\/#]|^\.\/|{/)) {
-            //        let url = xover.URL(response.url);
-            //        let new_href = new URL(href, url).href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
-            //        if (href != new_href) {
-            //            if (node instanceof ProcessingInstruction) {
-            //                node.href = new_href;
-            //            } else {
-            //                node.set(new_href);
-            //            }
-            //        }
-            //    }
-            //});
-            debugger
-            await return_value.ready
+        /*Fixes naamespace for svg with missing xmlns*/
+        for (let svg of [...target.documentElement.querySelectorAll(`svg, svg > *`)].filter(svg => !svg.attributes.xmlns && svg.namespaceURI == 'http://www.w3.org/1999/xhtml')) {
+            let new_svg = window.document.createElementNS('http://www.w3.org/2000/svg', svg.nodeName);
+            Array.from(svg.attributes).forEach(attr => {
+                new_svg.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+            });
+            new_svg.append(...svg.childNodes)
+            svg.replaceWith(new_svg)
         }
-        return return_value;
-    } catch (e) {
-        return Promise.reject(e);
+
+        /* Preserve significant spaces*/
+        for (let text of target.select(`.//text()[.!='' and normalize-space(.)='']`).filter(text => text.nextElementSibling instanceof HTMLElement && text.previousElementSibling instanceof HTMLElement && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.previousElementSibling) && ![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(text.nextElementSibling))) {
+            text.replaceWith(xover.xml.createNode(`<xsl:text xmlns:xsl="http://www.w3.org/1999/XSL/Transform"> </xsl:text>`))
+        }
+
+        if (!target.documentElement.resolveNS('xo')) {
+            target.documentElement.setAttributeNS(xover.spaces["xmlns"], "xmlns:xo", xover.spaces["xo"])
+        }
+
+        for (let el of target.select(`(//xsl:template[not(@match="/")]//html:*[not(self::html:script or self::html:style or self::html:link)]|//svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-slot or @xo-scope])]`)) {
+            el.set("xo-slot", el.getAttribute("type") == "search" ? "search:{local-name(current())}" : "{name(current()[not(self::*)])}")
+        }
+
+        for (let el of target.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
+            el.prepend(xover.xml.createNode(`<xsl:param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="."/>`));
+        }
+
+        for (let el of target.select(`//xsl:template[xsl:param/@name="xo:context"]//xsl:apply-templates[not(xsl:with-param/@name="xo:context")]|//xsl:template[xsl:param/@name="xo:context"]//xsl:call-template[not(xsl:with-param/@name="xo:context")]`)) {
+            el.prepend(xover.xml.createNode(`<xsl:with-param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="$xo:context"/>`));
+        }
+
+        for (let el of target.select(`(//xsl:*[not(@match="/")]/html:*[not(self::html:script or self::html:style or self::html:link or self::html:br or self::html:hr)]|//xsl:*/svg:*[not(ancestor::svg:*)])[not(@xo-source or @xo-stylesheet or ancestor-or-self::*[@xo-scope])]`)) {
+            el.set("xo-scope", "{current()[not(self::*)]/../@xo:id|@xo:id}");
+        }
+
+        for (let el of target.select(`//xsl:template[not(@match="/")]//xsl:element`)) {
+            el.prepend(xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
+            //el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
+        }
     }
+    return Promise.resolve(target)
 }
 
 xover.fetch.xml = async function (url, ...args) {
@@ -11993,25 +11964,6 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
                 loadScriptsSequentially.call(target, type, ...scripts);
             }
         }
-        try {
-            const contentWindow = iframe.contentWindow;
-            contentWindow.xover = (xover || parent.xover);
-            xover.modernize.call(contentWindow);
-            contentWindow.addEventListener('message', function (event) {
-                if (event.origin === location.origin && event.data.type === 'applyStyles') {
-                    const document = this.document;
-                    const style = document.createElement('style');
-                    style.textContent = event.data.styles;
-                    document.head.appendChild(style);
-                }
-            });
-        } catch (e) {
-            if (e.name == 'SecurityError') {
-                return
-            } else {
-                console.error(e)
-            }
-        }
 
         try {
             iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
@@ -12032,6 +11984,26 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
             console.error(e)
         }
     })
+
+    try {
+        const contentWindow = iframe.contentWindow;
+        contentWindow.xover = (xover || parent.xover);
+        xover.modernize.call(contentWindow);
+        contentWindow.addEventListener('message', function (event) {
+            if (event.origin === location.origin && event.data.type === 'applyStyles') {
+                const document = this.document;
+                const style = document.createElement('style');
+                style.textContent = event.data.styles;
+                document.head.appendChild(style);
+            }
+        });
+    } catch (e) {
+        if (e.name == 'SecurityError') {
+            return
+        } else {
+            console.error(e)
+        }
+    }
 
     Object.entries(xover.listener).filter(([, handler]) => typeof (handler) == 'function').forEach(([event_name, handler]) => iframe.addEventListener(event_name, handler));
 }, { priority: 998 })
