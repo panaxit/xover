@@ -4084,7 +4084,6 @@ xover.URL = function (href, base, options = {}) {
 }
 
 xover.URL.prototype = Object.create(URL.prototype);
-
 for (let prop of ['method', 'headers', 'body', 'mode', 'credentials', 'cache', 'redirect', 'referrer', 'integrity', 'keepalive', 'signal']) {
     Object.defineProperty(xover.URL.prototype, prop, {
         get: function () {
@@ -4103,6 +4102,7 @@ Object.defineProperty(xover.URL.prototype, 'request', {
         }
         return this.request;
     }, set: function (input) {
+        delete this.settings.headers;
         Object.defineProperty(input, 'url', {
             value: this
             , writable: true
@@ -4134,7 +4134,7 @@ Object.defineProperty(xover.URL.prototype, 'fetch', {
     get: function () {
         const self = this;
         return async function (...args) {
-            let request = self.request;
+            let request = self.request || new Request(self, self.settings);
             return request ? request.fetch.call(this, ...args) : xover.fetch(this, args);
         }
     }
@@ -4142,15 +4142,22 @@ Object.defineProperty(xover.URL.prototype, 'fetch', {
 
 Object.defineProperty(xover.URL.prototype, 'settings', {
     get: function () {
-        let settings = { headers: new Headers() };
-        //settings.headers.set("accept", settings.headers.get("accept") || xover.mimeTypes[this.extension] || '*/*')
+        const settings = new Proxy({ headers: new Headers() }, {
+            get: (target, prop) => {
+                if (Object.prototype.hasOwnProperty.call(target, prop)) {
+                    return target[prop];
+                } else {
+                    return (this.request || {})[prop]
+                }
+            },
+            set: (target, prop, value) => {
+                target[prop] = value;
+                return true;
+            }
+        })
         if (!Object.hasOwnProperty(this, "settings")) {
             Object.defineProperty(this, 'settings', {
-                get: function () {
-                    let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = /*this.request || */settings;
-                    settings = xover.json.combine(settings, { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal })
-                    return settings;
-                }
+                value: settings
             })
         }
         return this.settings;
