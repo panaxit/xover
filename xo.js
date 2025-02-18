@@ -3820,7 +3820,7 @@ xover.Source = function (tag_name) {
     return this
 }
 
-for (let prop of ['$', '$$', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml', 'ready', 'relatedDocuments', 'url', 'href', 'settings', 'tag']) {
+for (let prop of ['$', '$$', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml', 'ready', 'relatedDocuments', 'url', 'href', 'resource', 'settings', 'tag']) {
     Object.defineProperty(xover.Source.prototype, prop, {
         get: function () {
             return this.document[prop];
@@ -4021,7 +4021,8 @@ xover.URL = function (href, base, options = {}) {
             url = url.replace(/^#/, `${base.protocol}#`)
             base = '';
         }
-        url = new URL(url.trim().replace(/^\//, location.basepath || '/')/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+        url = new URL(url.trim().replace(/^[\/\\]/, location.basepath || '/')/*.replace(/\+/g, '%2B').replace(/\s/g, '%20')*/, base || location.origin + location.pathname.replace(/[^/]+$/, ""));
+        Object.setPrototypeOf(url, this);
     } catch (e) {
         return null
     }
@@ -4029,13 +4030,9 @@ xover.URL = function (href, base, options = {}) {
     [...query.entries()].forEach(([key, value]) => url.searchParams.append(key, value));
     delete settings["query"];
     delete settings["payload"];
-    Object.setPrototypeOf(url, this);
     /*settings = typeof (get_evaluated_settings) === 'function' && xover.json.combine(xover.manifest.getSettings(url, 'headers'), settings) || settings;*/
     let evaluated_settings = typeof (options) === 'function' ? xover.manifest.getSettings(url) : null;
     settings = evaluated_settings && xover.json.combine.call(url.settings, evaluated_settings) || settings;
-    if (url.origin == location.origin && ["/", "\\"].includes(href[0]) && location.basepath) {
-        url.pathname = location.pathname.replace(/\/[^\/]*$/, "") + url.pathname;
-    }
     [...url.searchParams.entries()].filter(([key]) => key[0].indexOf("^") == 0).forEach(([key, value]) => {
         if (value) {
             request.headers.set(key, value);
@@ -6605,7 +6602,8 @@ xover.modernize = async function (targetWindow) {
                     let processed = {};
                     while (imports.length) {
                         for (let node of imports) {
-                            const named_params = xsl.select(`//xsl:stylesheet/xsl:param[@name]`).map(node => node.getAttribute("name"));
+                            const named_params = xsl.select(`//xsl:stylesheet/xsl:param`).map(node => node.getAttribute("name"));
+                            const named_variables = xsl.select(`//xsl:stylesheet/xsl:variable`).map(node => node.getAttribute("name"));
                             const named_templates = xsl.select(`//xsl:template[@name]`).map(node => node.getAttribute("name"));
                             let href = node.getAttribute("href");
                             let source = xover.sources[href];
@@ -6614,7 +6612,8 @@ xover.modernize = async function (targetWindow) {
                             if (xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${href}" ===')]`)) {
                                 node.remove();
                             } else if (source && source.documentElement && source.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
-                                source.select(`//xsl:stylesheet/xsl:param[@name]`).filter(node => named_params.includes(node.getAttribute("name"))).remove();
+                                source.select(`//xsl:stylesheet/xsl:param`).filter(node => named_params.includes(node.getAttribute("name"))).remove();
+                                source.select(`//xsl:stylesheet/xsl:variable`).filter(node => named_variables.includes(node.getAttribute("name"))).remove();
                                 source.select(`//xsl:template[@name]`).filter(node => named_templates.includes(node.getAttribute("name"))).remove();
                                 //xsltProcessor.importStylesheet(source);
                                 let fragment = document.createDocumentFragment();
@@ -7118,7 +7117,7 @@ xover.modernize = async function (targetWindow) {
                                                 scope = scope.ownerElement;
                                             }
                                         }
-                                        if (scope === undefined && attr.localName == "xo-scope") {
+                                        if (scope === undefined && attr.localName == "xo-scope" && attr.value !== 'inherit') {
                                             scope = null;
                                         }
                                         attrs.shift()
@@ -10646,7 +10645,7 @@ xover.Request = function (request, ...args) {
         })
     }
 
-    Object.defineProperty(request, 'fetch', {
+    Object.defineProperty(request, `fetch`, {
         writable: true, configurable: false, enumerable: false,
         value: async function (...args) {
             try {
@@ -14014,7 +14013,7 @@ xover.socket.connect = function (url, listeners = {}, socket_handler = window.io
 }
 
 xover.listener.on('databaseChange', async function (changes) {
-    if (!xover.session.debug) return;
+    if (!(xover.session.debug || top.document.querySelector(`meta[name="debug"][content="true"]`) || top.document.querySelector(`meta[name="debug"][content="${location.origin + location.basepath}"]`))) return;
     let formatObjectName = function (object_name) {
         return (object_name || '').replace(/\[|\]|"/g, '').toLowerCase();
     }
@@ -14059,7 +14058,7 @@ xover.listener.on('hotreload', async function (file_path) {
         if (file.resource in xover.sources) {
             let source;
             source = xover.sources[file.resource];
-            let related_documents = Object.values(xover.sources).filter(document => document.relatedDocuments.flat().find(item => item == source));
+            let related_documents = [...xover.sources.values()].filter(document => document.relatedDocuments.flat().find(item => item == source));
             for (let related_document of related_documents) {
                 related_document.clear()
             }
