@@ -3442,7 +3442,8 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
             if (customComponents.length) {
                 for (let component of customComponents) {
                     let comparing_component = node2.querySelector(component.selector);
-                    if (!comparing_component.initialChildNodes.isEqualNode(component.initialChildNodes)) {
+                    let initial_nodes = comparing_component && comparing_component.initialChildNodes;
+                    if (initial_nodes && !initial_nodes.isEqualNode(component.initialChildNodes)) {
                         all_differences.push(new Map([[component, comparing_component]]))
                     }
                 }
@@ -8728,7 +8729,7 @@ xover.modernize = async function (targetWindow) {
                     ////}
                     ////try {
                     if (typeof (reseed_or_config) == 'boolean') {
-                        reseed_or_config = { reseed: true }
+                        reseed_or_config = { reseed: reseed_or_config }
                     }
                     if (reseed_or_config["reseed"] == true) {
                         this.selectNodes('.//@xo:id').remove()
@@ -8736,7 +8737,7 @@ xover.modernize = async function (targetWindow) {
                     //let observer = this.ownerDocument && this.ownerDocument.observer
                     //let reconnect = !document.disconnected;
                     //observer && observer.disconnect(0)
-                    this.selectNodes(target_path).forEach(node => Element.setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return (reseed_or_config["prefix"] ? reseed_or_config["prefix"] + ':' : '') + `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
+                    this.selectNodes(target_path).filter(item => !item.hasAttributeNS(xover.spaces["xover"], 'id')).forEach(node => Element.setAttributeNS.call(node, xover.spaces["xo"], 'xo:id', (function (node) { return (reseed_or_config["prefix"] ? reseed_or_config["prefix"] + ':' : '') + `${node.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') })(node)));
                     //reconnect && observer && observer.connect();
                     ////} catch (e) {
                     ////    this.selectNodes(`descendant-or-self::*[not(@xo:id!="")]`).setAttributeNS(xover.spaces["xo"], 'xo:id', (function () { return `${(this.nodeName}_${xover.cryptography.generateUUID()}`.replace(/[:-]/g, '_') }));
@@ -10892,6 +10893,23 @@ xover.Request = function (request, ...args) {
     return request;
 }
 xover.Request.prototype = Object.create(Request.prototype);
+//for (let prop of ['method', 'headers', 'body', 'mode', 'credentials', 'cache', 'redirect', 'referrer', 'integrity', 'keepalive', 'signal']) {
+//    Object.defineProperty(xover.Request.prototype, prop, {
+//        get: function () {
+
+//            if (!Object.hasOwnProperty(this, prop)) {
+//                Object.defineProperty(this, prop, {
+//                    value: input
+//                    , writable: true
+//                })
+//            }
+//            return this.settings[prop];
+//        },
+//        set: function (input) {
+//            return this.settings[prop] = input;
+//        }
+//    })
+//}
 
 for (let prop of ['hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'tags', 'username']) {
     Object.defineProperty(xover.Request.prototype, prop, {
@@ -11050,7 +11068,7 @@ xover.xml.initialize = async function (target) {
     }
 
     if (target.documentElement && target.selectFirst(`//xsl:template[not(@xo:id)]`)) {
-        target.seed(false, `//xsl:template|//xsl:when|//xsl:otherwise`);
+        target.seed(false, `//xsl:template|//xsl:if|//xsl:for-each|//xsl:when|//xsl:otherwise`);
         const dynamic_attribute_xpath = "xsl:attribute[xsl:if|xsl:choose|xsl:apply-templates|xsl:call-template]|xsl:choose/xsl:when/xsl:attribute|xsl:choose/xsl:otherwise/xsl:attribute|xsl:if/xsl:attribute|@*[contains(.,'{')]";
         for (const el of target.select(`//html:*[not(@xo-swap)][${dynamic_attribute_xpath}]|//svg:*[not(@xo-swap)][${dynamic_attribute_xpath}]`)) {//elements that has some logic over attributes
             let attributes = el.select(dynamic_attribute_xpath);
@@ -11058,8 +11076,8 @@ xover.xml.initialize = async function (target) {
             el.setAttribute("xo-swap", dynamic_attributes)
         }
 
-        for (const el of target.select(`//xsl:template/*[not(self::xsl:*) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute)] or self::xsl:comment[not(preceding-sibling::xsl:comment)]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
-            const ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:when[1]|ancestor::xsl:for-each[1]|ancestor::xsl:otherwise[1]").pop();
+        for (const el of target.select(`//xsl:template/*[not(self::xsl:* or xsl:attribute[@name="xo-xsl-source"]) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute or @name="xo-xsl-source")] or self::xsl:comment[not(preceding-sibling::xsl:comment or contains(text(),'<template'))]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
+            const ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:for-each[1]|ancestor::xsl:when[1]|ancestor::xsl:otherwise[1]").pop();
             const debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
 file="${new xover.URL(url).href.replace(/&/g, '&amp;')}"
@@ -11069,7 +11087,11 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             const ancestor_id = ancestor.getAttributeNS(xover.spaces["xover"], "id")
             const source_node = xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-xsl-source"><![CDATA[${ancestor_id}]]></xsl:attribute>`);
             if (source_node && el.nodeType === Node.ELEMENT_NODE) {
-                el.prepend(source_node)
+                if (el.matches(`xsl:attribute`)) {
+                    el.before(source_node)
+                } else {
+                    el.prepend(source_node)
+                }
             }
             if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
                 el.replaceWith(debug_node)
