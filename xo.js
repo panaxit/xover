@@ -4167,6 +4167,7 @@ Object.defineProperty(xover.URL.prototype, 'href', {
     get: function () {
         const href = URL.href.get.call(this);
         const pathname = URL.pathname.get.call(this);
+        if (this.origin !== location.origin) return href;
         return href.replace(new RegExp(`^${this.origin === 'null' ? this.protocol : this.origin}${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '')}${this.origin === 'null' ? '' : location.pathname.replace(/[^\/]+$/, "")}`), "");
     }
 });
