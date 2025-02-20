@@ -10815,7 +10815,7 @@ xover.Request = function (request, ...args) {
                 return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()").map(async node => { //urls are interpreted to 
                     let href = `${node.href || node}`;
                     //if (href.match(/^[\.\/]/)) {
-                    let url = xover.URL(href, response.url);
+                    let url = xover.URL(href, ["/", "\\"].includes(href[0]) ? '' : response.url); //if href is requested with a leading slash, it must be refering to a document located on root folder. TODO: Check if backslash should be used to location and simple slash to response.url's root
                     let new_href = url.href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
                     if (href != new_href) {
                         if (node instanceof ProcessingInstruction) {
