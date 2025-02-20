@@ -2439,12 +2439,12 @@ xover.server = new Proxy({}, {
             let url;
             if (endpoint.constructor === {}.constructor) {
                 // TODO: check supported params
-                url = new xover.URL(endpoint.href, undefined, { tags: [server_tag] });
+                url = new xover.URL(endpoint.href, undefined, xover.manifest.getSettings);
                 for (let [key, value] of Object.entries(endpoint)) {
                     url[key] = value;
                 }
             } else if (typeof (endpoint) == 'string') {
-                url = new xover.URL(endpoint, undefined, { tags: [server_tag] })
+                url = new xover.URL(endpoint, undefined, xover.manifest.getSettings)
             }
             request = url.request || new xover.Request(url, ...args);
             if (this instanceof Request) {
