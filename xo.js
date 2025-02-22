@@ -1278,7 +1278,7 @@ class Subscribers extends Map {
     evaluate(...args) {
         for (let [ref, parser] of [...this.entries()]) {
             ref.closest("*").classList.add("xo-syncing")
-            xover.subscribers.evaluate.apply(this, [ref, parser])
+            xover.subscribers.evaluate.apply(this, [ref, args.slice(-1)[0] || parser])
         }
     }
 }
@@ -1288,30 +1288,8 @@ xover.subscribers = new Structure(new Map(), {
         value: function (target, contextParser) {
             let self = this;
             const evaluate = function (contextParser) {
-                const ref = this;
+                let ref = this;
                 if (this instanceof Node) {
-                    //                    let new_value = formula.replace(/\{[\$\{]([^\}]+)\}?\}/g, (match, prefixed_name) => { //TODO: Consolidate with signal update
-                    //                        let [variable, ...else_value] = prefixed_name.split(/\s*\|\|\s*/g);
-                    //                        let [name, prefix] = xover.hasOwnProperty(variable.split("::")[0]) ? variable.split("::").reverse() : xover.hasOwnProperty(variable.split(":")[0]) ? variable.split(":").reverse() : [variable];
-                    //                        else_value = else_value.concat(match);
-                    //                        if (!prefix) {
-                    //                            if (scope instanceof Node) {
-                    //                                return name && scope.get(name) || evaluate(else_value)
-                    //                            }
-                    //                        } else {
-                    //                            if (instanceOf.call(subscriber, HTMLSlotElement)) {
-                    //                                subscriber.classList.remove("xo-syncing");
-                    //                            } else if (instanceOf.call(subscriber, Text, Attr)) {
-                    //                                subscriber.parentNode.classList.remove("xo-syncing");
-                    //                            }
-                    //                            return xover[prefix][name] || evaluate(else_value)
-                    //                        }
-                    //                    });
-                    //                    if (subscriber.name == 'style') {
-                    //                        if (subscriber.ownerElement) subscriber.ownerElement.style.cssText = new_value;
-                    //                    } else {
-                    //                        subscriber.set(new_value);
-                    //                    }
                     const formula = this.formula || '';
                     const value = formula.replace(/\{[\$\{]([^\}]+)\}?\}/g, (full_match, match) => {
                         let [value, else_value] = match.split(/\s*\|\|\s*/);
@@ -1358,6 +1336,7 @@ xover.subscribers = new Structure(new Map(), {
                                 self.delete(ref);
                                 self.set(node, formula);
                             }
+                            ref = node;
                         } else if (value.indexOf("&") != -1) {
                             ref.textContent = xover.string.htmlDecode(value);
                         } else {
@@ -1438,48 +1417,33 @@ Object.defineProperties(xover.signal, {
                     let match;
                     while ((match = placeholderRegex.exec(text_content)) !== null) {
                         const [fullMatch, placeholderContent] = match;
-                        if (match.index > lastIndex) {
-                            const slot = new Text()//document.createElement("slot");
-                            const text = text_content.slice(lastIndex, match.index);
-                            slot.textContent = text;
-                            if (!slot.hasOwnProperty("formula")) {
-                                Object.defineProperty(slot, 'formula', {
-                                    value: slot.textContent
-                                })
-                            }
-                            if (contextParser.nodeType && !slot.hasOwnProperty("context")) {
-                                Object.defineProperty(slot, 'context', {
-                                    value: contextParser
-                                })
-                            }
+                        if (match.index > lastIndex) { //non-placeholder
+                            const slot = new Text(text_content.slice(lastIndex, match.index));
                             fragment.appendChild(slot);
-                            //const textNode = document.createTextNode(text_content.slice(lastIndex, match.index));
-                            //fragment.appendChild(textNode);
                         }
 
                         const slot = new Text()//document.createElement("slot");
                         //slot.closest("*").classList.add("xo-syncing");
                         slot.context = contextParser;
                         slot.textContent = '';
-                        fragment.appendChild(slot);
-                        subscribers.set(slot, contextParser);
-                        lastIndex = match.index + fullMatch.length;
-                    }
-
-                    if (lastIndex < text_content.length) {// Append remaining text after the last placeholder
-                        const remainingText = text_content.slice(lastIndex);
-                        const slot = document.createTextNode(remainingText);
-                        if (!slot.hasOwnProperty("formula")) {
+                        //if (!slot.hasOwnProperty("formula")) {
                             Object.defineProperty(slot, 'formula', {
                                 value: fullMatch
                             })
-                        }
+                        //}
                         if (contextParser.nodeType && !slot.hasOwnProperty("context")) {
                             Object.defineProperty(slot, 'context', {
                                 value: contextParser
                             })
                         }
                         fragment.appendChild(slot);
+                        subscribers.set(slot, contextParser);
+                        lastIndex = match.index + fullMatch.length;
+                    }
+
+                    if (lastIndex < text_content.length) {// Append remaining text after the last placeholder
+                        const remainingText = new Text(text_content.slice(lastIndex));
+                        fragment.appendChild(remainingText);
                     }
 
                     if (fragment.hasChildNodes()) {
@@ -5634,8 +5598,8 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                for (let prop of ['hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'username']) {
-                    Object.defineProperty(Document.prototype, prop, {
+                for (let prop of ['hash', 'href']) { //'hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'username'
+                    Object.defineProperty(Document.prototype, prop, {//leaving only the most important. host prop interferes with document's container
                         get: function () {
                             return (this.url || {})[prop];
                         },
@@ -11943,7 +11907,7 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
             let custom_scripts = xover.manifest.getSettings(iframe, "scripts")
             loadScriptsSequentially.call(iframeDocument.body, "script", ...custom_scripts);
             xover.dom.Observer(iframeDocument);
-            xover.signal.update.call(iframeDocument, iframeDocument.scope);
+            xover.signal.update.call(iframeDocument);
         } catch (e) {
             console.error(e)
         }
