@@ -364,8 +364,8 @@ Object.defineProperty(xover.storehouse, 'files', {
 
 Object.defineProperty(xover.storehouse, 'sources', {
     get: async function () {
-        let store = await xover.storehouse.open('sources');
-        let _add = store.add;
+        const store = await xover.storehouse.open('sources');
+        const _add = store.add;
         store.add = function (source, name = '', type) {
             if (source.constructor === {}.constructor) source = JSON.stringify(source);
             if (source instanceof Node) source = source.outerHTML || source.innerHTML || source.toString();
@@ -374,7 +374,7 @@ Object.defineProperty(xover.storehouse, 'sources', {
             });
             _add(file, record_key);
         }
-        let _put = store.put;
+        const _put = store.put;
         store.put = function (source, key = '', type) {
             let file_name, name;
             if (instanceOf.call(key, URL)) {
@@ -391,10 +391,16 @@ Object.defineProperty(xover.storehouse, 'sources', {
             });
             _put(file, name);
         }
-        let _get = store.get;
-        store.get = async function (name = '') {
-            let record = await _get(name);
-            return record;
+        const _get = store.get;
+        store.get = async function (key = '') {
+            if (instanceOf.call(key, URL)) {
+                let records = await store.openCursor(key);
+                if (!records.length) return null;
+                if (records.length == 1) return records[0][1];
+                return records;
+            } else {
+                return await _get(key);
+        }
         }
         return store;
     }
@@ -497,8 +503,15 @@ Object.defineProperties(xover.storehouse, {
                             };
                         });
                     }
-                    store.openCursor = function (...args) {
+                    store.openCursor = function (query) {
                         return new Promise((resolve, reject) => {
+                            let args;
+                            if (typeof (query) === 'string') {
+                                args = [query];
+                                query = null;
+                            } else {
+                                args = [];
+                            }
                             let request = IDBObjectStore.prototype.openCursor.apply(store, args);
                             let records = []
                             request.onerror = function (event) {
@@ -508,11 +521,17 @@ Object.defineProperties(xover.storehouse, {
                             request.onsuccess = async function (event) {
                                 let cursor = event.target.result;
                                 if (cursor) {
-                                    records.push([cursor.key, store.get(cursor.key)])
-                                    cursor.continue();
+                                    if (!query) {
+                                        records.push([cursor.key, await store.get(cursor.key)])
                                 } else {
-                                    resolve(records);
+                                        const { value: file } = cursor;
+                                        if (new xover.URL(file.name).matches(query)) {
+                                            records.push([cursor.key, await store.get(cursor.key)])
                                 }
+                                    }
+                                    cursor.continue();
+                                }
+                                resolve(records);
                             };
                         });
                     }
@@ -5999,13 +6018,13 @@ xover.modernize = async function (targetWindow) {
                     enumerable: false
                 })
 
-                Object.defineProperty(Request.prototype, 'matches', {
+                Object.defineProperty(URL.prototype, 'matches', {
                     value: function (...args) {
                         let predicate = args.pop();
                         let tags = this.tags || event && event.detail && event.detail.tags || '';
                         try {
                             const { protocol, pathname, resource, searchParams, hash, tags } = this;
-                            predicate = new xover.URL(predicate, this);
+                            predicate = instanceOf.call(predicate, URL) ? predicate : new xover.URL(predicate, this);
                             if ((
                                 protocol == predicate.protocol
                             ) && (
@@ -6025,11 +6044,20 @@ xover.modernize = async function (targetWindow) {
                         } catch (e) {
                             return false
                         }
-                        if (predicate[0] == '#') {
-                            if (tag == predicate || predicate == tag.split(/[:\?~]/)[0]) {
-                                return true;
+                        //if (predicate[0] == '#') {
+                        //    if (tag == predicate || predicate == tag.split(/[:\?~]/)[0]) {
+                        //        return true;
+                        //    }
+                        //    return false;
+                        //}
+                        return false;
                             }
-                            return false;
+                })
+
+                Object.defineProperty(Request.prototype, 'matches', {
+                    value: function (...args) {
+                        if (this.url.matches(...args)) {
+                            return true
                         }
                         let node = this.documentElement;
                         return node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node))
@@ -10690,13 +10718,13 @@ xover.Request = function (request, ...args) {
 
                     let stored_document, original_response;
                     let expiry = (new URLSearchParams(request.headers.get("cache-control") || {}).get("max-age") || 0) * 1000
-                    if (expiry) {
+                    //if (expiry) {
                         let storehouse = await xover.storehouse.sources;
-                        stored_document = !xover.session.disableCache && await storehouse.get(request.url.href);
-                        if (stored_document && (!stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
+                    stored_document = !xover.session.disableCache && await storehouse.get(request.url);
+                    if (stored_document && (!expiry || !stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
                             original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
                         }
-                    }
+                    //}
                     request.controller = new AbortController();
                     let controller = request.controller;
                     if (settings.progress instanceof HTMLElement) {
@@ -12952,7 +12980,7 @@ xover.Store = function (xml, ...args) {
             return __document
         }
     });
-    Object.defineProperty(this, 'render', {
+    Object.defineProperty(this, `render`, {
         value: async function (target) {
             await xover.ready;
             let progress;
