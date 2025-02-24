@@ -400,7 +400,7 @@ Object.defineProperty(xover.storehouse, 'sources', {
                 return records;
             } else {
                 return await _get(key);
-        }
+            }
         }
         return store;
     }
@@ -523,11 +523,11 @@ Object.defineProperties(xover.storehouse, {
                                 if (cursor) {
                                     if (!query) {
                                         records.push([cursor.key, await store.get(cursor.key)])
-                                } else {
+                                    } else {
                                         const { value: file } = cursor;
                                         if (new xover.URL(file.name).matches(query)) {
                                             records.push([cursor.key, await store.get(cursor.key)])
-                                }
+                                        }
                                     }
                                     cursor.continue();
                                 }
@@ -1446,9 +1446,9 @@ Object.defineProperties(xover.signal, {
                         slot.context = contextParser;
                         slot.textContent = '';
                         //if (!slot.hasOwnProperty("formula")) {
-                            Object.defineProperty(slot, 'formula', {
-                                value: fullMatch
-                            })
+                        Object.defineProperty(slot, 'formula', {
+                            value: fullMatch
+                        })
                         //}
                         if (contextParser.nodeType && !slot.hasOwnProperty("context")) {
                             Object.defineProperty(slot, 'context', {
@@ -2103,7 +2103,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     event.type == 'popstate' && document.querySelectorAll(`[role=alertdialog],dialog`).toArray().remove();
     if (history.state && event.type !== 'popstate') delete history.state.active;
     let hash = top.location.hash || '';
-    hash = hash.split(/\?/)[0];
+    //hash = hash.split(/\?/)[0];
     if (hash && !document.querySelector(`[id="${hash.split(/^#/)[1]}"]`)) {
         xover.site.seed = (history.state || {}).seed || hash || '#';
     }
@@ -4026,7 +4026,10 @@ xover.URL = function (href, base, options = {}) {
     let parameters = [];
     let parameters_handler = {
         get: function (self, key) {
-            if (key in self) return self[key];
+            if (key in self) {
+                const value = self[key];
+                return typeof value === "function" ? value.bind(url.searchParams) : value;
+            }
             return url.searchParams.get(key)
         },
         set: function (self, key, value) {
@@ -4043,7 +4046,7 @@ xover.URL = function (href, base, options = {}) {
             if (['function:'].includes(this.protocol)) {
                 return parameters;
             } else {
-                return new Proxy(Object.entries(this.searchParams), parameters_handler);
+                return new Proxy(this.searchParams, parameters_handler);
             }
         }, set: function (input) {
             if (!input) {
@@ -4218,7 +4221,7 @@ Object.defineProperty(xover.URL.prototype, 'toString', {
             //const pathname = this.pathname.startsWith(normalizedBasePath)
             //    ? this.pathname
             //    : normalizedBasePath + this.pathname.replace(/^\/+/, '');
-            const origin = this.origin === "null" ? this.protocol : this.origin;
+             const origin = this.origin === "null" ? this.protocol : this.origin;
             const pathname = URL.pathname.get.call(this);
             return `${origin}${pathname}${this.search}${this.hash}`;
         }
@@ -6051,7 +6054,7 @@ xover.modernize = async function (targetWindow) {
                         //    return false;
                         //}
                         return false;
-                            }
+                    }
                 })
 
                 Object.defineProperty(Request.prototype, 'matches', {
@@ -10439,7 +10442,12 @@ xover.QUERI = function (href) {
             return Promise.reject(`${href} is not a valid value for QUERI`)
     }
     let predicate = new Predicate(url.searchParams);
-    let headers = new Headers(new URLSearchParams(url.hash.replace(/^[\?#]+/, '')));
+    let headers;
+    try {
+        headers = new Headers(new URLSearchParams(url.hash.replace(/^[\?#]+/, '')));
+    } catch (e) {
+        headers = new Headers();
+    }
     parts = getParts();
     let target = new Proxy({}, {
         get: function (self, key) {
@@ -10620,7 +10628,7 @@ xover.Request = function (request, ...args) {
     //url.hash = tag_string.replace(source, '');//(xover.manifest.server[source.replace(/^server:/, '')] || source)
     ////if (location.origin == url.origin) { //xover.URL automatically supports ?searchParams to come after or before hash;
     let [hash, searchParams = ''] = url.hash.split("?");
-    url.hash = hash;
+    //url.hash = hash;
     for (let [key, value] of new URLSearchParams(searchParams).entries()) {
         url.searchParams.set(key, value)
     }
@@ -10650,7 +10658,8 @@ xover.Request = function (request, ...args) {
                 }
                 args = xover.json.evaluate(args);
                 request.apply(args);
-                if (typeof (fn) === 'function') return await fn.apply(request, request.parameters);
+                let parameters = request.parameters;
+                if (typeof (fn) === 'function') return await fn.apply(request, instanceOf.call(parameters, Array) ? parameters : [parameters]);
                 const settings = request.settings;
                 const original_response = await (async function (...args) {
                     let parameters = args;
@@ -10710,7 +10719,7 @@ xover.Request = function (request, ...args) {
                         request.body.push(args[0]);
                         debugger
                     }
-
+                    
                     request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { document: instanceOf.call(this.context, Document) ? this.context : null, context: this.context, tags: request.tags, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url, args }, request);
                     window.dispatchEvent(request.before_event);
                     await request.before_event.detail.returnValue;
@@ -10719,11 +10728,11 @@ xover.Request = function (request, ...args) {
                     let stored_document, original_response;
                     let expiry = (new URLSearchParams(request.headers.get("cache-control") || {}).get("max-age") || 0) * 1000
                     //if (expiry) {
-                        let storehouse = await xover.storehouse.sources;
+                    let storehouse = await xover.storehouse.sources;
                     stored_document = !xover.session.disableCache && await storehouse.get(request.url);
                     if (stored_document && (!expiry || !stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
-                            original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
-                        }
+                        original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
+                    }
                     //}
                     request.controller = new AbortController();
                     let controller = request.controller;
@@ -10960,8 +10969,11 @@ if (!Object.getOwnPropertyDescriptor(xover.Request.prototype, 'apply')) {
                     } else if (args[i].constructor && [Document, File, Blob, FormData].includes(args[i].constructor)) {
                         request.body = args[i];
                         args.splice(i, 1)
-                    } else if (args[i].constructor && [URLSearchParams].includes(args[i].constructor)) {
-                        request.searchParams = args[i];
+                    } else if (args[i].constructor && instanceOf.call(args[i], URLSearchParams)) {
+                        const searchParams = request.searchParams;
+                        for (let [key, value] of args[i].entries()) {
+                            searchParams.set(key, value)
+                        }
                         args.splice(i, 1)
                     } else if (args.length == 1 && args[i].constructor === {}.constructor && Object.keys(args[0]).some(key => ["method", "headers", "body", "mode", "credentials", "cache", "redirect", "referrer", "integrity", "keepalive", "signal"].includes(key))) {
                         //let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = args[0];
@@ -12536,7 +12548,7 @@ xover.Store = function (xml, ...args) {
 
     Object.defineProperty(this, 'hash', {
         get: function () {
-            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), _store_url.hash || ''].coalesce();
+            return [_hash, xover.manifest.getSettings(this, 'hash').pop(), self.url.hash || ''].coalesce();
             /*return '#' + Array.prototype.coalesce(_hash, __document.documentElement && Array.prototype.coalesce(__document.documentElement.getAttributeNS("http://panax.io/xover", "hash"), __document.documentElement.getAttributeNS("http://panax.io/xover", "tag"), __document.documentElement.localName.toLowerCase()), _tag).split(/^#/).pop();*/
         },
         set: function (input) {
