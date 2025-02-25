@@ -1776,7 +1776,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         if (xover.listener.off === true) return;
         let context = event.context || /*!(event instanceof CustomEvent) && */event.target /*|| null*/;
         if (!context || !context.ownerElement && instanceOf.call(context, Attr)) return;
-        if ((context.ownerDocument || context).disconnected) return;
+        if ((context.ownerDocument || context).disconnected && !((event.detail || {}).listeners || {}).size) return;
         if (xover.listener.debug.matches.call(context, null, xover.listener.debugger) && !xover.listener.debug.matches.call(context, null, xover.listener.debuggerExceptions)) {
             debugger;
         }
