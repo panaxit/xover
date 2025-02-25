@@ -14784,7 +14784,7 @@ xover.modernize();
 xover.dom.toExcel = (function (table, name) {
     if (!table.nodeType) table = document.getElementById(table);
     table = table.cloneNode(true);
-    [...table.querySelectorAll('.non_printable,input,select,textarea,button,svg')].forEach(el => el.remove());
+    [...table.querySelectorAll('.non_printable,input,select,textarea,button,svg,.dropdown')].forEach(el => el.remove());
     let myBlob = new Blob(["\ufeff" + table.outerHTML], { type: 'application/vnd.ms-excel;charset=utf-8' });
     let url = window.URL.createObjectURL(myBlob);
     let a = document.createElement("a");
