@@ -574,7 +574,7 @@ xover.dom.controls = {};
 xover.dom.updateTitle = function (input) {
     let document_title = (input || document.title).match(/([^\(]+)(.*)/);
     let [, title, environment] = (document_title || [, "", ""]);
-    document.title = title.replace(/\s+$/, '') + (` (${xover.session.store_id && xover.session.store_id != 'main' ? xover.session.store_id : 'v.'} ${xover.session.cache_name && xover.session.cache_name.split('_').pop() || ""})`).replace(/\((v\.)?\s+\)|\s+(?=\))/g, '');
+    document.title = title.replace(/\s+$/, '') + (` (${xover.session.store_id && xover.session.store_id != 'main' ? xover.session.store_id : 'v.'} ${xover.session.version || ""})`).replace(/\((v\.)?\s+\)|\s+(?=\))/g, '');
 }
 
 xover.delay = function (ms) {
@@ -2551,6 +2551,7 @@ xover.session = new Proxy({}, {
             xover.storage.setKey(key, new_value);
             xover.storage.setKey(key, undefined);
         }
+        self[key] = new_value
         return self[key];
     },
     deleteProperty: function (self, key) {
@@ -2761,6 +2762,16 @@ Object.defineProperty(xover.session, 'clearCache', {
         }
     },
     writable: false, enumerable: false, configurable: false
+});
+
+navigator.serviceWorker.ready.then(registration => {
+    if (registration.active) {
+        registration.active.postMessage('GET_CACHE_NAME');
+    }
+});
+
+navigator.serviceWorker.addEventListener('message', event => {
+    xover.session.cache_name = event.data.cacheName;
 });
 
 xover.siteHandler = {
@@ -4516,7 +4527,10 @@ Object.defineProperty(xover.session, 'cache_name', {
     get: function () {
         return xover.session.getKey("cache_name") || "";
     }
-    , set() { }
+    , set(input) {
+        xover.session.version = input.replace(`${location.hostname}_`, '').replace("_", ".");
+        xover.dom.updateTitle();
+    }
 });
 
 xover.browser.isIE = function () {
