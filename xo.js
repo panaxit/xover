@@ -5620,7 +5620,7 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                for (let prop of ['hash', 'href']) { //'hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'username'
+                for (let prop of ['hash', 'href', 'resource']) { //'hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'username'
                     Object.defineProperty(Document.prototype, prop, {//leaving only the most important. host prop interferes with document's container
                         get: function () {
                             return (this.url || {})[prop];
@@ -11609,11 +11609,11 @@ xover.dom.applyScripts = async function (scripts = []) {
                     //let result = evalInScope(script.textContent, script.getAttributeNode("xo-scope") && script.scope || window)
                     promise = new Promise(async (resolve, reject) => {
                         if (script.hasAttribute("defer") || script.hasAttribute("async")) await xover.delay(1);
-                        xover.context = script.original || script;
+                        xover.context = /*script.original || */script;
                         let section = (xover.context || {}).section;
                         let xo_stylesheet = (instanceOf.call(section, HTMLElement) && section || document.createElement("p")).getAttribute("xo-stylesheet");
                         let result = (function () {
-                            if (window.document.contains(xover.context)) {
+                            if (window.document.contains(target)) {
                                 try {
                                     return eval.apply(this, arguments)
                                 } catch (e) {
@@ -11766,14 +11766,15 @@ xover.dom.combine = async function (target, new_node) {
     //    });
     //    return cloned;
     //}) || [];
-    scripts = !instanceOf.call(new_node, HTMLTemplateElement, CustomElement) && new_node.selectNodes('descendant-or-self::html:script[not(@src)][text()]').forEach(el => {//makes script inert
+    scripts = !instanceOf.call(new_node, HTMLTemplateElement, CustomElement) && new_node.selectNodes('descendant-or-self::html:script[not(@src)][text()]').map(el => {//makes script inert
         let cloned = el.cloneNode(true, true);
         cloned.original = el;
         //el.textContent = ''
         Object.defineProperty(cloned, 'parentNode', {
             value: el.parentNode
         });
-        return el.replaceWith(cloned);
+        el.replaceWith(cloned);
+        return cloned
     }) || [];
     if (before_dom.cancelBubble || before_dom.defaultPrevented) return target;
     //let coordinates = active_element.scrollPosition;
