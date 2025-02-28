@@ -3869,16 +3869,16 @@ Object.defineProperty(xover.Source.prototype, `fetch`, {
                 }
                 window.dispatchEvent(new xover.listener.Event('failure', { tag, response: e, request }, this));
 
-                let document = e.document;
-                let targets = []
-                if (e.status != 404 && document && document.render) {
-                    targets = await document.render();
-                    if (!(targets && targets.length)) {
-                        return Promise.reject(e)
-                    }
-                } else {
+                //let document = e.document;
+                //let targets = []
+                //if (e.status != 404 && document && document.render) {
+                //    targets = await document.render();
+                //    if (!(targets && targets.length)) {
+                //        return Promise.reject(e)
+                //    }
+                //} else {
                     return Promise.reject(e);
-                }
+                //}
             }
         }
     }
