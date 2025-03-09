@@ -10927,6 +10927,15 @@ xover.Request.prototype = Object.create(Request.prototype);
 //    })
 //}
 
+Object.defineProperty(Set.prototype, 'union', {
+    value: function (...iterable) {
+        for (let item of iterable.flat(Infinity)) {
+            this.add(item);
+        }
+        return this;
+    }
+})
+
 for (let prop of ['hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'tags', 'username']) {
     Object.defineProperty(xover.Request.prototype, prop, {
         get: function () {
