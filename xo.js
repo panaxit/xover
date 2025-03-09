@@ -4681,11 +4681,11 @@ Object.defineProperty(xover.server, 'uploadFile', {
                             //}
                             //[source, ...xover.stores.find(`//@*[starts-with(.,'blob:') and .='${temp_value}']`)].map(node => node instanceof Attr ? node.set(file_name) : node.setAttribute("value", file_name));
                         }
-                        let progress_bar = document.getElementById('_progress_bar_' + file.id);
-                        if (progress_bar) {
-                            progress_bar.style.width = '100%';
-                            progress_bar.className = progress_bar.className.replace(/\bbg-\w+/ig, 'bg-success');
-                            progress_bar.className = progress_bar.className.replace(/\progress-bar-\w+/ig, '');
+                        let tracker = document.getElementById('_tracker_' + file.id);
+                        if (tracker) {
+                            tracker.style.width = '100%';
+                            tracker.className = tracker.className.replace(/\bbg-\w+/ig, 'bg-success');
+                            tracker.className = tracker.className.replace(/\progress-bar-\w+/ig, '');
                         }
                         resolve(file_name);
                         //let res = new xover.Response(response, request);;
@@ -10779,7 +10779,7 @@ xover.Request = function (request, ...args) {
                     window.dispatchEvent(request.before_event);
                     await request.before_event.detail.returnValue;
                     if (request.before_event.cancelBubble || request.before_event.defaultPrevented) return;
-
+                    request.updateProgress(0);
                     let stored_document, original_response;
                     let expiry = (new URLSearchParams(request.headers.get("cache-control") || {}).get("max-age") || 0) * 1000
                     //if (expiry) {
@@ -10938,14 +10938,33 @@ for (let prop of ['hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'p
     })
 }
 
+Object.defineProperty(xover.Request.prototype, 'trackers', {
+    get: function () {
+        const trackers = new Set();
+        if (!Object.hasOwnProperty(this, 'trackers')) {
+            Object.defineProperty(this, 'trackers', {
+                value: trackers
+            })
+        }
+        return this.trackers;
+    }
+})
+Object.defineProperty(xover.Request.prototype, 'abort', {
+    get: function () {
+        return this.controller ? this.controller.abort.bind(this.controller) : undefined;
+    }
+})
+
 Object.defineProperty(xover.Request.prototype, 'updateProgress', {
     value: async function (_progress) {
-        for (let progress_item of (this.settings || {}).progress || []) {
+        this.progress = _progress;
+        for (let tracker of [...this.trackers].flat(Infinity)) {
             try {
-                for (let progress_bar of progress_item.querySelectorAll(`progress,[role=progress][value]`)) {
+                for (let progress_bar of tracker.querySelectorAll(`progress,[role=progress][value]`)) {
+                    tracker.request = this;
                     progress_bar.value = _progress;
                 }
-                let progress_event = new xover.listener.Event('progress', { percent: _progress }, progress_item);
+                let progress_event = new xover.listener.Event('progress', { percent: _progress }, tracker);
                 window.dispatchEvent(progress_event);
             } catch (e) {
                 console.error(e);
