@@ -6781,10 +6781,11 @@ xover.modernize = async function (targetWindow) {
                                 }
                             })
                             const response = await context.fetching;
-                            context.fetching = undefined;
                             return response;
                         } catch (e) {
                             return Promise.reject(e);
+                        } finally {
+                            context.fetching = undefined;
                         }
                     }
                 })
@@ -6998,6 +6999,17 @@ xover.modernize = async function (targetWindow) {
                     } else {
                         return new XMLSerializer().serializeToString(this)
                     }
+                }
+
+                Node.prototype.isMatchingNode = function (comparedNode) {
+                    return this.isEqualNode(comparedNode);
+                }
+
+                Element.prototype.isMatchingNode = function (comparedNode) {
+                    if (!((comparedNode || {}).nodeType && this.id === comparedNode.id)) return false;
+                    let matches = Node.prototype.isMatchingNode.call(this, comparedNode);
+                    matches = matches || comparedNode.nodeType === Node.ELEMENT_NODE && (this.previousSibling || {}).nodeType === Node.COMMENT_NODE && this.previousSibling.data.indexOf("ack:id") != -1 && this.previousSibling.isEqualNode(comparedNode.previousSibling);
+                    return matches;
                 }
 
                 HTMLElement.prototype.toString = function (...args) { /*added to support some current logic applied to some HTMLElements like bootstrap logic where they expect test if (node.toString() !== '[object Window]'); TODO: remove this logic to standarize toString behavior accross all object types (number, bool, string, etc)*/
@@ -7695,10 +7707,10 @@ xover.modernize = async function (targetWindow) {
                                     const el = source;
                                     const static_attrs = static || [];
                                     const swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`);
-                                    for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && (!static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)))) {
+                                    for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && !(static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)))) {
                                         target.removeAttribute(attr.name)
                                     }
-                                    target.applyAttributes([...el.attributes].filter(attr => !static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
+                                    target.applyAttributes([...el.attributes].filter(attr => !(static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`))), { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                     //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
@@ -10147,6 +10159,32 @@ xover.Response = function (response, request) {
     let body = undefined;
     Object.defineProperty(self, 'processBody', {
         value: async function () {
+            const contentLength = response.headers.get('content-length');
+            const trackProgress = (stream, contentLength) => {
+                let receivedLength = 0;
+
+                const readStream = () => {
+                    stream.read().then(({ done, value }) => {
+                        let _progress = done ? 100 : (receivedLength += value.byteLength, (receivedLength / (contentLength || receivedLength)) * 100);
+                        request.updateProgress(_progress);
+
+                        if (!done) readStream();
+                        else xover.requests.delete(request);
+                    }).catch(e => {
+                        if (e.name === 'AbortError') {
+                            console.log('Fetch aborted', e);
+                        } else {
+                            console.error('Stream error:', e);
+                        }
+                    });
+                };
+
+                readStream();
+            };
+            const response_clone = response.clone();
+            const stream = response_clone.body && response_clone.body.getReader();
+            stream && trackProgress(stream, contentLength);
+
             let charset = {}.merge(
                 Object.fromEntries([...new URLSearchParams((request.headers.get('Accept') || '').toLowerCase().replace(/;\s*/g, '&'))])
                 , Object.fromEntries([...new URLSearchParams((response.headers.get('Content-Type') || '').toLowerCase().replace(/;\s*/g, '&'))])
@@ -10676,6 +10714,8 @@ xover.Request = function (request, ...args) {
                 let parameters = request.parameters;
                 if (typeof (fn) === 'function') return await fn.apply(request, instanceOf.call(parameters, Array) ? parameters : [parameters]);
                 const settings = request.settings;
+                request.controller = new AbortController();
+                let controller = request.controller;
                 const original_response = await (async function (...args) {
                     let parameters = args;
 
@@ -10749,8 +10789,6 @@ xover.Request = function (request, ...args) {
                         original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
                     }
                     //}
-                    request.controller = new AbortController();
-                    let controller = request.controller;
                     if (settings.progress instanceof HTMLElement) {
                         settings.progress.value = 0;
                     }
@@ -10759,69 +10797,28 @@ xover.Request = function (request, ...args) {
                         return new xover.Response(xover.sources.defaults[request.hash], request);
                     } else if (!original_response) {
                         stored_document = null;
-                        const signal = controller.signal;
+                        const { signal } = controller;
                         try {
                             xover.requests.add(request);
                             original_response = await fetch(request.clone(), { signal })
                         } catch (e) {
                             xover.requests.delete(request);
+                            request.updateProgress(100);
                             return Promise.reject(e)
                         }
                     }
                     return original_response;
                 }.call(request, ...args));
 
-                let controller = request.controller;
                 if (!original_response && !controller.signal.aborted) return Promise.reject(`No response for ${url}!`);
 
                 let response = new xover.Response(original_response, request);
                 url.response = response;
-                let res = original_response.clone();
-                const contentLength = res.headers.get('content-length');
-                let receivedLength = 0;
-                const stream = res.body && res.body.getReader();
-                const progress = () => {
-                    stream && stream.read().then(({ done, value }) => {
-                        let _progress;
-                        //source.abortFetch = null;
-                        if (done) {
-                            _progress = 100;
-                        } else {
-                            receivedLength += value.byteLength;
-                            let percent = (receivedLength / (contentLength || receivedLength)) * 100
-                            _progress = percent;
-                        }
-                        for (let progress_item of (request.settings || {}).progress || []) {
-                            try {
-                                progress_item.request = request;
-                                for (let progress_bar of progress_item.querySelectorAll(`progress,[role=progress][value]`)) {
-                                    progress_bar.value = _progress;
-                                }
-                                let progress_event = new xover.listener.Event('progress', { url, controller, settings, percent: _progress }, progress_item);
-                                window.dispatchEvent(progress_event);
-                            } catch (e) {
-                                console.error(e)
-                            }
-                        }
-                        if (!done) {
-                            progress();
-                        } else {
-                            xover.requests.delete(request);
-                        }
-                    }).catch(e => {
-                        if (e.name === 'AbortError') {
-                            console.log('Fetch aborted', e);
-                        } else {
-                            console.error('Stream error:', e);
-                        }
-                    })
-                }
-                progress();
                 let return_value;
                 if (controller.signal.aborted) return Promise.reject(new Response(null, { status: 499, statusText: "Client Closed Request" }));
                 return_value = await response.body;
                 if (!["opaque"].includes(response.type)) {
-                    let fetch_event = new xover.listener.Event('fetch', { body: response.body, document: response.document, json: response.json, result: return_value, url: response.url, response }, return_value); //document: return_value, tag: tag_string, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url
+                    let fetch_event = new xover.listener.Event('fetch', { body: response.body, document: response.document, json: response.json, result: return_value, url: response.url, response, request }, return_value); //document: return_value, tag: tag_string, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url
                     window.dispatchEvent(fetch_event);
                     if (fetch_event.detail.returnValue instanceof Error) {
                         return Promise.reject(fetch_event.detail.returnValue);
@@ -10904,6 +10901,8 @@ xover.Request = function (request, ...args) {
                 return Promise.resolve(return_value);
             } catch (e) {
                 return Promise.reject(e)
+            } finally {
+                xover.requests.delete(request)
             }
         }
     })
@@ -10938,6 +10937,23 @@ for (let prop of ['hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'p
         }
     })
 }
+
+Object.defineProperty(xover.Request.prototype, 'updateProgress', {
+    value: async function (_progress) {
+        for (let progress_item of (this.settings || {}).progress || []) {
+            try {
+                for (let progress_bar of progress_item.querySelectorAll(`progress,[role=progress][value]`)) {
+                    progress_bar.value = _progress;
+                }
+                let progress_event = new xover.listener.Event('progress', { percent: _progress }, progress_item);
+                window.dispatchEvent(progress_event);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+    }
+});
 
 Object.defineProperty(xover.Request.prototype, 'settings', {
     get: function () {
@@ -11259,6 +11275,50 @@ xover.xml.parseValue = function (value) {
     return eval(`(${value})`)
 }
 
+xover.xml.getDifferentChildren = function (nodeA, nodeB) {
+    let childA = nodeA.firstElementChild || nodeA.firstChild || nodeB.firstElementChild && nodeA.appendChild(document.createComment("ack:placeholder"));
+    let childB = nodeB.firstElementChild || nodeB.firstChild || childA && nodeB.appendChild(document.createComment("ack:placeholder"));
+    let comparingNodes = [...nodeB.childNodes];
+
+    const differentNodes = new Map();
+    while (childA && childB) {
+        let nextChildElementA = childA.nextElementSibling;
+        let nextChildElementB = childB.nextElementSibling;
+
+        if (childA.isMatchingNode(childB)) {
+            childA = nextChildElementA;
+            childB = nextChildElementB || childA && nodeB.appendChild(document.createComment("ack:placeholder")) || null;
+            continue;
+        } else if (childA.isMatchingNode(nextChildElementB)) {
+            let placeholder = document.createComment("ack:placeholder");
+            nodeA.appendBefore(placeholder, childA);
+            differentNodes.set(placeholder, childB);
+            childA = nextChildElementA;
+            childB = nextChildElementB.nextElementSibling || childA && nodeB.appendChild(placeholder) || null;
+            continue;
+        } else if (childB.isMatchingNode(nextChildElementA)) {
+            let placeholder = document.createComment("ack:placeholder");
+            nodeB.insertBefore(placeholder, childB);
+            differentNodes.set(childA, placeholder);
+            childA = nextChildElementA.nextElementSibling;
+            childB = nextChildElementB || childA && nodeB.appendChild(placeholder) || null;
+            continue;
+        }
+        differentNodes.set(childA, childB);
+        //if (nextChildElementA && childA.nodeType !== (childB || {}).nodeType && nextChildElementA.nodeType === childB.nodeType
+        //) {// If node types don't match but the next sibling in A matches current B node
+        //    nodeB.insertBefore(document.createComment("ack:placeholder"), childB);
+        //} else if (!comparingNodes[1]
+        //    || childA.isEqualNode(comparingNodes[1])
+        //) { // If the next comparing node matches instead, insert placeholder before it
+        //    nodeB.insertBefore(document.createComment("ack:placeholder"), comparingNodes[1]);
+        //}
+        childA = nextChildElementA || nextChildElementB && nodeA.appendChild(document.createComment("ack:placeholder")) || null;
+        childB = nextChildElementB || nextChildElementA && nodeB.appendChild(document.createComment("ack:placeholder")) || null;
+    }
+    return differentNodes;
+}
+
 xover.xml.staticMerge = function (node1, node2) {
     function findEmptyTextNodes(root) {
         const emptyTextNodes = [];
@@ -11361,20 +11421,11 @@ xover.xml.staticMerge = function (node1, node2) {
     if (static.contains("*")) {
         node2.replaceChildren(...node1.cloneNode(true).childNodes)
     }
-    if (node1.childNodes.length && node1.children.length == node2.children.length) {
-        const node1_children = [...node1.children];
-        const node2_children = [...node2.children];
-        const pairs = node1_children.map((el, ix) => [el, node2_children[ix]]);
-        for (let [child1, child2] of pairs) {
-            if (child1.isEqualNode(child2)) continue;
-            if (static.contains("*")) {
-                child2.replaceWith(child1.cloneNode(true));
-            } else {
-                xover.xml.staticMerge(child1, child2)
-            }
+    if (node1.nodeType === Node.ELEMENT_NODE && !instanceOf.call(node1, CustomElement)) {
+        let differences = xover.xml.getDifferentChildren(node1, node2);
+        for (const [childA, childB] of [...differences]) {
+            xover.xml.staticMerge(childA, childB)
         }
-    } else if (node1.cloneNode().isEqualNode(node2.cloneNode())) {
-        /*TODO: Detect changes in children*/
     }
 }
 
@@ -14853,6 +14904,10 @@ xover.listener.on('Response:failure?status=499', function ({ }) {
     event.preventDefault()
 })
 
+xover.listener.on('AbortError', function () {
+    return false;
+})
+
 xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
@@ -14877,8 +14932,12 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
         //}
         if (reason && reason.stack) console.error(reason.stack)
         if (reason instanceof TypeError || reason instanceof DOMException) {
-            String(reason).alert()
-            console.error(reason.stack || reason)
+            if (xover.listener.has(reason.name)) {
+                window.dispatchEvent(new xover.listener.Event(reason.name, {}, reason));
+            } else {
+                String(reason).alert()
+                console.error(reason.stack || reason)
+            }
         } else if (reason instanceof HTMLElement) {
             xover.dom.alert(reason);
         } else if (typeof (reason.render) != 'undefined') {
