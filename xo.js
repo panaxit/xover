@@ -657,15 +657,14 @@ xover.dom.Observer = function (target_node = window.document) {
     elementsToObserve.forEach(element => {
         intersection_observer.observe(element);
     });
-    const updateSections = function () {
-        const target_node = this;
+    const updateSections = function (node_set = this.querySelectorAll("[xo-source],[xo-stylesheet]")) {
         for (const el of [...xover.sections].filter(el => !el.checkVisibility())) {
             xover.sections.delete(el);
         }
-        for (const el of [...target_node.querySelectorAll("[xo-source],[xo-stylesheet]")].filter(el => !xover.sections.has(el) && el.checkVisibility())) {
+        for (const el of [...node_set].filter(el => !xover.sections.has(el) && el.checkVisibility())) {
             xover.sections.add(el);
             el.shadowRoot && xover.dom.Observer(el.shadowRoot);
-            el.render()
+            //el.render() //removed to avoid rerendering
         }
     }
 
