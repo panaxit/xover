@@ -7706,10 +7706,10 @@ xover.modernize = async function (targetWindow) {
                                     const el = source;
                                     const static_attrs = static || [];
                                     const swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`);
-                                    for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && !(static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)))) {
+                                    for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && (!static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)))) {
                                         target.removeAttribute(attr.name)
                                     }
-                                    target.applyAttributes([...el.attributes].filter(attr => !(static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`))), { static, swap });
+                                    target.applyAttributes([...el.attributes].filter(attr => !static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                     //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
@@ -8717,6 +8717,7 @@ xover.modernize = async function (targetWindow) {
                     if (options instanceof Object && options.seed && new_node.hasAttributeNS("http://panax.io/xover", "id")) {
                         new_node = new_node.seed(true);
                     }
+                    window.dispatchEvent(new xover.listener.Event('duplicate', { source: this }, new_node));
                     return new_node;
                 }
 
@@ -9437,18 +9438,18 @@ xover.modernize = async function (targetWindow) {
                     });
                 }
 
-                //if (!XMLDocument.prototype.hasOwnProperty('save')) {
-                //    Object.defineProperty(XMLDocument.prototype, 'save', {
-                //        value: async function () {
-                //            if (this.href) {
-                //                xover.storehouse.write('sources', this.href, this.toString());
-                //            } else {
-                //                console.warn("File can't be saved on storehouse if lacks of href property")
-                //            }
-                //        },
-                //        writable: false, enumerable: false, configurable: false
-                //    })
-                //}
+                if (!XMLDocument.prototype.hasOwnProperty('save')) {
+                    Object.defineProperty(XMLDocument.prototype, 'save', {
+                        value: async function () {
+                            if (this.href) {
+                                xover.storehouse.write('sources', this.href, this);
+                            } else {
+                                console.warn("File can't be saved on storehouse if lacks of href property")
+                            }
+                        },
+                        writable: false, enumerable: false, configurable: false
+                    })
+                }
 
                 if (!XMLDocument.prototype.hasOwnProperty('render')) {
                     Object.defineProperty(XMLDocument.prototype, 'render', {
@@ -11277,8 +11278,15 @@ xover.xml.createFragment = function (xml_string) {
     return fragment;
 }
 
-xover.xml.createNode = function (xml_string, options) {
-    let result = xover.xml.createDocument(xml_string, options);
+xover.xml.createNode = function (xml_string, ...args) {
+    let result;
+    if (typeof (xml_string) == 'string') {
+        result = xover.xml.createDocument(xml_string, ...args);
+    } else {
+        xml_string = xml_string.reduce((acc, str, i) => acc + str + (args[i] !== undefined ? args[i] : ""), "");
+        result = xover.xml.createDocument(xml_string);
+    }
+
     //result.disconnect();
     result = result.firstElementChild || result
     if (!result.prefix && result.namespaceURI && !result.attributes.xmlns) {
@@ -13052,7 +13060,9 @@ xover.Store = function (xml, ...args) {
                     console.warn("Initial transformation shouldn't yield a html or any other document from the w3 standard.");
                 }
             });
-            store.seed();
+            if (((store.documentElement || {}).namespaceURI || '').indexOf("http://www.w3.org") == -1) {
+                store.seed();
+            }
         },
         writable: false, enumerable: false, configurable: false
     });
