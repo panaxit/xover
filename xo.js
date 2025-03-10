@@ -8918,7 +8918,7 @@ xover.modernize = async function (targetWindow) {
                                     //if (navigator.userAgent.indexOf("iPhone") != -1 || xover.debug["xover.xml.consolidate"]) {
                                     //    xsl = xover.xml.consolidate(xsl); //Corregir casos cuando tiene apply-imports
                                     //}
-                                    let tag = xml.tag || `#${xsl.href || ""}`;
+                                    let tag = xml.tag || `#${xsl.resource || ""}`;
                                     xml.tag = tag;
                                     xsl = xsl.cloneNode(true);
                                     window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
@@ -9090,7 +9090,7 @@ xover.modernize = async function (targetWindow) {
                                     ////if (!xml.documentElement) {
                                     ////    xml.appendChild(xover.xml.createDocument(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).documentElement)
                                     ////}
-                                    let timer_id = `${xsl.href || "Transform"}-${Date.now()}`;
+                                    let timer_id = `${xsl.resource || "Transform"}-${Date.now()}`;
                                     performance.mark(`${timer_id} - Transform start`);
                                     if (xover.session.debug || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                         console.time(timer_id);
@@ -9313,7 +9313,7 @@ xover.modernize = async function (targetWindow) {
                                 let result = await xover.dom.combine(self, body);
                                 result.stop = self.stop;
                             } else if (source_document.selectSingleNode("xsl:stylesheet") && instanceOf.call(source_document, xover.Store)) {
-                                await xover.xml.createDocument(self.cloneNode(true)).render({ type: 'text/xsl', target: self, document: source_document.document })
+                                await xover.stores["#"].document.render({ type: 'text/xsl', target: self, document: source_document.document })
                             } else {
                                 await source_document.render(self)
                             }
@@ -9552,7 +9552,7 @@ xover.modernize = async function (targetWindow) {
 
                                 if (!instanceOf.call(data.firstElementChild, HTMLElement, SVGElement) && instanceOf.call((data.documentElement || data), Element)) {
                                     Element.setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:store", tag.split(/\?/)[0]);
-                                    Element.setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", stylesheet.href);
+                                    Element.setAttributeNS.call((data.documentElement || data), 'http://panax.io/state/environment', "env:stylesheet", xsl.resource);
                                 }
                                 data.store = store;
                                 data.target = target;
@@ -9603,7 +9603,7 @@ xover.modernize = async function (targetWindow) {
                                 ////    });
                                 ////});
 
-                                typeof (dom.querySelectorAll) == 'function' && dom.querySelectorAll(`[xo-stylesheet="${stylesheet.href}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
+                                typeof (dom.querySelectorAll) == 'function' && dom.querySelectorAll(`[xo-stylesheet="${xsl.resource}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
 
                                 let documentElement = dom.queryChildren(":only-child") || dom.firstElementChild || dom;
                                 if (!documentElement) {
@@ -9611,7 +9611,7 @@ xover.modernize = async function (targetWindow) {
                                 }
 
                                 //dom.querySelectorAll('[xo-scope="inherit"]').forEach(el => el.removeAttribute("xo-scope"));
-                                let stylesheet_href = stylesheet.href;
+                                let stylesheet_href = xsl.resource;
                                 for (let el of dom.children || []) {
                                     //el.document = this;
                                     el.context = data;
@@ -9633,7 +9633,7 @@ xover.modernize = async function (targetWindow) {
                                         && target.constructor === documentElement.constructor
                                     )) {
                                         const xo_source = documentElement.getAttributeNode("xo-source") || target.getAttributeNode("xo-source");
-                                        const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || stylesheet.href;
+                                        const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || xsl.resource;
                                         const id = documentElement.id || target.getAttribute("id") || "";
                                         xo_source && documentElement.setAttribute("xo-source", xo_source);
                                         xo_stylesheet && documentElement.setAttribute("xo-stylesheet", xo_stylesheet);
@@ -9689,7 +9689,7 @@ xover.modernize = async function (targetWindow) {
                                 target.context = data;
 
                                 xover.delay(10).then(() => {
-                                    let render_event = new xover.listener.Event('render', { store, tag: stylesheet.href, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
+                                    let render_event = new xover.listener.Event('render', { store, tag: xsl.tag, stylesheet: xsl, target, dom: target, context: target.context, old }, target);
                                     window.dispatchEvent(render_event);
                                     if (render_event.cancelBubble || render_event.defaultPrevented) return target;
                                 })
