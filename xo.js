@@ -2536,6 +2536,7 @@ xover.session = new Proxy({}, {
         window.dispatchEvent(before);
         if (before.cancelBubble || before.defaultPrevented) return;
         xover.session.setKey(key, new_value);
+        self[key] = new_value;
         window.dispatchEvent(new xover.listener.Event(`change::#session:${key}`, { attribute: key, value: new_value, old: old_value, tag: `session:${key}` }, this));
         xover.site.sections.map(el => [el, el.stylesheet]).filter(([el, stylesheet]) => stylesheet && stylesheet.selectSingleNode(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:${key}')]`)).forEach(([el]) => el.render());
         let subscribers = xover.subscribers.session[key];
@@ -2545,12 +2546,10 @@ xover.session = new Proxy({}, {
             await xover.stores.active.render()
             xover.network.channel.postMessage(new_value);
         }
-
-        if (xover.session.network_id) {
-            xover.storage.setKey(key, new_value);
-            xover.storage.setKey(key, undefined);
-        }
-        self[key] = new_value
+        //if (xover.session.network_id) {
+        //    xover.storage.setKey(key, new_value);
+        //    xover.storage.setKey(key, undefined);
+        //}
         return self[key];
     },
     deleteProperty: function (self, key) {
@@ -3974,15 +3973,15 @@ Object.defineProperty(xover.sources, 'defaults', {
     writable: false, enumerable: false, configurable: false
 });
 
-Object.defineProperty(xover.sources, '#', {
-    get: function () {
-        let key = xover.manifest.sources['#'] || '#';
-        if (!this.has(key)) {
-            this.set(key, new xover.Source(key).document);
-        }
-        return this.get(key);
-    }
-});
+//Object.defineProperty(xover.sources, '#', {
+//    get: function () {
+//        let key = xover.manifest.sources['#'] || '#';
+//        if (!this.has(key)) {
+//            this.set(key, new xover.Source(key).document);
+//        }
+//        return this.get(key);
+//    }
+//});
 
 xover.URL = function (href, base, options = {}) {
     if (href === null) {
@@ -7705,7 +7704,7 @@ xover.modernize = async function (targetWindow) {
                                 ) {
                                     const el = source;
                                     const static_attrs = static || [];
-                                    const swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`);
+                                    const swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`).filter(attr => !static_attrs.includes(attr));
                                     for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && (!static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)))) {
                                         target.removeAttribute(attr.name)
                                     }
@@ -10947,6 +10946,24 @@ for (let prop of ['hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'p
     })
 }
 
+Object.defineProperty(xover.Request.prototype, 'body', {
+    get: function () {
+        if (!Object.hasOwnProperty(this, "body")) {
+            return null
+        }
+        return JSON.stringify(this.body || '');
+    }, set: function (input) {
+        if (input && input.constructor === {}.constructor) {
+            //this.search = new SearchParams(input)
+            input = JSON.stringify(input)
+        }
+        Object.defineProperty(this, 'body', {
+            value: input
+            , writable: true
+    })
+}
+})
+
 Object.defineProperty(xover.Request.prototype, 'trackers', {
     get: function () {
         const trackers = new Set();
@@ -11034,7 +11051,7 @@ if (!Object.getOwnPropertyDescriptor(xover.Request.prototype, 'apply')) {
                             searchParams.set(key, value)
                         }
                         args.splice(i, 1)
-                    } else if (args.length == 1 && args[i].constructor === {}.constructor && Object.keys(args[0]).some(key => ["method", "headers", "body", "mode", "credentials", "cache", "redirect", "referrer", "integrity", "keepalive", "signal"].includes(key))) {
+                    } else if (args.length == 1 && args[i].constructor === {}.constructor && (!Object.keys(args[0]).length || Object.keys(args[0]).some(key => ["method", "headers", "body", "mode", "credentials", "cache", "redirect", "referrer", "integrity", "keepalive", "signal"].includes(key)))) {
                         //let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = args[0];
                         xover.json.combine.call(request, args[i]);
                         args.splice(i, 1);
