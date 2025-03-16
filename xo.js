@@ -1295,7 +1295,8 @@ class Subscribers extends Map {
 
     evaluate(...args) {
         for (let [ref, parser] of [...this.entries()]) {
-            ref.closest("*").classList.add("xo-syncing")
+            let element = ref.closest("*");
+            instanceOf.call(element, Element) && element.classList.add("xo-syncing")
             xover.subscribers.evaluate.apply(this, [ref, args.slice(-1)[0] || parser])
         }
     }
@@ -1339,27 +1340,32 @@ xover.subscribers = new Structure(new Map(), {
                                     return xover.xml.encodeEntities(value)
                                 }
                             } catch (e) {
+                                console.error(e)
                                 return else_value !== undefined ? else_value : full_match
-                                console.log(e)
                                 /*typeof (e.render) == 'function' ? e.render() : String(e).alert()*/
                             }
                         }
                     })
                     if (ref.textContent != value) {
-                        if (value.indexOf("<") != -1 && instanceOf.call(ref, Text, HTMLElement)) {
-                            let node = xover.string.toHTML(value);
+                        if ([Node.TEXT_NODE, Node.ELEMENT_NODE].includes(ref.nodeType) && (value.indexOf("<") != -1 || value.indexOf("{{") != -1)) {
+                            let node = value.indexOf("<") != -1 ? xover.string.toHTML(value) : new Text(value);
                             ref.replaceWith(node);
                             node.formula = formula;
                             if (instanceOf.call(self, Map)) {
+                                let fn = self.get(ref);
                                 self.delete(ref);
-                                self.set(node, formula);
+                                self.set(node, fn);
                             }
                             ref = node;
-                        } else if (value.indexOf("&") != -1) {
+                        } else if ([Node.TEXT_NODE, Node.ATTRIBUTE_NODE].includes(ref.nodeType)) {
+                            if (value.indexOf("&") != -1) {
                             ref.textContent = xover.string.htmlDecode(value);
                         } else {
                             ref.textContent = value;
                         }
+                        } else {
+                            debugger
+                    }
                     }
                     ref.closest("*").classList.remove("xo-syncing")
                 } else {
@@ -3609,19 +3615,21 @@ xover.xml.createDocument = function (xml, options = { autotransform: true, mime_
                             return Promise.reject(parsererror.closest("html"));
                         }
                     } else {
-                        try {
-                            result = xover.xml.createFragment(sXML);
-                            if (result.childElementCount == 1) {
-                                let new_document = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
-                                new_document.append(...result.childNodes);
-                                result = new_document;
-                            }
-                            message = null;
-                        } catch (e) {
-                            console.error(e)
-                        }
+                        //try { //removed to prevent a xsl with errors from being parsed as xml out of an html, which will be created with a pure xml namespace
+                        //    result = xover.xml.createFragment(sXML);
+                        //    if (result.childElementCount == 1) {
+                        //        let new_document = document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);
+                        //        new_document.append(...[...result.childNodes].filter(el => ![Node.TEXT_NODE].includes(el.nodeType)));
+                        //        result = new_document;
+                        //    }
+                        //    message = null;
+                        //} catch (e) {
+                        //    console.error(e)
+                        //}
                         if (message) {
-                            return Promise.reject(message.match("(error [^:]+):(.+)").pop())
+                            message = message.match("(error [^:]+):(.+)").pop();
+                            console.error(message)
+                            return Promise.reject(message)
                         }
                     }
                 }
@@ -3934,17 +3942,29 @@ xover.sources = new Proxy(new Map(), {
             key = xover.URL(key).href.toLowerCase();
         }
         let manifest_key = xover.manifest.sources[key] || key;
+        if (typeof (manifest_key) === 'string') {
+            manifest_key = xover.URL(manifest_key).href.toLowerCase();
+        }
         if (self.has(manifest_key)) {
             return self.get(manifest_key);
         }
         if (key in self) {
             return self[key];
         }
+        if (key !== manifest_key && typeof (manifest_key) === 'string') {
+            let source = xover.sources[manifest_key];
+            if (key[0] === "#") {
+                source.url.tags.add(key)
+                source.url.hash = key;
+            }
+            return source;
+        } else {
         let document = xover.xml.createDocument();
         self.set(manifest_key, document);
-        document = new xover.Source(key).document;
-        document.observe();
+            document = new xover.Source(key).document;
+            document.observe({ childList: true });
         return self.get(manifest_key);
+        }
     },
     set: function (self, key, input) {
         if (key.indexOf(".") != -1) {
@@ -3975,7 +3995,7 @@ Object.defineProperty(xover.sources, 'defaults', {
 
 //Object.defineProperty(xover.sources, '#', {
 //    get: function () {
-//        let key = xover.manifest.sources['#'] || '#';
+//        let key = xover.manifest.sources['#'] || xover.site.seed || '#';
 //        if (!this.has(key)) {
 //            this.set(key, new xover.Source(key).document);
 //        }
@@ -4832,12 +4852,12 @@ Object.defineProperty(xover.sources, 'xover/normalize_namespaces.xslt', {
     }
 })
 
-Object.defineProperty(xover.stores, '#', {
-    get: function () {
-        let manifest_source = xover.manifest.sources["#"];
-        return manifest_source && (this[manifest_source] || new xover.Store(xover.sources["#"], { tag: manifest_source })) || xover.sources["#"].source;
-    }
-});
+//Object.defineProperty(xover.stores, '#', {
+//    get: function () {
+//        let source = xover.sources["#"].source;
+//        return this[source.tag] || new xover.Store(source.document, { tag: "#" });
+//    }
+//});
 
 Object.defineProperty(xover.stores, 'active', {
     get: function () {
@@ -5426,7 +5446,7 @@ xover.modernize = async function (targetWindow) {
                     //    xpath = `*[${context.resolveNS("") !== null && `namespace-uri()='${context.resolveNS("")}' and ` || ''}name()='${xpath}']`
                     //}
                     let nsResolver = (function (element) {
-                        let resolver = element instanceof Document ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
+                        let resolver = element.nodeType === Node.DOCUMENT_NODE ? element.createNSResolver(element) : element.ownerDocument.createNSResolver(element);
 
                         return function (prefix) {
                             return resolver.lookupNamespaceURI(prefix) || resolver.lookupNamespaceURI(prefix == '_' && '') || xover.spaces[prefix] || "urn:unknown";
@@ -5575,7 +5595,10 @@ xover.modernize = async function (targetWindow) {
                                 if (self.source) {
                                     //self.observe();
                                     await self.fetch();
+                                    if (!self.firstChild) {
+                                        self.appendChild(window.document.createComment("ack:no-content"))
                                 }
+                            }
                             }
                             await xover.xml.initialize.call(self);
                             return self;
@@ -7111,6 +7134,10 @@ xover.modernize = async function (targetWindow) {
                             let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
                             let section = this.section;
                             let source = this.source;
+                            if (instanceOf.call(source, Document) && !source.firstChild) {
+                                let ready = source.ready;
+                                return ready.then(() => this.scope);
+                            }
                             if (!source) return (this.ownerDocument || this).createComment("ack:no-source"); //section && section.source;
                             //if (!source) {
                             //    this.scopeNode = null;
@@ -7217,22 +7244,22 @@ xover.modernize = async function (targetWindow) {
                     get: function () {
                         //let section = this.section || this;
                         //if (!(section instanceof HTMLElement && (this.hasAttribute("xo-stylesheet")))) return null;
-                        let source = this.hasOwnProperty("store") && this.store || this.closest("[xo-source],[xo-stylesheet]") || this.host || this.ownerDocument || this;
-                        if (source instanceof Element) {
-                            if (source.getAttribute("xo-source") == 'inherit') {
-                                return (source.parentNode /*|| source.context_source*/ || {}).source;
-                            } else if (!source.getAttributeNode("xo-source")) {
+                        let node = /*this.hasOwnProperty("store") && this.store || */this.closest("[xo-source],[xo-stylesheet]") || this.host || this.ownerDocument || this;
+                        if (node instanceof Element) {
+                            if (node.getAttribute("xo-source") == 'inherit') {
+                                return (node.parentNode /*|| source.context_source*/ || {}).source;
+                            } else if (!node.getAttributeNode("xo-source")) {
                                 return this;
                             }
                         }
-                        if (instanceOf.call(source, Document)) {
-                            return Object.entries(xover.stores).filter(([key, store]) => store.document === source).map(([key, store]) => store)[0]//xover.stores.seed;
-                        } else if (instanceOf.call(source, CustomElement, DocumentFragment)) {
-                            return source
-                        } else if (!instanceOf.call(source, Element)) {
-                            return source;
+                        if (instanceOf.call(node, Document)) {
+                            return node.source//Object.entries(xover.stores).filter(([key, store]) => store.document === node).map(([key, store]) => store)[0]//xover.stores.seed;
+                        } else if (instanceOf.call(node, CustomElement, DocumentFragment)) {
+                            return node
+                        } else if (!instanceOf.call(node, Element)) {
+                            return node;
                         }
-                        source = source.getAttribute("xo-source");
+                        let source = node.getAttribute("xo-source");
                         if (!source) return new Comment("ack:empty");
                         if (source && source.indexOf("{$") != -1) {
                             source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
@@ -7257,9 +7284,9 @@ xover.modernize = async function (targetWindow) {
                 if (!ProcessingInstruction.prototype.hasOwnProperty('source')) {
                     Object.defineProperty(ProcessingInstruction.prototype, 'source', source_handler);
                 }
-                if (!Document.prototype.hasOwnProperty('source')) {
-                    Object.defineProperty(Document.prototype, 'source', source_handler);
-                }
+                //if (!Document.prototype.hasOwnProperty('source')) {
+                //    Object.defineProperty(Document.prototype, 'source', source_handler);
+                //}
 
                 //const store_handler = {
                 //    get: function () {
@@ -7703,12 +7730,14 @@ xover.modernize = async function (targetWindow) {
                                     && target.getAttribute("xo-scope") == source.getAttribute("xo-scope")*/
                                 ) {
                                     const el = source;
-                                    const static_attrs = static || [];
+                                    const mixable_attrs = ['@style', '@class'];
+                                    let static_attrs = static || [];
+                                    static_attrs = static_attrs.concat(mixable_attrs); //These attrs are always static. They will be combined in applyAttributes method;
                                     const swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`).filter(attr => !static_attrs.includes(attr));
                                     for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && (!static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)))) {
                                         target.removeAttribute(attr.name)
                                     }
-                                    target.applyAttributes([...el.attributes].filter(attr => !static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
+                                    target.applyAttributes([...el.attributes].filter(attr => mixable_attrs.includes(`@${attr.name}`) || !static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                     //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
@@ -7717,13 +7746,13 @@ xover.modernize = async function (targetWindow) {
                                     if (attr.name == "class") {
                                         const static_classes = static || [];
                                         const swap_classes = swap || [".*"];
-                                        if (swap_classes.includes(`.*`) || swap_classes.includes('@class')) {
+                                        if (swap_classes.includes('@class')) {
                                             target.className = source.value
                                         } else {
                                             for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static_classes.includes("@class") && swap_classes.includes(`.${class_name}`))) {
                                                 target.classList.remove(class_name)
                                             }
-                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && swap_classes.includes(`.${class_name}`))) {
+                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && (swap_classes.includes(`.*`) || swap_classes.includes(`.${class_name}`)))) {
                                                 if (class_name[0] == "-") {
                                                     target.classList.remove(class_name.slice(1))
                                                 }
@@ -9452,10 +9481,17 @@ xover.modernize = async function (targetWindow) {
 
                 if (!XMLDocument.prototype.hasOwnProperty('render')) {
                     Object.defineProperty(XMLDocument.prototype, 'render', {
-                        value: async function (stylesheets = []) {
+                        value: async function (target = []) {
                             let self = this;
                             await this.ready;
-                            stylesheets = stylesheets instanceof Array && stylesheets || stylesheets && [stylesheets] || [];
+                            let stylesheets = target instanceof Array && target || target && !(instanceOf.call(target, HTMLElement)) && [target] || [...this.stylesheets];
+                            stylesheets = !instanceOf.call(target, HTMLElement) ? stylesheets : stylesheets.map(stylesheet => stylesheet.data).map(data => {
+                                let json = xover.json.fromAttributes(data);
+                                if (instanceOf.call(target, HTMLElement)) {
+                                    json.target = target;
+                                }
+                                return json
+                            })
 
                             let targets = [];
                             if (this.selectSingleNode('xsl:*')) {//Habilitamos opción para que un documento de transformación pueda recibir un documento para transformar (Proceso inverso)
@@ -9477,8 +9513,8 @@ xover.modernize = async function (targetWindow) {
                             }
                             stylesheets = stylesheets.length && stylesheets || this.stylesheets;
                             let data;
-                            let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
-                            stylesheets = self_stylesheets.concat(stylesheets);
+                            //let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
+                            //stylesheets = self_stylesheets.concat(stylesheets);
                             stylesheets.forEach(stylesheet => {
                                 const document = stylesheet instanceof XMLDocument && stylesheet || stylesheet instanceof ProcessingInstruction && stylesheet.document || stylesheet.href && xover.sources[stylesheet.href] || stylesheet.document;
                                 if (!stylesheet.store) {
@@ -10272,7 +10308,7 @@ xover.Response = function (response, request) {
                     break;
                 case "xml":
                     try {
-                        body = await xover.xml.createDocument(response_content, { autotransform: false });
+                        body = await xover.xml.createDocument(response_content.trim(), { autotransform: false });
                     } catch (e) {
                         try {
                             body = await xover.xml.createFragment(response_content);
@@ -11291,7 +11327,7 @@ xover.xml.tryParse = function (input) {
 xover.xml.createFragment = function (xml_string) {
     const xmlDoc = new DOMParser().parseFromString("<root/>", 'text/xml');
     const fragment = xmlDoc.createDocumentFragment();
-    fragment.append(...xover.string.toHTML(xml_string).childNodes);
+    fragment.append(xover.string.toHTML(xml_string)); //.childNodes
     return fragment;
 }
 
@@ -11461,7 +11497,7 @@ xover.xml.staticMerge = function (node1, node2) {
             )
             || node2.localName == 'template'
         )) {
-        node2.applyAttributes(node1, { static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')} ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*///
+        node2.applyAttributes(node1, { static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*/// ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}
         //node1.applyAttributes(...node2.attributes);
     }
     if (static.length && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase()) {
@@ -11621,7 +11657,7 @@ xover.xml.combine = function (target, new_node) {
         //    }
         //    attr.remove({ silent: true })
         //}
-        target.attributes && target.applyAttributes(new_node, { swap: `@xo-swap ${(new_node.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) });
+        target.attributes && target.applyAttributes(new_node); //, { swap: `@xo-swap ${(new_node.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) }
         if (instanceOf.call(new_node, CustomElement)) {
             target.initialChildNodes = new_node.initialChildNodes;
         } else if (target.shadowMode && !["open", "closed"].includes(target.getAttribute("shadowrootmode"))) {
@@ -12079,9 +12115,17 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
         contentWindow.addEventListener('message', function (event) {
             if (event.origin === location.origin && event.data.type === 'applyStyles') {
                 const document = this.document;
-                const style = document.createElement('style');
-                style.textContent = event.data.styles;
+                function insert() {
+                    const style = document.createElement("style");
+                    style.textContent = styles;
                 document.head.appendChild(style);
+            }
+
+                if (document.head) {
+                    insert();
+                } else {
+                    document.addEventListener("DOMContentLoaded", insert);
+                }
             }
         });
     } catch (e) {
@@ -13192,7 +13236,7 @@ xover.Store = function (xml, ...args) {
         writable: true, enumerable: false, configurable: false
     });
 
-    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
+    for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstChild', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
         let prop_desc = Object.getPropertyDescriptor(__document, prop);
         if (!prop_desc) {
             continue
