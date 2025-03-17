@@ -3941,6 +3941,9 @@ xover.sources = new Proxy(new Map(), {
         if (key.indexOf(".") != -1) {
             key = xover.URL(key).href.toLowerCase();
         }
+        if (key in self) {
+            return self[key];
+        }
         let manifest_key = xover.manifest.sources[key] || key;
         if (typeof (manifest_key) === 'string') {
             manifest_key = xover.URL(manifest_key).href.toLowerCase();
@@ -3948,12 +3951,9 @@ xover.sources = new Proxy(new Map(), {
         if (self.has(manifest_key)) {
             return self.get(manifest_key);
         }
-        if (key in self) {
-            return self[key];
-        }
         if (key !== manifest_key && typeof (manifest_key) === 'string') {
             let source = xover.sources[manifest_key];
-            if (key[0] === "#") {
+            if (key[0] === "#" && key[1]) {
                 source.url.tags.add(key)
                 source.url.hash = key;
             }
@@ -3993,6 +3993,15 @@ Object.defineProperty(xover.sources, 'defaults', {
     writable: false, enumerable: false, configurable: false
 });
 
+Object.defineProperty(xover.sources, 'active', {
+    get: function () {
+        let key = xover.site.active;
+        if (key === 'active') {
+            this.set(key, new xover.Source(key).document);
+        }
+        return xover.sources[key];
+    }
+});
 //Object.defineProperty(xover.sources, '#', {
 //    get: function () {
 //        let key = xover.manifest.sources['#'] || xover.site.seed || '#';
@@ -7264,7 +7273,7 @@ xover.modernize = async function (targetWindow) {
                         if (source && source.indexOf("{$") != -1) {
                             source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
                         }
-                        let store = source in xover.stores && xover.stores[source] || xover.sources[source];
+                        let store = /*source in xover.stores && xover.stores[source] || */xover.sources[source];
                         return store;
                     }
                 }
@@ -9228,6 +9237,9 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 });
                             }
+                            if (!(result && result.firstChild)) {
+                                result.append(window.document.createComment("ack:no-content"))
+                            }
                             try {
                                 //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
                                 window.dispatchEvent(new xover.listener.Event('transform', { source: xml, original: xml, xsl, tag: tag, result, transformed: result, listeners: after_listeners }, result));
@@ -9323,7 +9335,7 @@ xover.modernize = async function (targetWindow) {
                             source_document && await source_document.ready;
                             stylesheets = stylesheet && [stylesheet.value] || [];
                             if (stylesheets.length) {
-                                stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: (source_document || {}).tag } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
+                                stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: this.getAttribute("xo-source") } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
                                 for (let stylesheet of stylesheets) {
                                     stylesheet.target = stylesheet.target || self;
                                 }
