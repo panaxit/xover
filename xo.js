@@ -775,6 +775,9 @@ xover.dom.Observer = function (target_node = window.document) {
                 }
             }
         }
+        for (let option of target_node.querySelectorAll(":checked[type=checkbox]:not([checked]),[checked]:not(:checked)")) {
+            option.checked = option.getAttributeNode("checked")
+        }
         updateSections.call(target_node);
         for (let section of [...mutations].filter(([node, mutations]) =>
             !mutations.addedNodes.length && !mutations.removedNodes.length && !(mutations.attributes || {})[""] && node.matches("[xo-source],[xo-stylesheet]")
