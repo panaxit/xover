@@ -1158,6 +1158,9 @@ xover.initializeDOM = async function () {
                     return this.#initialChildNodes.cloneNode(true);
                 }
                 set initialChildNodes(initialChildNodes) {
+                    if (!instanceOf.call(initialChildNodes, DocumentFragment)) {
+                        initialChildNodes = xover.xml.createFragment(initialChildNodes)
+                    }
                     if (!this.#initialChildNodes.isEqualNode(initialChildNodes)) {
                         this.#initialChildNodes.replaceChildren(...initialChildNodes.childNodes);
                         /*if (typeof(this.init)=='function') {
@@ -5628,7 +5631,7 @@ xover.modernize = async function (targetWindow) {
                     Object.defineProperty(Document.prototype, 'settings', {
                         get: function () {
                             if (this.hasOwnProperty("source")) {
-                                return this.source.url.settings;
+                                return (this.source.url || {}).settings;
                             } else if (!settings.has(this)) {
                                 settings.set(this, {})
                             }
@@ -7733,8 +7736,8 @@ xover.modernize = async function (targetWindow) {
                         enumerable: false,
                         value: function (source = [], options = {}) {
                             const target = this;
-                            const { static, swap } = options;
-                            let sources = [source].flat();
+                            let { static, swap } = options;
+                            let sources = !source.nodeType && typeof source[Symbol.iterator] === 'function' && source.length && [].constructor != source.constructor ? [...source].flat() : [source];
                             for (const source of sources.flat(Infinity)) {
                                 if (source.nodeType === Node.ELEMENT_NODE /*&& (target.id || source.id) == (source.id || target.id)
                                     && target.getAttribute("xo-source") == source.getAttribute("xo-source")
@@ -7745,18 +7748,19 @@ xover.modernize = async function (targetWindow) {
                                     const mixable_attrs = ['@style', '@class'];
                                     let static_attrs = static || [];
                                     static_attrs = static_attrs.concat(mixable_attrs); //These attrs are always static. They will be combined in applyAttributes method;
-                                    const swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`).filter(attr => !static_attrs.includes(attr));
+                                    let swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`).filter(attr => !static_attrs.includes(attr));
                                     for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && (!static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)))) {
                                         target.removeAttribute(attr.name)
                                     }
-                                    target.applyAttributes([...el.attributes].filter(attr => mixable_attrs.includes(`@${attr.name}`) || !static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
+                                    target.applyAttributes([...el.attributes].filter(attr => /*mixable_attrs.includes(`@${attr.name}`) || */!static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                     //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
                                     if (attr.isEqualNode(target.attributes[attr.name])) continue;
                                     const source_node = attr.ownerElement;
                                     if (attr.name == "class") {
-                                        const static_classes = static || [];
+
+                                        const static_classes = (static || []).filter(el => el[0] == ".");
                                         const swap_classes = swap || [".*"];
                                         if (swap_classes.includes('@class')) {
                                             target.className = source.value
@@ -7764,7 +7768,7 @@ xover.modernize = async function (targetWindow) {
                                             for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static_classes.includes("@class") && swap_classes.includes(`.${class_name}`))) {
                                                 target.classList.remove(class_name)
                                             }
-                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && (swap_classes.includes(`.*`) || swap_classes.includes(`.${class_name}`)))) {
+                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)))) {
                                                 if (class_name[0] == "-") {
                                                     target.classList.remove(class_name.slice(1))
                                                 }
@@ -11201,11 +11205,20 @@ xover.xml.initialize = async function (target) {
 
     if (target.documentElement && target.selectFirst(`//xsl:template[not(@xo:id)]`)) {
         target.seed(false, `//xsl:template|//xsl:if|//xsl:for-each|//xsl:when|//xsl:otherwise`);
-        const dynamic_attribute_xpath = "xsl:attribute[xsl:if|xsl:choose|xsl:apply-templates|xsl:call-template]|xsl:choose/xsl:when/xsl:attribute|xsl:choose/xsl:otherwise/xsl:attribute|xsl:if/xsl:attribute|@*[contains(.,'{')]";
-        for (const el of target.select(`//html:*[not(@xo-swap)][${dynamic_attribute_xpath}]|//svg:*[not(@xo-swap)][${dynamic_attribute_xpath}]`)) {//elements that has some logic over attributes
+        const dynamic_attribute_xpath = `(xsl:attribute[xsl:if|xsl:choose|xsl:apply-templates|xsl:call-template]|xsl:choose/xsl:when/xsl:attribute|xsl:choose/xsl:otherwise/xsl:attribute|xsl:if/xsl:attribute|@*[contains(.,'{')])[not(starts-with(@name, 'xo-swap-'))]`;
+        for (const el of target.select(`//html:*[not(@xo-swap)][${dynamic_attribute_xpath}]|//svg:*[not(@xo-swap)][${dynamic_attribute_xpath}]|//xsl:attribute-set[${dynamic_attribute_xpath}]`)) {//elements that has some logic over attributes
             let attributes = el.select(dynamic_attribute_xpath);
-            dynamic_attributes = attributes.map(attr => `@${attr.nodeType == Node.ATTRIBUTE_NODE ? attr.nodeName : attr.getAttribute("name")}`).distinct().join(" ")
+            if (el.namespaceURI === xover.spaces["xsl"]) {
+                for (let attr of attributes.filter(attr => !attr.single(`preceding-sibling::xsl:attribute[@name="xo-swap-${attr.attributes["name"]}"]`))) {
+                    let swap_attr = attr.cloneNode(true);
+                    swap_attr.setAttribute("name", `xo-swap-${swap_attr.attributes["name"]}`);
+                    attr.before(swap_attr);
+
+                }
+            } else {
+                dynamic_attributes = attributes.map(attr => `@${attr.nodeType == Node.ATTRIBUTE_NODE ? attr.nodeName : attr.getAttribute("name")}`).distinct().join(" ");
             el.setAttribute("xo-swap", dynamic_attributes)
+        }
         }
 
         for (const el of target.select(`//xsl:template/*[not(self::xsl:* or xsl:attribute[@name="xo-xsl-source"]) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute or @name="xo-xsl-source")] or self::xsl:comment[not(preceding-sibling::xsl:comment or contains(text(),'<template'))]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
@@ -11339,10 +11352,11 @@ xover.xml.tryParse = function (input) {
     }
 }
 
-xover.xml.createFragment = function (xml_string) {
+xover.xml.createFragment = function (content) {
     const xmlDoc = new DOMParser().parseFromString("<root/>", 'text/xml');
     const fragment = xmlDoc.createDocumentFragment();
-    fragment.append(xover.string.toHTML(xml_string)); //.childNodes
+    content = typeof (content) === 'string' && [xover.string.toHTML(content)] || content && typeof content[Symbol.iterator] === 'function' && [...content] || [];
+    fragment.append(...content); //.childNodes
     return fragment;
 }
 
@@ -11501,7 +11515,9 @@ xover.xml.staticMerge = function (node1, node2) {
 
     if (/*!(node1.contains(document.activeElement) || node1.contains("[xo-static],.xo-working,.xo-fetching")) || */!(node2.localName == 'template' || node1.nodeName.toLowerCase() == node2.nodeName.toLowerCase()) || node1.isEqualNode(node2)) return;
 
-    if (node1.nodeType === Node.ELEMENT_NODE
+    if (node2.localName == 'template') {
+        node2.applyAttributes(node1.attributes)
+    } else if (node1.nodeType === Node.ELEMENT_NODE
         && node1.getAttribute("xo-xsl-source") === node2.getAttribute("xo-xsl-source")
         && (node1.id && node1.id == node2.id
             || node1.localName == node2.localName && (
@@ -11510,9 +11526,8 @@ xover.xml.staticMerge = function (node1, node2) {
                 && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
                 && (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '').replace(/^context:.*/, '') == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '').replace(/^context:.*/, '')
             )
-            || node2.localName == 'template'
         )) {
-        node2.applyAttributes(node1, { static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*/// ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}
+        node2.applyAttributes(node1, { static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')} ${[...node2.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => /*(["xo-swap-class"].includes(attr.name) && attr.value) ? attr.value.split(/\s+/).map(value => `.${value}`).join(' ') : */`@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*/// ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}
         //node1.applyAttributes(...node2.attributes);
     }
     if (static.length && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase()) {
@@ -11949,7 +11964,13 @@ xover.dom.combine = async function (target, new_node) {
     //let coordinates = active_element.scrollPosition;
 
     ////target.observer && target.observer.disconnect();
-    for (let [[current, change]] of changes) {
+    for (let [[current, change]] of changes.sort(([[a]], [[b]]) => {
+        const aIsXO = a.nodeName.startsWith("XO-");
+        const bIsXO = b.nodeName.startsWith("XO-");
+        if (aIsXO && !bIsXO) return 1;
+        if (!aIsXO && bIsXO) return -1;
+        return a.nodeName.localeCompare(b.nodeName);
+    })) {
         ////if ((current instanceof HTMLElement || current instanceof SVGElement) && current !== target && current.hasAttribute("xo-stylesheet")) {
         ////    continue;
         ////}
@@ -11970,7 +11991,8 @@ xover.dom.combine = async function (target, new_node) {
             selection = xover.dom.getCaretPosition(active_element)
         }
         if (change.nodeType == Node.ATTRIBUTE_NODE) {
-            current.closest("*").applyAttributes(change, { swap: '.*' })
+            let swap = [current.closest('*').getAttributeNode(`xo-swap-${change.name}`) || {}].filter(attr => attr.name).map(attr => (["xo-swap-class"].includes(attr.name)) ? attr.value.split(/\s+/g).map(value => `.${value}`) : `${attr.name.replace(/^xo-swap-/, '@')}`).flat();
+            current.closest("*").applyAttributes(change, { swap })
             result = current;
         } else if (current.nodeType == Node.ATTRIBUTE_NODE && change.nodeType == Node.ELEMENT_NODE && !change.hasAttribute(current.name)) {
             ////change.closest("*").applyAttributes(current)
