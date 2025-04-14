@@ -9889,11 +9889,12 @@ xover.modernize = async function (targetWindow) {
                                         new_target.importAttributeNode(documentElement.getAttributeNode("xo-source"));
                                         new_target.importAttributeNode(documentElement.getAttributeNode("xo-stylesheet"));
                                         if (target.contains(new_target)) {
-                                            if (target.source !== new_target.source) {
-                                                let node_copy = documentElement.cloneNode();
-                                                new_target.replaceWith(node_copy);
-                                                new_target = node_copy;
-                                            }
+                                            // TODO: Check what to do in this case
+                                            //if (documentElement.source !== new_target.source) {
+                                            //    let node_copy = documentElement.cloneNode();
+                                            //    new_target.replaceWith(node_copy);
+                                            //    new_target = node_copy;
+                                            //}
                                         } else {
                                             target.appendChild(new_target)
                                         }
