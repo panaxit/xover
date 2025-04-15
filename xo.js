@@ -4008,7 +4008,7 @@ xover.getSource = function (key) {
 
 xover.sources = new Proxy(new Map(), {
     get: function (self, key) {
-        key = key || "#";
+        if (!key) return null;
         if (typeof self[key] === 'function') {
             let fn = self[key].bind(self);
             return key !== 'get' ? fn : function (...args) {
@@ -7193,17 +7193,20 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 Element.prototype.isEquivalentNode = function (comparedNode) {
-                    //if (!(this.constructor === comparedNode.constructor)) return false;
-                    if (!((comparedNode || {}).nodeType && this.id === comparedNode.id)) return false;
+                    if (!(this.nodeType === (comparedNode || {}).nodeType)) return false;
+                    if (this.nodeType === (comparedNode || {}).nodeType && this.id && (this.id || comparedNode.id) === (comparedNode.id || this.id)) return true;
+                    if (!(
+                        (this.getAttribute("name") || comparedNode.getAttribute("name")) == (comparedNode.getAttribute("name") || this.getAttribute("name"))
+                        && `${this.getAttributeNode("xo-stylesheet") || comparedNode.getAttributeNode("xo-stylesheet")}` == `${comparedNode.getAttributeNode("xo-stylesheet") || this.getAttributeNode("xo-stylesheet") }`
+                    )) return false;
                     let matches = this.cloneNode().isEqualNode(comparedNode.cloneNode());
 
                     matches = matches || /*this.getAttribute("xo-xsl-source") === comparedNode.getAttribute("xo-xsl-source")
-                        && */(
-                            this.id && this.id === comparedNode.id
-                            && this.getAttribute("name") == comparedNode.getAttribute("name")
-                            || !(this.hasAttribute("id") || this.hasAttribute("name"))
-                            && this.nodeName.toLowerCase() == comparedNode.nodeName.toLowerCase()
-                        )
+                        && */((
+                            (this.constructor || {}).name !== 'HTMLElement' && this.constructor === comparedNode.constructor
+                            || this.nodeName.toLowerCase() == comparedNode.nodeName.toLowerCase())/*
+                        && (xover.sources[this.getAttribute("xo-source") || ''] || xover.sources[comparedNode.getAttribute("xo-source") || '']) === (xover.sources[comparedNode.getAttribute("xo-source") || ''] || xover.sources[this.getAttribute("xo-source") || ''])*/
+                        ) || false
                     return matches;
                 }
 
@@ -9405,7 +9408,7 @@ xover.modernize = async function (targetWindow) {
                                     }
                                 });
                             }
-                            if (!(result && result.firstChild)) {
+                            if (result.nodeType === Node.ELEMENT_NODE && !(result.firstChild)) {
                                 result.append(window.document.createComment("ack:no-content"))
                             }
                             try {
@@ -9864,12 +9867,13 @@ xover.modernize = async function (targetWindow) {
                                 }
 
                                 if (documentElement.nodeType === Node.ELEMENT_NODE) {
-                                    if (!(
-                                        (target.id || documentElement.id) === (documentElement.id || target.id)
-                                        && (target.hasAttribute("xo-source") && target.source || documentElement.source) === documentElement.source
-                                        && `${target.getAttributeNode("xo-stylesheet") || documentElement.getAttributeNode("xo-stylesheet")}` == `${documentElement.getAttributeNode("xo-stylesheet")}`
-                                        && target.constructor === documentElement.constructor
-                                    )) {
+                                    //if (!(
+                                    //    (target.id || documentElement.id) === (documentElement.id || target.id)
+                                    //    && (target.hasAttribute("xo-source") && target.source || documentElement.source) === documentElement.source
+                                    //    && `${target.getAttributeNode("xo-stylesheet") || documentElement.getAttributeNode("xo-stylesheet")}` == `${documentElement.getAttributeNode("xo-stylesheet")}`
+                                    //    && target.constructor === documentElement.constructor
+                                    //)) {
+                                    if (!documentElement.isEquivalentNode(target)) {
                                         const xo_source = documentElement.getAttributeNode("xo-source") || target.getAttributeNode("xo-source");
                                         const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || xsl.resource;
                                         const id = documentElement.id || target.getAttribute("id") || "";
@@ -11061,7 +11065,7 @@ xover.Request = function (request, ...args) {
                     }
                 }
 
-                return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()").map(async node => { //urls are interpreted to 
+                    !stored_document && return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()").forEach(async node => { //urls are interpreted to 
                     let href = `${node.href || node}`;
                     //if (href.match(/^[\.\/]/)) {
                     let url = xover.URL(href, ["/", "\\"].includes(href[0]) ? '' : response.url); //if href is requested with a leading slash, it must be refering to a document located on root folder. TODO: Check if backslash should be used to location and simple slash to response.url's root
@@ -11664,10 +11668,20 @@ xover.xml.staticMerge = function (node1, node2) {
     //    xover.xml.staticMerge(node1.shadowRoot, node2.shadowRoot)
     //}
     if (instanceOf.call(node1, HTMLSlotElement)) return;
-    if (node1.nodeType !== node2.nodeType/* || node1.nodeType === Node.ELEMENT_NODE &&
-        node1.getAttribute("xo-xsl-source") !== node2.getAttribute("xo-xsl-source")*/) {
+    if (!(
+        node1.isEquivalentNode(node2)
+        && (
+            node1.nodeType !== Node.ELEMENT_NODE
+            || (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/ == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/
+        )
+    )) {
         return false;
     }
+    //if (node1.nodeType !== node2.nodeType/* || node1.nodeType === Node.ELEMENT_NODE &&
+    //    node1.getAttribute("xo-xsl-source") !== node2.getAttribute("xo-xsl-source")*/
+    //) {
+    //    return false;
+    //}
     let static = document.firstElementChild.cloneNode().classList;
     if (node1.nodeType === Node.ELEMENT_NODE && node1.getAttributeNode("xo-static")) {
         static.value = node1.getAttribute("xo-static").trim() || "self::*";
@@ -11713,15 +11727,16 @@ xover.xml.staticMerge = function (node1, node2) {
     if (node2.localName == 'template') {
         node2.applyAttributes(node1.attributes)
     } else if (node1.nodeType === Node.ELEMENT_NODE
-        && node1.getAttribute("xo-xsl-source") === node2.getAttribute("xo-xsl-source")
-        && (node1.id && node1.id == node2.id
-            || node1.localName == node2.localName && (
-                node1.id == (node2.id || node1.id)
-                && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") //TODO: Consider seed, active, inherit 
-                && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
-                && (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '').replace(/^context:.*/, '') == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '').replace(/^context:.*/, '')
-            )
-        )) {
+        //&& node1.isEquivalentNode(node2)
+        //&& node1.getAttribute("xo-xsl-source") === node2.getAttribute("xo-xsl-source")
+        //&& (node1.id && node1.id == node2.id
+        //    || node1.localName == node2.localName && (
+        //        node1.id == (node2.id || node1.id)
+        //        && node1.getAttribute("xo-source") == node2.getAttribute("xo-source") //TODO: Consider seed, active, inherit 
+        //        && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
+        //        && (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '').replace(/^context:.*/, '') == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '').replace(/^context:.*/, '')
+        //    ))
+    ) {
         node2.applyAttributes(node1, { static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')} ${[...node2.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => /*(["xo-swap-class"].includes(attr.name) && attr.value) ? attr.value.split(/\s+/).map(value => `.${value}`).join(' ') : */`@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*/// ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}
         //node1.applyAttributes(...node2.attributes);
     }
@@ -14484,7 +14499,7 @@ xover.listener.on('databaseChange', async function (changes) {
 })
 
 xover.listener.on('hotreload', async function (file_path) {
-    if (!(xover.session.debug || top.document.querySelector(`meta[name="debug"][content="true"]`) || top.document.querySelector(`meta[name="debug"][content="${location.origin + location.basepath}"]`))) return;
+    if (!(xover.session.debug || top.document.querySelector(`meta[name="debug"][content="true"],meta[name="debug"][content="${location.origin + location.basepath}"],meta[name="debug"][content="${location.origin.replace(new RegExp(`^${location.protocol}//`), '') + location.basepath}"]`))) return;
     let document = this instanceof Document && this || this.ownerDocument || window.document;
     [...document.querySelectorAll("[role=alertdialog],dialog")].remove();
     const file = new xover.URL(file_path);
