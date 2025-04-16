@@ -5494,7 +5494,7 @@ xover.modernize = async function (targetWindow) {
                         let fragment = this;//.cloneNode(true);
                         let children = new DocumentFragment();
                         const temp_doc = fragment.firstElementChild instanceof HTMLElement ? window.document.cloneNode() : new DOMParser().parseFromString("<root/>", 'text/xml');
-                        if (!temp_doc.firstElementChild) temp_doc.append(window.document.body.cloneNode());
+                        if (!temp_doc.firstElementChild) temp_doc.append(new DOMParser().parseFromString('', 'text/html').body.cloneNode());
                         let original_root = temp_doc.firstElementChild;
                         for (let child of [...fragment.childNodes]) {
                             cloned_child = child.cloneNode(true);
@@ -7197,7 +7197,7 @@ xover.modernize = async function (targetWindow) {
 
                 Element.prototype.isEquivalentNode = function (comparedNode) {
                     if (!(this.nodeType === (comparedNode || {}).nodeType)) return false;
-                    if (this.nodeType === (comparedNode || {}).nodeType && this.id && (this.id || comparedNode.id) === (comparedNode.id || this.id)) return true;
+                    if (this.nodeType === (comparedNode || {}).nodeType && this.id && this.id === comparedNode.id) return true;
                     if (!(
                         (this.getAttribute("name") || comparedNode.getAttribute("name")) == (comparedNode.getAttribute("name") || this.getAttribute("name"))
                         && `${this.getAttributeNode("xo-stylesheet") || comparedNode.getAttributeNode("xo-stylesheet")}` == `${comparedNode.getAttributeNode("xo-stylesheet") || this.getAttributeNode("xo-stylesheet") }`
