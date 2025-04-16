@@ -2796,7 +2796,10 @@ Object.defineProperty(xover.session, 'clearCache', {
     value: function (options) {
         let { auto_reload = true } = (options || {});
         if (typeof (Storage) !== "undefined") {
-            sessionStorage.clear();
+            //sessionStorage.clear();
+            xover.storehouse.sources.then(store => {
+                store.clear()
+            })
             navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then(function (registrations) {
                 for (let registration of registrations) {
                     registration.unregister()
