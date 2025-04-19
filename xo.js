@@ -3518,7 +3518,8 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
         if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor)) {
             const child_differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item).flat(Infinity);
             if (attr_differences.length && child_differences.length) {
-                all_differences.push(new Map([[node1, node2]]));
+                all_differences.push(child_differences);
+                all_differences.push(attr_differences);
             } else if (child_differences.length) {
                 all_differences.push(child_differences);
             } else if (attr_differences.length) {
@@ -5488,7 +5489,7 @@ xover.modernize = async function (targetWindow) {
                     }
                     let matches = [];
                     if ([Node.DOCUMENT_FRAGMENT_NODE].includes(this.nodeType)) { //disclaimer: Fragments will throw an error on xpath evaluator. Instead each root node is treated as a single document and there are still some many cases to address
-                        if (xover.listener.history.overflowed(`selectNodes:${xpath}`, this, 5)) {
+                        if (xover.listener.history.overflowed(`selectNodes:${xpath}`, this, 50)) {
                             console.warn(`Listener dispatcher overflown`, [`selectNodes:${xpath}`, this])
                             return [];
                         }
@@ -7920,7 +7921,7 @@ xover.modernize = async function (targetWindow) {
                         enumerable: false,
                         value: function (source = [], options = {}) {
                             const target = this;
-                            let { static, swap } = options;
+                            let { static = [], swap } = options;
                             let sources = !source.nodeType && typeof source[Symbol.iterator] === 'function' && source.length && [].constructor != source.constructor ? [...source].flat() : [source];
                             for (const source of sources.flat(Infinity)) {
                                 if (source.nodeType === Node.ELEMENT_NODE /*&& (target.id || source.id) == (source.id || target.id)
@@ -7936,7 +7937,7 @@ xover.modernize = async function (targetWindow) {
                                     for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && swap_attrs.includes(`@${attr.name}`) && !static_attrs.includes(`@${attr.name}`))) {
                                         target.removeAttribute(attr.name)
                                     }
-                                    target.applyAttributes([...el.attributes].filter(attr => /*mixable_attrs.includes(`@${attr.name}`) || */!static_attrs.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
+                                    target.applyAttributes([...el.attributes].filter(attr => /*mixable_attrs.includes(`@${attr.name}`) || */!static.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`)), { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                     //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
