@@ -3478,14 +3478,17 @@ xover.xml = {};
 
 xover.xml.getDifferences = function (node1, node2, composed = false) {
     const all_differences = []
+    if (this === xover.xml && node1.nodeType === Node.ELEMENT_NODE && node1.hasAttribute("xo-stylesheet")) {
+        return all_differences;
+    }
     if (!(node1 && node2 && node1.nodeType === node2.nodeType && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase() && node1.id === node2.id)) {
         all_differences.push(new Map([[node1, node2]]));
         return all_differences;
     }
-    if (node1.nodeType === Node.ELEMENT_NODE && node1.getAttribute("xo-xsl-source") !== node2.getAttribute("xo-xsl-source")) {
+    /*if (node1.nodeType === Node.ELEMENT_NODE && node1.getAttribute("xo-xsl-source") !== node2.getAttribute("xo-xsl-source")) {
         all_differences.push(new Map([[node1, node2]]));
         return all_differences;
-    } else if (node1.isEqualNode(node2)) {
+    } else */if (node1.isEqualNode(node2)) {
         if (node1.shadowRoot && node2.shadowRoot && !node1.shadowRoot.isEqualNode(node2.shadowRoot)) {
             if (composed) {
                 all_differences.push(new Map([[node1, node2]]));
@@ -3514,8 +3517,8 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
     const attr_differences = !(node1.attributes && node1.isEquivalentNode(node2)) ? [] : [...node1.attributes, ...node2.attributes].map(attr => attr.name).distinct().filter(attr_name => node1.getAttribute(attr_name) != node2.getAttribute(attr_name)).map(attr_name => new Map([[node1.getAttributeNode(attr_name) || node1, node2.getAttributeNode(attr_name) || node2]]));
     const node1_children = [...node1.childNodes].filter(el => ![Node.TEXT_NODE, Node.COMMENT_NODE].includes(el.nodeType) || el.nodeType === Node.TEXT_NODE && el.value.trim());
     const node2_children = [...node2.childNodes].filter(el => ![Node.TEXT_NODE, Node.COMMENT_NODE].includes(el.nodeType) || el.nodeType === Node.TEXT_NODE && el.value.trim());
-    if (node1_children.length == node2_children.length) {
-        if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor)) {
+    if (node1_children.length && node1_children.length == node2_children.length) {
+        /*if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor || el.localName === 'slot' || node2_children[ix].localName === 'slot')) {*/
             const child_differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item).flat(Infinity);
             if (attr_differences.length && child_differences.length) {
                 all_differences.push(child_differences);
@@ -3525,11 +3528,13 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
             } else if (attr_differences.length) {
                 all_differences.push(attr_differences);
             } else {
-                all_differences.push(new Map([[node1, node2]]));
+                if (xover.session.debug) {
+                    debugger
+                }
             }
-        } else {
-            all_differences.push(new Map([[node1, node2]]));
-        }
+        //} else {
+        //    all_differences.push(new Map([[node1, node2]]));
+        //}
     } else {
         all_differences.push(new Map([[node1, node2]]));
     }
@@ -11613,8 +11618,10 @@ xover.xml.parseValue = function (value) {
 }
 
 xover.xml.getDifferentChildren = function (nodeA, nodeB) {
-    let childA = nodeA.firstElementChild || nodeA.firstChild || nodeB.firstElementChild && nodeA.appendChild(document.createComment("ack:placeholder"));
-    let childB = nodeB.firstElementChild || nodeB.firstChild || childA && nodeB.appendChild(document.createComment("ack:placeholder"));
+    const placeholder = document.createElement("slot"); //document.createComment("ack:placeholder")
+    placeholder.classList.add("placeholder");
+    let childA = nodeA.firstElementChild || nodeA.firstChild || nodeB.firstElementChild && nodeA.appendChild(placeholder.cloneNode());
+    let childB = nodeB.firstElementChild || nodeB.firstChild || childA && nodeB.appendChild(placeholder.cloneNode());
     let comparingNodes = [...nodeB.childNodes];
 
     const differentNodes = new Map();
@@ -11624,17 +11631,17 @@ xover.xml.getDifferentChildren = function (nodeA, nodeB) {
 
         if (childA.isMatchingNode(childB)) {
             childA = nextChildElementA;
-            childB = nextChildElementB || childA && nodeB.appendChild(document.createComment("ack:placeholder")) || null;
+            childB = nextChildElementB || childA && nodeB.appendChild(placeholder.cloneNode()) || null;
             continue;
         } else if (childA.isMatchingNode(nextChildElementB)) {
-            let placeholder = document.createComment("ack:placeholder");
+            let placeholder = placeholder.cloneNode();
             nodeA.insertBefore(placeholder, childA);
             differentNodes.set(placeholder, childB);
             childA = nextChildElementA;
             childB = nextChildElementB.nextElementSibling || childA && nodeB.appendChild(placeholder) || null;
             continue;
         } else if (childB.isMatchingNode(nextChildElementA)) {
-            let placeholder = document.createComment("ack:placeholder");
+            let placeholder = placeholder.cloneNode();
             nodeB.insertBefore(placeholder, childB);
             differentNodes.set(childA, placeholder);
             childA = nextChildElementA.nextElementSibling;
@@ -11644,14 +11651,14 @@ xover.xml.getDifferentChildren = function (nodeA, nodeB) {
         differentNodes.set(childA, childB);
         //if (nextChildElementA && childA.nodeType !== (childB || {}).nodeType && nextChildElementA.nodeType === childB.nodeType
         //) {// If node types don't match but the next sibling in A matches current B node
-        //    nodeB.insertBefore(document.createComment("ack:placeholder"), childB);
+        //    nodeB.insertBefore(placeholder.cloneNode(), childB);
         //} else if (!comparingNodes[1]
         //    || childA.isEqualNode(comparingNodes[1])
         //) { // If the next comparing node matches instead, insert placeholder before it
-        //    nodeB.insertBefore(document.createComment("ack:placeholder"), comparingNodes[1]);
+        //    nodeB.insertBefore(placeholder.cloneNode(), comparingNodes[1]);
         //}
-        childA = nextChildElementA || nextChildElementB && nodeA.appendChild(document.createComment("ack:placeholder")) || null;
-        childB = nextChildElementB || nextChildElementA && nodeB.appendChild(document.createComment("ack:placeholder")) || null;
+        childA = nextChildElementA || nextChildElementB && nodeA.appendChild(placeholder.cloneNode()) || null;
+        childB = nextChildElementB || nextChildElementA && nodeB.appendChild(placeholder.cloneNode()) || null;
     }
     return differentNodes;
 }
@@ -12181,7 +12188,7 @@ xover.dom.combine = async function (target, new_node) {
         attr.value = xover.URL(attr).href
     });
 
-    let changes = xover.xml.getDifferences(target, new_node, true);
+    let changes = xover.xml.getDifferences.call(target, target, new_node, true);
     if (!changes.length) return target;
     //let preceding_siblings = [];
     //let target_preceding_siblings = [];
@@ -12255,6 +12262,14 @@ xover.dom.combine = async function (target, new_node) {
                 if (!(e && e.name == 'AbortError')) {
                     throw (e)
                 }
+            }
+        } else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && current.localName === 'slot' && current.classList.contains("placeholder")) {
+            current.replaceWith(change)
+        } else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && change.localName === 'slot' && change.classList.contains("placeholder")) {
+            if (target.contains((current.closest("[xo-xsl-source]") || {}).parentNode)) {
+                current.remove() //TODO: Check what are the rules to remove
+            } else {
+                change.remove()
             }
         } else {
             result = xover.xml.combine(current, change);
