@@ -11560,7 +11560,7 @@ ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Tex
             el.set("xo-slot", el.getAttribute("type") == "search" ? "search:{local-name(current())}" : "{name(current()[not(self::*)])}")
         }
 
-        for (let el of target.select(`//xsl:template[not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
+        for (let el of target.select(`//xsl:template[*][not(.//xsl:param/@name="xo:context") and not(.//xsl:variable/@name="xo:context")]`)) {
             el.prepend(xover.xml.createNode(`<xsl:param xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo:context" select="."/>`));
         }
 
@@ -11674,10 +11674,10 @@ xover.xml.parseValue = function (value) {
 }
 
 xover.xml.getDifferentChildren = function (nodeA, nodeB) {
-    const placeholder = document.createElement("slot"); //document.createComment("ack:placeholder")
-    placeholder.classList.add("placeholder");
-    let childA = nodeA.firstElementChild || nodeA.firstChild || nodeB.firstElementChild && nodeA.appendChild(placeholder.cloneNode());
-    let childB = nodeB.firstElementChild || nodeB.firstChild || childA && nodeB.appendChild(placeholder.cloneNode());
+    const placeholder_model = document.createElement("slot"); //document.createComment("ack:placeholder")
+    placeholder_model.classList.add("placeholder");
+    let childA = nodeA.firstElementChild || nodeA.firstChild || nodeB.firstElementChild && nodeA.appendChild(placeholder_model.cloneNode());
+    let childB = nodeB.firstElementChild || nodeB.firstChild || childA && nodeB.appendChild(placeholder_model.cloneNode());
     let comparingNodes = [...nodeB.childNodes];
 
     const differentNodes = new Map();
@@ -11687,17 +11687,17 @@ xover.xml.getDifferentChildren = function (nodeA, nodeB) {
 
         if (childA.isMatchingNode(childB)) {
             childA = nextChildElementA;
-            childB = nextChildElementB || childA && nodeB.appendChild(placeholder.cloneNode()) || null;
+            childB = nextChildElementB || childA && nodeB.appendChild(placeholder_model.cloneNode()) || null;
             continue;
         } else if (childA.isMatchingNode(nextChildElementB)) {
-            let placeholder = placeholder.cloneNode();
+            let placeholder = placeholder_model.cloneNode();
             nodeA.insertBefore(placeholder, childA);
             differentNodes.set(placeholder, childB);
             childA = nextChildElementA;
             childB = nextChildElementB.nextElementSibling || childA && nodeB.appendChild(placeholder) || null;
             continue;
         } else if (childB.isMatchingNode(nextChildElementA)) {
-            let placeholder = placeholder.cloneNode();
+            let placeholder = placeholder_model.cloneNode();
             nodeB.insertBefore(placeholder, childB);
             differentNodes.set(childA, placeholder);
             childA = nextChildElementA.nextElementSibling;
@@ -11707,14 +11707,14 @@ xover.xml.getDifferentChildren = function (nodeA, nodeB) {
         differentNodes.set(childA, childB);
         //if (nextChildElementA && childA.nodeType !== (childB || {}).nodeType && nextChildElementA.nodeType === childB.nodeType
         //) {// If node types don't match but the next sibling in A matches current B node
-        //    nodeB.insertBefore(placeholder.cloneNode(), childB);
+        //    nodeB.insertBefore(placeholder_model.cloneNode(), childB);
         //} else if (!comparingNodes[1]
         //    || childA.isEqualNode(comparingNodes[1])
         //) { // If the next comparing node matches instead, insert placeholder before it
-        //    nodeB.insertBefore(placeholder.cloneNode(), comparingNodes[1]);
+        //    nodeB.insertBefore(placeholder_model.cloneNode(), comparingNodes[1]);
         //}
-        childA = nextChildElementA || nextChildElementB && nodeA.appendChild(placeholder.cloneNode()) || null;
-        childB = nextChildElementB || nextChildElementA && nodeB.appendChild(placeholder.cloneNode()) || null;
+        childA = nextChildElementA || nextChildElementB && nodeA.appendChild(placeholder_model.cloneNode()) || null;
+        childB = nextChildElementB || nextChildElementA && nodeB.appendChild(placeholder_model.cloneNode()) || null;
     }
     return differentNodes;
 }
