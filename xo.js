@@ -1818,11 +1818,15 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                 xover.listener.history.set(handler, target);
                 if (event.detail && handler.conditions.length && !handler.conditions.some(condition => [...condition].every(([key, condition]) => {
                     let operator = "="
-                    if (["*", "!"].includes(key[key.length - 1])) {
+                    if (["*", "!", "^", "$", "~"].includes(key[key.length - 1])) {
                         operator = key[key.length - 1];
                         key = key.slice(0, -1);
                     } else if (!condition && ["*", "!"].includes(key[0])) {
                         operator = key.match(/^[!|*]*/)[0];
+                        key = key.slice(operator.length);
+                    }
+                    let negated = key[0] == '!' && key[1] !== '!';
+                    if (negated) {
                         key = key.slice(operator.length);
                     }
                     let [arg, ...props] = key.split(/(?<=[\w\d])\./g);
@@ -1862,16 +1866,34 @@ Object.defineProperty(xover.listener, 'dispatcher', {
                                 return context
                         }
                     } else {
+                        condition = condition.replace(new RegExp(`^("|')(.*)\\1$`, 'g'), '$2');
+                        result = false
                         switch (operator) {
                             case "!!":
-                                return !!(context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                                result = !!(context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                                break;
                             case "!":
-                                return !(context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                                result = !(context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                                break;
                             case "*":
-                                return `${context}`.indexOf(`${condition}`) != -1
+                                result = `${context}`.indexOf(`${condition}`) != -1
+                                break;
+                            case "^":
+                                result = `${context}`.indexOf(`${condition}`) == 0
+                                break;
+                            case "$":
+                                result = `${context}`.matches(`${condition}$`);
+                                break;
+                            case "~":
+                                result = `${context}`.matches(`\\b${condition}\\b`);
+                                break;
                             default:
-                                return (context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                                result = (context instanceof Node ? context : `${context}`).matches(`${condition}`)
                         }
+                        if (negated) {
+                            result = !result;
+                        }
+                        return result
                     }
                 }))) continue;
                 //if (context.eventHistory.get(handler)) {
@@ -3519,19 +3541,19 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
     const node2_children = [...node2.childNodes].filter(el => ![Node.TEXT_NODE, Node.COMMENT_NODE].includes(el.nodeType) || el.nodeType === Node.TEXT_NODE && el.value.trim());
     if (node1_children.length && node1_children.length == node2_children.length) {
         /*if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor || el.localName === 'slot' || node2_children[ix].localName === 'slot')) {*/
-            const child_differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item).flat(Infinity);
-            if (attr_differences.length && child_differences.length) {
-                all_differences.push(child_differences);
-                all_differences.push(attr_differences);
-            } else if (child_differences.length) {
-                all_differences.push(child_differences);
-            } else if (attr_differences.length) {
-                all_differences.push(attr_differences);
-            } else {
-                if (xover.session.debug) {
-                    debugger
-                }
+        const child_differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item).flat(Infinity);
+        if (attr_differences.length && child_differences.length) {
+            all_differences.push(child_differences);
+            all_differences.push(attr_differences);
+        } else if (child_differences.length) {
+            all_differences.push(child_differences);
+        } else if (attr_differences.length) {
+            all_differences.push(attr_differences);
+        } else {
+            if (xover.session.debug) {
+                debugger
             }
+        }
         //} else {
         //    all_differences.push(new Map([[node1, node2]]));
         //}
@@ -6877,10 +6899,6 @@ xover.modernize = async function (targetWindow) {
                             return !(processed[node.getAttribute("href")]) || xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${node.getAttribute("href")}" ===')]`);
                         });
                     }
-                    for (let stylesheet of xsl.select(`xsl:*`)) {
-                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:name" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="name()"/></xsl:template>`))
-                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:value" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="."/></xsl:template>`))
-                    }
                     for (let el of xsl.select(`//xsl:template//@xo:use-attribute-sets`)) {
                         let attribute_sets = el.value.split(/\s+/g);
                         let attributes = attribute_sets.reduce((attrs, key) => {
@@ -7223,7 +7241,7 @@ xover.modernize = async function (targetWindow) {
                     if (this.nodeType === (comparedNode || {}).nodeType && this.id && this.id === comparedNode.id) return true;
                     if (!(
                         (this.getAttribute("name") || comparedNode.getAttribute("name")) == (comparedNode.getAttribute("name") || this.getAttribute("name"))
-                        && `${this.getAttributeNode("xo-stylesheet") || comparedNode.getAttributeNode("xo-stylesheet")}` == `${comparedNode.getAttributeNode("xo-stylesheet") || this.getAttributeNode("xo-stylesheet") }`
+                        && `${this.getAttributeNode("xo-stylesheet") || comparedNode.getAttributeNode("xo-stylesheet")}` == `${comparedNode.getAttributeNode("xo-stylesheet") || this.getAttributeNode("xo-stylesheet")}`
                     )) return false;
                     let matches = this.cloneNode().isEqualNode(comparedNode.cloneNode());
 
@@ -7232,6 +7250,7 @@ xover.modernize = async function (targetWindow) {
                             (this.constructor || {}).name !== 'HTMLElement' && this.constructor === comparedNode.constructor
                             || this.nodeName.toLowerCase() == comparedNode.nodeName.toLowerCase())/*
                         && (xover.sources[this.getAttribute("xo-source") || ''] || xover.sources[comparedNode.getAttribute("xo-source") || '']) === (xover.sources[comparedNode.getAttribute("xo-source") || ''] || xover.sources[this.getAttribute("xo-source") || ''])*/
+                            || instanceOf.call(this, CustomElement) && instanceOf.call(comparedNode, HTMLTemplateElement)
                         ) || false
                     return matches;
                 }
@@ -11384,6 +11403,10 @@ xover.xml.initialize = async function (target) {
     if (!instanceOf.call(target, Node)) return Promise.reject(`xover.xml.initialize: target is not a node`);
     const url = target.url;
     const imports = target.documentElement && target.documentElement.selectNodes("xsl:import/@href|xsl:include/@href|//processing-instruction()").reduce((arr, item) => { arr.push(item.href || item.value); return arr; }, []) || [];
+    for (let stylesheet of target.select(`xsl:stylesheet[not(xsl:template[@mode="debug:name"])]/xsl:template[1]`)) {
+        stylesheet.before(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:name" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="name()"/></xsl:template>`))
+        stylesheet.before(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:value" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="."/></xsl:template>`))
+    }
     if (imports.length) {
         await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
         function assert(condition, message) {
@@ -11446,7 +11469,7 @@ xover.xml.initialize = async function (target) {
             }
         }
 
-        for (const el of target.select(`//xsl:template/*[not(self::xsl:* or xsl:attribute[@name="xo-xsl-source"]) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute or @name="xo-xsl-source")] or self::xsl:comment[not(preceding-sibling::xsl:comment or contains(text(),'<template'))]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`))) {
+        for (const el of target.select(`//xsl:template/*[not(self::xsl:* or xsl:attribute[@name="xo-xsl-source"]) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute or @name="xo-xsl-source")] or self::xsl:comment[not(preceding-sibling::xsl:comment or contains(text(),'<template'))]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`) && !(el.previousElementSibling && el.previousElementSibling.matches(`xsl:comment[contains(.,'<template')]`)))) {
             const ancestor = el.select("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:for-each[1]|ancestor::xsl:when[1]|ancestor::xsl:otherwise[1]").pop();
             const debug_node = xover.xml.createNode((el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea')) && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.select(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
 scope="<xsl:value-of select="name(ancestor-or-self::*[1])"/><xsl:if test="not(self::*)"><xsl:value-of select="concat('/@',name())"/></xsl:if>"
@@ -11701,6 +11724,7 @@ xover.xml.staticMerge = function (node1, node2) {
         && (
             node1.nodeType !== Node.ELEMENT_NODE
             || (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/ == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/
+            && (node1.getAttribute("xo-xsl-source") || node2.getAttribute("xo-xsl-source")) === node2.getAttribute("xo-xsl-source")
         )
     )) {
         return false;
@@ -15259,6 +15283,12 @@ xover.listener.on(['change::input[type="file"]'], async function () {
     if (!scope) return;
     let file_string = await xover.dom.fileManager(srcElement.files);
     scope.set(file_string.join(";"));
+})
+
+xover.listener.on(`change?old^="blob"&!element.namespaceURI~="xhtml"::@*[.='']`, async function ({ value, old: file }) {
+    let database = await xover.storehouse.files;
+    let removed_file = await database.delete(file.split(`?`)[0]);
+    return removed_file;
 })
 
 xover.modernize();
