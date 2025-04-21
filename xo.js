@@ -8215,6 +8215,39 @@ xover.modernize = async function (targetWindow) {
                     return return_attributes;
                 }
 
+                if (!Node.prototype.hasOwnProperty('attribute')) {
+                    Object.defineProperty(Node.prototype, 'attribute', {
+                        enumerable: false,
+                        get: function () {
+                            let element = this.nodeType === Node.ELEMENT_NODE ? this : null;
+                            let attributes = element ? element.attributes : {};
+                            ; return new Proxy({}, {
+                                get: function (self, key) {
+                                    let attribute = attributes[key];
+                                    return attribute ? attribute.value : null;
+                                },
+                                set: function (self, key, value) {
+                                    if (element) {
+                                        element.setAttribute(key, value)
+                                        return element.getAttributeNode(key)
+                                    } else {
+                                        return null
+                                    }
+                                }
+                            })
+                        }
+                    })
+                }
+
+                if (!Node.prototype.hasOwnProperty('attr')) {
+                    Object.defineProperty(Node.prototype, 'attr', {
+                        enumerable: false,
+                        function: function () {
+                            return null
+                        }
+                    })
+                }
+
                 Element.prototype.attr = function () {
                     return this.getAttribute.apply(this, arguments)
                 }
@@ -11719,6 +11752,12 @@ xover.xml.staticMerge = function (node1, node2) {
     //    xover.xml.staticMerge(node1.shadowRoot, node2.shadowRoot)
     //}
     if (instanceOf.call(node1, HTMLSlotElement)) return;
+
+    let node1_xo_source = node1.attribute["xo-source"];
+    let node2_xo_source = node2.attribute["xo-source"];
+    if (node1.nodeType === Node.ELEMENT_NODE && node1.nodeType === node2.nodeType && node1_xo_source == "active" && node1_xo_source != node2_xo_source && xover.sources[node1_xo_source] === xover.sources[node2_xo_source]) {
+        node2.setAttribute("xo-source", "active")
+    }
     if (!(
         node1.isEquivalentNode(node2)
         && (
