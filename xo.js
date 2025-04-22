@@ -689,9 +689,9 @@ xover.dom.Observer = function (target_node = window.document) {
         ////if (window.document.designMode !== 'on') return;
         //observer.disconnect();
         let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement;
-        let mutation_event = new xover.listener.Event('mutate', { document: target_node, srcElement: active_element, mutations }, target_node);
-        window.dispatchEvent(mutation_event);
-        mutations = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue) : mutations;
+        //let mutation_event = new xover.listener.Event('mutate', { document: target_node, srcElement: active_element, mutations }, target_node);
+        //window.dispatchEvent(mutation_event);
+        //mutations = (mutation_event.detail || {}).hasOwnProperty("returnValue") ? new Map(mutation_event.detail.returnValue) : mutations;
         for (const [target, mutation] of mutations) {
             for (let [attr, oldValue] of Object.values((mutation.attributes || {})[""] || {})) {
                 window.dispatchEvent(new xover.listener.Event('change', { target, value: attr.value, old: oldValue, parentNode: (attr.parentNode || target) }, attr));
