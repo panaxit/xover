@@ -6456,20 +6456,27 @@ xover.modernize = async function (targetWindow) {
                 Object.defineProperty(Element.prototype, 'closest', {
                     value: function (...args) {
                         let node = this;
-                        try {
-                            return Element.closest && Element.closest.value.apply(node, args);
-                        } catch (e) {
-                            if (e.message.indexOf('not a valid selector') != -1) {
-                                node = node.parentNode || node.formerParentNode;
-                                let key = args[0];
-                                try {
-                                    let return_value = this.selectFirst(`ancestor::${key}[1]`);
-                                    return return_value;
-                                } catch (err) {
-                                    return undefined;
+                        let matched = null;
+                        while (!matched && args.length) {
+                            let selector = args.shift();
+                            try {
+                                matched = Element.closest && Element.closest.value.call(node, selector);
+                            } catch (e) {
+                                if (e.message.indexOf('not a valid selector') != -1) {
+                                    node = node.parentNode || node.formerParentNode;
+                                    try {
+                                        if (selector && typeof (selector) === 'object' && selector.nodeType === Node.ELEMENT_NODE) {
+                                            matched = selector.contains(this) ? selector : null;
+                                        } else {
+                                            matched = this.selectFirst(`ancestor::${selector}[1]`);
+                                        }
+                                    } catch (err) {
+                                        return undefined;
+                                    }
                                 }
                             }
                         }
+                        return matched
                     }
                 })
 
@@ -7954,7 +7961,7 @@ xover.modernize = async function (targetWindow) {
                                     && target.getAttribute("xo-scope") == source.getAttribute("xo-scope")*/
                                 ) {
                                     const el = source;
-                                    const mixable_attrs = ['@style', '@class'];
+                                    const mixable_attrs = ['@style', '@class'].filter(attr => !static.includes(attr));
                                     let static_attrs = static || [];
                                     static_attrs = static_attrs.concat(mixable_attrs); //These attrs are always static. They will be combined in applyAttributes method;
                                     let swap_attrs = swap || [...boolean_attrs].map(item => `@${item}`).filter(attr => !static_attrs.includes(attr));
@@ -7970,14 +7977,15 @@ xover.modernize = async function (targetWindow) {
                                     if (attr.name == "class") {
 
                                         const static_classes = (static || []).filter(el => el[0] == ".");
-                                        const swap_classes = swap || [".*"];
-                                        if (swap_classes.includes('@class')) {
+                                        const swap_classes = swap;
+                                        if (swap && swap_classes.includes('@class')) {
                                             target.className = source.value
                                         } else {
-                                            for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static_classes.includes("@class") && swap_classes.includes(`.${class_name}`))) {
+                                            for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static_classes.includes("@class") && [(swap_classes || `.${class_name}`)].flat().includes(`.${class_name}`))) {
                                                 target.classList.remove(class_name)
                                             }
-                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)))) {
+                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class")/* && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)*/)
+                                            ) {
                                                 if (class_name[0] == "-") {
                                                     target.classList.remove(class_name.slice(1))
                                                 }
