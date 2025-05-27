@@ -599,7 +599,14 @@ xover.init = async function () {
                 await xover.session.checkStatus();
             }
 
-            await Promise.all(xover.manifest.start.map(async href => await xover.sources[href].ready && xover.sources[href])).catch((e = {}) => {
+            await Promise.all(xover.manifest.start.map(async href => {
+                    if (href.constructor === {}.constructor) {
+                        let request = new xover.Request(href);
+                        return request.fetch();
+                    } else {
+                        return await xover.sources[href].ready && xover.sources[href];
+                    }
+            })).catch((e = {}) => {
                 console.error(`Couldn't start manifest entry`, e);
                 Object.defineProperty(e, 'initiator', {
                     enumerable: false, writable: true, configurable: true,
@@ -15555,7 +15562,7 @@ xover.listener.on('Response:reject?status=401', function ({ response, request })
         xover.session.status = 'unauthorized';
         xover.stores.active.render();
     }
-    const json = response.json;
+    const json = response.json || {};
     if (json.message) {
         json.message.render()
     } else {
