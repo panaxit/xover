@@ -9940,11 +9940,11 @@ xover.modernize = async function (targetWindow) {
                                         for (let match of xsl.select(`//xsl:template/@match[contains(.,"key(")]`) || []) {
                                             for (const [fullmatch, name, value] of match.value.matchAll(regex)) {
                                                 let new_value = xsl.select(`//xsl:key[@name="${name}"][starts-with(@use,"'${value}'")]/@match`).join("|");
-                                                if (!new_value) continue;
                                                 match.value = match.value.replace(
                                                     fullmatch,
                                                     new_value
                                                 );
+                                                if (!match.value) match.parentNode.remove()
                                     }
                                 }
                                     }
