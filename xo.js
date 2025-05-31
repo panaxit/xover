@@ -7290,19 +7290,37 @@ xover.modernize = async function (targetWindow) {
 
                 xover.disablePolyfill = xover.disablePolyfill || {};
                 Node.toString = Node.hasOwnProperty("toString") ? Node.toString : Node.prototype.toString;
+                const xml_serializer = new XMLSerializer();
                 Node.prototype.toString = function () {
-                    const suspicious = typeof Error !== 'undefined' &&
-                        typeof Error.captureStackTrace === 'function' &&
-                        /hasOwnProperty/i.test(new Error().stack || '');
-                    if (xover.disablePolyfill.hasOwnProperty("toString") || suspicious) {
-                        return Node.toString.call(this)
-                    } else {
-                        return new XMLSerializer().serializeToString(this)
+                    let suspicious = false;
+                    try {
+                        if (typeof Error !== 'undefined' && typeof Error.captureStackTrace === 'function') {
+                            const err = new Error();
+                            Error.captureStackTrace(err, Node.prototype.toString);
+                            suspicious = /hasOwnProperty|Object\.hasOwn/i.test(err.stack || '');
+                        }
+                    } catch {
+                        suspicious = false;
                     }
+                    if (xover.disablePolyfill.hasOwnProperty("toString") || suspicious) {
+                        return Node.toString.call(this);
+                    }
+                    switch (this.nodeType) {
+                        case Node.TEXT_NODE:
+                        case Node.COMMENT_NODE:
+                            return this.nodeValue;
+                        case Node.ATTRIBUTE_NODE:
+                            return this.value;
+                        case Node.DOCUMENT_TYPE_NODE:
+                            return `<!DOCTYPE ${this.name}>`;
+                        case Node.PROCESSING_INSTRUCTION_NODE:
+                            return `<?${this.target} ${this.data}?>`;
+                    }
+                    return xml_serializer.serializeToString(this);
                 }
 
                 Node.prototype.stringify = function () {
-                    return new XMLSerializer().serializeToString(this);
+                    return xml_serializer.serializeToString(this);
                 }
 
                 Node.prototype.isMatchingNode = function (comparedNode) {
