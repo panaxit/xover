@@ -3549,10 +3549,10 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
         all_differences.push(new Map([[node1, node2]]));
         return all_differences;
     }
-    if (!(node1 && node2 && node1.nodeType === node2.nodeType && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase() && node1.id === node2.id)) {
-        all_differences.push(new Map([[node1, node2]]));
-        return all_differences;
-    }
+    //if (!(node1 && node2 && node1.nodeType === node2.nodeType && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase() && node1.id === node2.id)) {
+    //    all_differences.push(new Map([[node1, node2]]));
+    //    return all_differences;
+    //}
     /*if (node1.nodeType === Node.ELEMENT_NODE && node1.getAttribute("xo-xsl-source") !== node2.getAttribute("xo-xsl-source")) {
         all_differences.push(new Map([[node1, node2]]));
         return all_differences;
@@ -4059,7 +4059,7 @@ class HybridMap {
 xover.getSource = function (key) {
     let self = this;
     let manifest_key = typeof (key) === 'string' ? xover.manifest.getSource(key) : key;
-    if (typeof (manifest_key) === 'string') {
+    if (typeof (manifest_key) === 'string' && manifest_key.indexOf(".") != -1) {
         manifest_key = xover.URL(manifest_key).href.toLowerCase();
     }
     if (self.has(manifest_key)) {
@@ -7291,11 +7291,18 @@ xover.modernize = async function (targetWindow) {
                 xover.disablePolyfill = xover.disablePolyfill || {};
                 Node.toString = Node.hasOwnProperty("toString") ? Node.toString : Node.prototype.toString;
                 Node.prototype.toString = function () {
-                    if (xover.disablePolyfill.hasOwnProperty("toString")) {
+                    const suspicious = typeof Error !== 'undefined' &&
+                        typeof Error.captureStackTrace === 'function' &&
+                        /hasOwnProperty/i.test(new Error().stack || '');
+                    if (xover.disablePolyfill.hasOwnProperty("toString") || suspicious) {
                         return Node.toString.call(this)
                     } else {
                         return new XMLSerializer().serializeToString(this)
                     }
+                }
+
+                Node.prototype.stringify = function () {
+                    return new XMLSerializer().serializeToString(this);
                 }
 
                 Node.prototype.isMatchingNode = function (comparedNode) {
@@ -7318,6 +7325,7 @@ xover.modernize = async function (targetWindow) {
 
                 Element.prototype.isEquivalentNode = function (comparedNode) {
                     if (!(this.nodeType === (comparedNode || {}).nodeType)) return false;
+                    if (comparedNode.nodeName === "body" && comparedNode.namespaceURI === xover.spaces["html"]) return true;
                     if (this.nodeType === (comparedNode || {}).nodeType && this.id && this.id === comparedNode.id) return true;
                     if (!(
                         (this.getAttribute("name") || comparedNode.getAttribute("name")) == (comparedNode.getAttribute("name") || this.getAttribute("name"))/*
@@ -7415,10 +7423,6 @@ xover.modernize = async function (targetWindow) {
                     if (combinedCSS) {
                         this.adoptedStyleSheets.replaceSync(combinedCSS);
                     }
-                }
-
-                Node.prototype.stringify = function () {
-                    return new XMLSerializer().serializeToString(this);
                 }
 
                 if (!Node.prototype.hasOwnProperty('xml')) {
@@ -11299,7 +11303,7 @@ xover.Request = function (request, ...args) {
                         settings.progress.value = 0;
                     }
 
-                    if (request.protocol === 'local:') {
+                    if (request.protocol === 'local:' && request.hash) {
                         return new xover.Response(xover.sources.defaults[request.hash], request);
                     } else if (!original_response) {
                         stored_document = null;
@@ -11396,8 +11400,13 @@ xover.Request = function (request, ...args) {
                         return Promise.reject(response);
                     }
                     return Promise.resolve(return_value);
-                }).catch((e) => {
-                    return Promise.reject(e)
+                }).catch((err) => {
+                    if (err instanceof TypeError) {
+                        err.name = 'NetworkError';
+                        err.url = url;
+                        err.message = `Error al intentar acceder a: ${url}`;
+                    }
+                    return Promise.reject(err);
                 });
                 return request.fetching;
             } catch (e) {
@@ -15587,6 +15596,10 @@ xover.listener.on('AbortError', function () {
     return false;
 })
 
+xover.listener.on('NetworkError', function (e) {
+    console.error(e)
+})
+
 xover.listener.on(['unhandledrejection', 'error'], async (event) => {
     if (event.defaultPrevented || event.cancelBubble) {
         return;
@@ -15602,7 +15615,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
         let reason = event.error || event.message || event.reason;
         if (!reason || reason == 'Script error.') return;
         //if (!(/*typeof (reason) == 'string' || */reason instanceof Error)) {
-        let unhandledrejection_event = new xover.listener.Event(`reject`, {}, reason);
+        let unhandledrejection_event = new xover.listener.Event(`reject`, { ...reason }, reason);
         window.dispatchEvent(unhandledrejection_event);
         if (unhandledrejection_event.defaultPrevented) return;
         if ((unhandledrejection_event.detail || {}).returnValue) {
@@ -15612,7 +15625,7 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
         if (reason && reason.stack) console.error(reason.stack)
         if (reason instanceof TypeError || reason instanceof DOMException) {
             if (xover.listener.has(reason.name)) {
-                window.dispatchEvent(new xover.listener.Event(reason.name, {}, reason));
+                window.dispatchEvent(new xover.listener.Event(reason.name, { ...reason }, reason));
             } else {
                 String(reason).alert()
                 console.error(reason.stack || reason)
