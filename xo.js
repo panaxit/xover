@@ -2420,7 +2420,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSource', {
 Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
     value: function (input, ...config_names) { //returns array of values if config_name is sent otherwise returns entries
         if (this instanceof xover.Manifest && !Object.entries(this.settings || {}).length) return [];
-        let url = instanceOf.call(input.url, xover.URL) && input.url || instanceOf.call(input, xover.URL) && input || xover.URL(input instanceof URL && input.toString() || (input.ownerDocument || input).url || input);
+        let url = instanceOf.call(input.url, xover.URL) && input.url || instanceOf.call(input, xover.URL) && input || xover.URL(input instanceof URL && input.toString() || (input.ownerDocument || input).url);// || input
         if (input.store instanceof xover.Store) {
             url.hash = input.store.tag
         }
@@ -4443,11 +4443,8 @@ Object.defineProperty(URL.prototype, 'path', {
         if (this.origin == window.location.origin) {
             pathname = pathname.replace(new RegExp(`^/?${location.basepath}/?`), '');
         }
-        pathname = pathname.replace(new RegExp(`^/?${this.basepath.replace(/^\/|\/$/, '')}/?`), '');
-        return pathname.replace(/^\/|\/$/, "") + "/"
-
-
-        return url;
+        pathname = !this.basepath ? pathname : pathname.replace(new RegExp(`^/?${this.basepath.replace(/^\/|\/$/, '')}/?`), '');
+        return pathname.replace(/^\/|\/$/, "") + "/";
     }
 });
 
@@ -9524,6 +9521,17 @@ xover.modernize = async function (targetWindow) {
                                         if (!customComponents.length) return;
                                         customComponents.forEach(component => customElements.upgrade(component));
                                     }
+                                    const regex = /key\('([^']+)',\s*'([^']+)'\)/g;
+                                    for (let match of xsl.select(`//xsl:template/@match[contains(.,"key(")]`) || []) {
+                                        for (const [fullmatch, name, value] of match.value.matchAll(regex)) {
+                                            let new_value = xsl.select(`//xsl:key[@name="${name}"][starts-with(@use,"'${value}'")]/@match`).join("|");
+                                            match.value = match.value.replace(
+                                                fullmatch,
+                                                new_value
+                                            );
+                                            if (!match.value) match.parentNode.remove()
+                                        }
+                                    }
                                     if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"][@standalone="yes"]|//xsl:template//html:body')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
                                         //use <xsl:output method="xml"/> to avoid html rules (like embedding invalid items or duplicating <br>) //TODO: Analyze combinations
                                         let transformed = xsltProcessor.transformToFragment(xml, document);
@@ -9958,17 +9966,6 @@ xover.modernize = async function (targetWindow) {
 
                                         //xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]|//xsl:template//html:*/@*[contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
                                         xsl.documentElement.prepend(new Comment("ack:optimized"))
-                                        const regex = /key\('([^']+)',\s*'([^']+)'\)/g;
-                                        for (let match of xsl.select(`//xsl:template/@match[contains(.,"key(")]`) || []) {
-                                            for (const [fullmatch, name, value] of match.value.matchAll(regex)) {
-                                                let new_value = xsl.select(`//xsl:key[@name="${name}"][starts-with(@use,"'${value}'")]/@match`).join("|");
-                                                match.value = match.value.replace(
-                                                    fullmatch,
-                                                    new_value
-                                                );
-                                                if (!match.value) match.parentNode.remove()
-                                    }
-                                }
                                     }
                                 }
                                 if (stylesheet.assert && !data.selectFirst(stylesheet.assert)) {
