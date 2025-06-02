@@ -9521,10 +9521,11 @@ xover.modernize = async function (targetWindow) {
                                         if (!customComponents.length) return;
                                         customComponents.forEach(component => customElements.upgrade(component));
                                     }
-                                    const regex = /key\('([^']+)',\s*'([^']+)'\)/g;
+                                    const regex = /key\('([^']+)',\s*'([^']+)'\)(\s*\|)?/g;
                                     for (let match of xsl.select(`//xsl:template/@match[contains(.,"key(")]`) || []) {
-                                        for (const [fullmatch, name, value] of match.value.matchAll(regex)) {
+                                        for (const [fullmatch, name, value, separator = ''] of match.value.matchAll(regex)) {
                                             let new_value = xsl.select(`//xsl:key[@name="${name}"][starts-with(@use,"'${value}'")]/@match`).join("|");
+                                            new_value = new_value ? new_value + separator : new_value;
                                             match.value = match.value.replace(
                                                 fullmatch,
                                                 new_value
