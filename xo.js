@@ -3597,7 +3597,7 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
             all_differences.push(attr_differences);
         } else {
             if (xover.session.debug) {
-                debugger
+                console.warn(`There are different children ignored`)
             }
         }
         //} else {
@@ -5679,9 +5679,9 @@ xover.modernize = async function (targetWindow) {
                             ////try {
                             ////    aItems = (context.ownerDocument || context).evaluate(xpath, context, nsResolver, resultType, null);
                             ////} catch (e) {
-                            if (!xover.browser.isIOS()) {
+                            /*if (!xover.browser.isIOS()) {
                                 xpath = xpath.replace(RegExp("(?<=::|@|\\/|\||\\[|^|\\()([\\w-_]+):([\\w-_]+|\\*)", "g"), ((match, prefix, name) => `*[namespace-uri()='${nsResolver(prefix)}' and local-name()="${name}"]`));
-                            }
+                            }*/
                             aItems = evaluator.evaluate(xpath, context instanceof Document ? this : context, nsResolver, resultType, null);
                         } else {
                             console.error(e)
@@ -14847,7 +14847,7 @@ xover.listener.on('hotreload', async function (file_path) {
             }
         }
         if (file_name in xover.sources) {
-            for (const source of [...xover.sources.values()].filter(document => (document.resource || '').toLowerCase() === file_name.toLowerCase())) {
+            for (const [key, source] of [...xover.sources.entries()].filter(([key, document]) => (document.resource || '').toLowerCase() === file_name.toLowerCase())) {
                 let related_documents = [...xover.sources.values()].filter(document => document.relatedDocuments.flat().find(item => item == source));
                 for (let related_document of related_documents) {
                     related_document.clear()
