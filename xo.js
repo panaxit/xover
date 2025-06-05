@@ -767,7 +767,8 @@ xover.dom.Observer = function (target_node = window.document) {
             }
             if (xover.listener.has('remove')) {
                 for (let node of mutation.removedNodes) {
-                    if (target.contains(node)
+                    if (mutation.addedNodes.length
+                        || node.isConnected//target.contains(node)
                         || node instanceof Element && [HTMLStyleElement, HTMLScriptElement, HTMLSlotElement].includes(node.constructor)
                     ) {
                         continue
