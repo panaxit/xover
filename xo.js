@@ -3542,7 +3542,7 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
     if (this === xover.xml && node1.nodeType === Node.ELEMENT_NODE && node1.hasAttribute("xo-stylesheet")) {
         return all_differences;
     }
-    if (node1.hasOwnProperty("scope") && node2.hasOwnProperty("scope") && node1.scope !== node2.scope) {
+    if (node1.attributes["xo-scope"] != node2.attributes["xo-scope"] || node1.hasOwnProperty("scope") && node2.hasOwnProperty("scope") && node1.scope !== node2.scope) {
         all_differences.push(new Map([[node1, node2]]));
         return all_differences;
     }
