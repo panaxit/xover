@@ -1,0 +1,43 @@
+{
+  "mainAssemblyName": "XmlTransformWasm.dll",
+  "resources": {
+    "hash": "sha256-PfSDZfeQuIjaEOCYvMvvZL4dIqvtDgyH0qQDlV3ujy0=",
+    "jsModuleNative": {
+      "dotnet.native.js": "sha256-0wden9Gltc/KUmSk9R8F9k2K8qKwozLI5K+1vjK0/zY="
+    },
+    "jsModuleRuntime": {
+      "dotnet.runtime.js": "sha256-nlm9ZX+9Z8SHWuCfVhHT5pkK9QzTgBn3opfL6mMas20="
+    },
+    "wasmNative": {
+      "dotnet.native.wasm": "sha256-ycS8yDLUy8HzN6rqu59EBP0zwliZKcYYREQAS4kFphg="
+    },
+    "wasmSymbols": {
+      "dotnet.native.js.symbols": "sha256-+q+dAYwFOZPtz2SYRZGSndRb8jZqFQukHIaBQocQ3CQ="
+    },
+    "assembly": {
+      "System.Collections.Concurrent.wasm": "sha256-o0cTMEvHqnLw0h13zatdqKSaVQuZ89RbOZqt+2FztRM=",
+      "System.Collections.wasm": "sha256-IFh289dkeELADUH6v0cBw1RHbCI0e5DO/12VzjMcfME=",
+      "System.Collections.NonGeneric.wasm": "sha256-wkR21AJy5AZ/hO/RhGHRCLs94bFfeWzaYnt8TFeDMZI=",
+      "System.Collections.Specialized.wasm": "sha256-zWOSxBiF9KKo3Kgd+8tdjI3irkf5VwQ39v/bVuwj1m0=",
+      "System.Diagnostics.DiagnosticSource.wasm": "sha256-VhE9J1FXTq27gkiYMZ9qsAZ6M4MGpV1gmmJnzixKGYg=",
+      "System.Memory.wasm": "sha256-8RZq/arghWVzNrUF1xL7L3pZtLdFKTF1vchFdt+9yHc=",
+      "System.Net.Http.wasm": "sha256-UrcZBzi7+DY0pT+6jqBcOz7uvRU16T43Exq8GxEx7Ds=",
+      "System.Net.Primitives.wasm": "sha256-M5j/21MUc/WhcWzy9ds8YQk6NW5Dis7qj+XnIDq/nJM=",
+      "System.ObjectModel.wasm": "sha256-GxNFCtlrEykc8Y9s3sw1L0+2zfUucj/gkifwimBe7Hw=",
+      "System.Private.CoreLib.wasm": "sha256-tizEhVb2mpZJ4RpcAu+ocdOYHyIWmzzrvqP2U4ZUgEM=",
+      "System.Private.Uri.wasm": "sha256-pj5KOb6mWWkCCmC++NMI5AkjvjiKHfLHG5vwZcCW8ZU=",
+      "System.Private.Xml.wasm": "sha256-N8BaaLKR+5zCHZSnq56I8T41xFFFcMEHGXyk/jOwcpA=",
+      "System.Runtime.InteropServices.JavaScript.wasm": "sha256-puQWzym2FtFI1V8/Eoj2q6Y72jKT22oZhjDos/Y35vo=",
+      "System.Text.Json.wasm": "sha256-+4VyU2DlWu6+5oT9NwucPQRxfI/Sdm7vyWLkV2SqZqE=",
+      "System.Text.RegularExpressions.wasm": "sha256-NTu5lXE1geg8iKt58/QG1mXkIS4XzXzD0fO8s1U0ImU=",
+      "XmlTransformWasm.wasm": "sha256-IPg/Z4nReRyoTxf18OmdfExmRS5VtDHkiKBP6EhFCcw="
+    },
+    "vfs": {
+      "runtimeconfig.bin": {
+        "supportFiles/0_runtimeconfig.bin": "sha256-DU56kdcIZEB13E6Ke+pvQfIbjOiINOdZDZ/5DKxruFY="
+      }
+    }
+  },
+  "debugLevel": 0,
+  "globalizationMode": "invariant"
+}

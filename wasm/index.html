@@ -1,0 +1,41 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>XmlTransform WASM Demo</title>
+</head>
+<body>
+    <h2>XML → XSLT Result:</h2>
+    <pre id="output"></pre>
+
+    <script type="module">
+        import { dotnet } from './dotnet.js';
+
+        // Tell the loader NOT to fetch the .symbols file
+        const host = await dotnet.create({
+            configUrl: './blazor.boot.json',
+            loadDebugSymbols: false
+        });
+
+        const config = host.getConfig();
+        const exports = await host.getAssemblyExports(config.mainAssemblyName);
+
+        // 3) Call your [JSExport] methods
+        const xml = `<greeting><name>Uriel</name></greeting>`;
+        const xsl = `
+        <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+          <xsl:template match="/">
+            <html><body>Hello, <xsl:value-of select="greeting/name"/>!</body></html>
+          </xsl:template>
+        </xsl:stylesheet>`;
+        const result = exports.XmlTransform.Program.TransformXml(xml, xsl);
+
+        // 4) Show it
+        document.getElementById('output').textContent = result;
+
+        // 5) (Optional) If you have a C# Main, run it too
+        // await host.run();
+    </script>
+
+</body>
+</html>

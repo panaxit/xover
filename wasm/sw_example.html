@@ -1,0 +1,54 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>WASM XSLT in a Worker</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 1rem;
+        }
+
+        #output {
+            margin-top: 1rem;
+            padding: 1rem;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <h1>XML → XSLT via WebAssembly Worker</h1>
+    <div id="loading">Initializing worker…</div>
+    <div id="output"></div>
+
+    <script>
+        // 1) Define your XML and XSL:
+        const xml = `<greeting><name>Uriel</name></greeting>`;
+        const xsl = `
+          <xsl:stylesheet version="1.0"
+              xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+            <xsl:template match="/">
+              <html><body>
+                <h2>Hello, <xsl:value-of select="greeting/name"/>!</h2>
+              </body></html>
+            </xsl:template>
+          </xsl:stylesheet>`;
+
+        // 2) Spawn the worker as an ES module:
+        const worker = new Worker('wasm/transform-worker.js', { type: 'module' });
+
+        // 3) Handle messages:
+        worker.onmessage = ({ data }) => {
+            if (data.ready) {
+                document.getElementById('loading').textContent = 'Worker ready—running transform…';
+                worker.postMessage({ xml, xsl });
+            }
+            else if (data.result) {
+                document.getElementById('loading').remove();
+                // Render the resulting HTML
+                document.getElementById('output').innerHTML = data.result;
+            }
+        };
+    </script>
+</body>
+</html>
