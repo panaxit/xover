@@ -1859,6 +1859,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         for (let handler of [...handlers.values()].reverse()) {
             try {
                 if (event.propagationStopped || event.cancelBubble) break;
+                if (event.defaultPrevented && handler.priority < 0) continue;
                 if (instanceOf.call(target, Request) && xover.listener.history.has(handler, target)) continue; //TODO: Check between overflowed and this method
                 if (xover.listener.history.overflowed(handler, target)) {
                     console.warn(`Listener dispatcher overflown`, [handler, target])
@@ -3640,8 +3641,12 @@ xover.string.htmlDecode = function (string) {
 //    frag.append(...p.childNodes);
 //    return frag;
 //}
-xover.string.toHTML = function (string = '') {
-    if (!string.match(`<[^>]+>`)) {
+xover.string.toHTML = function (string = '', ...values) {
+    if (string == null) return string;
+    if (string.constructor === [].constructor) {
+        return xover.string.interpolate(string, values)
+    }
+    if (typeof (string.match) == 'function' && !string.match(`<[^>]+>`)) {
         return new Text(string)
     }
     let body = new DocumentFragment();
@@ -3654,14 +3659,71 @@ xover.string.toHTML = function (string = '') {
         //} else {
         body.append(...html_doc.head.childNodes, ...html_doc.body.childNodes);
         body = body.hasChildNodes() && body || new Text("")
-        if (body.childElementCount == 1) {
-            body = body.firstElementChild;
+        if (body.childNodes.length == 1) {
+            body = body.firstChild;
         }
         //}
     } else {
         body = html_doc
     }
     return body
+}
+
+xover.string.interpolate = function (strings, values) {
+    const html = strings.reduce((acc, str, i) =>
+        acc + str + (i < values.length ? `<!--?slot-${i}-->` : ''), ''
+    );
+
+    const fragment = xover.string.toHTML(html);
+
+    // reemplazar comentarios por valores
+    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_COMMENT, null);
+    while (walker.nextNode()) {
+        const comment = walker.currentNode;
+        const match = comment.nodeValue?.match(/^slot-(\d+)$/);
+        if (match) {
+            const value = values[+match[1]];
+            if (Array.isArray(value)) {
+                comment.replaceWith(...value.map(v =>
+                    v instanceof Node ? v : new Text(String(v))
+                ));
+            } else {
+                comment.replaceWith(
+                    value instanceof Node ? value : new Text(String(value))
+                );
+            }
+        }
+    }
+
+    // buscar atributos dinámicos como onclick=${fn}
+    const elements = fragment.querySelectorAll('*');
+    elements.forEach(el => {
+        for (const attr of el.attributes) {
+            const attrValue = attr.value;
+            const match = attrValue?.match(/^<!--\?slot-(\d+)-->$/);
+            if (match) {
+                const value = values[+match[1]];
+
+                if (attr.name.startsWith('on') && typeof value === 'function') {
+                    // Evento: asignar directamente
+                    el[attr.name] = value;
+                } else if (typeof value === 'object' && attr.name === 'style') {
+                    // Estilo en objeto: el.style = { ... }
+                    Object.assign(el.style, value);
+                } else {
+                    // Atributo normal
+                    el.setAttribute(attr.name, String(value));
+                }
+
+                // Elimina el marcador
+                el.removeAttribute(attr.name);
+            }
+        }
+    });
+
+    return fragment.childElementCount === 1 && fragment.childNodes.length === 1
+        ? fragment.firstChild
+        : fragment;
 }
 
 xover.string.getFileParts = function (file_name = '') {
