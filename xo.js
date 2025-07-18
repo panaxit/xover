@@ -524,13 +524,18 @@ Object.defineProperties(xover.storehouse, {
                             request.onsuccess = async function (event) {
                                 let cursor = event.target.result;
                                 if (cursor) {
+                                    let record;
                                     if (!query) {
-                                        records.push([cursor.key, await store.get(cursor.key)])
+                                        record = await store.get(cursor.key);
                                     } else {
                                         const { value: file } = cursor;
                                         if (new xover.URL(file.name).matches(query)) {
-                                            records.push([cursor.key, await store.get(cursor.key)])
+                                            record = await store.get(cursor.key);
                                         }
+                                    }
+                                    if (record) {
+                                        record.key = cursor.key
+                                        records.push([cursor.key, record])
                                     }
                                     cursor.continue();
                                 }
@@ -7198,6 +7203,14 @@ xover.modernize = async function (targetWindow) {
                                     } else {
                                         document.replaceContent(response);
                                     }
+                                    for (let prop of ['storeKey', 'modifiedDate', 'lastModifiedDate']) {
+                                        Object.defineProperty(document, prop, {
+                                            value: response[prop]
+                                            , enumerable: false
+                                            , configurable: true
+                                            , writable: true
+                                        })
+                                    }
                                     //window.dispatchEvent(new xover.listener.Event('fetch', { url: response.url, href: (response.url || {}).href, tag: '', document: document, store: store, old: old, target: document }, document));
                                     return Promise.resolve(document);
                                 }).catch(async (e) => {
@@ -10974,7 +10987,7 @@ xover.Response = function (response, request) {
         response = new Response(response, { status: !response ? 204 : 200, headers });
     }
     const _original = response.clone();
-    let url = request.url;
+    let url = response.url || request.url;
     let file_name = new URL(url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
     if (response.status == 404) {
         if (file_name in xover.sources.defaults) {
@@ -10994,11 +11007,7 @@ xover.Response = function (response, request) {
             return request;
         }
     });
-    Object.defineProperty(response, 'url', {
-        get: function () {
-            return url;
-        }
-    });
+    response.url = url;
     let _basepath = response.headers.get("x-basepath") || '';
     Object.defineProperty(response, 'basepath', {
         get: function () {
@@ -11231,7 +11240,7 @@ xover.Response = function (response, request) {
             }
 
             if (body instanceof Object) {
-                let url = request.url;
+                let url = response.url || request.url;
                 Object.defineProperty(body, 'url', {
                     get: function () {
                         return url;
@@ -11290,6 +11299,15 @@ xover.Response = function (response, request) {
                         return body.documentElement;
                     }
                 });
+            }
+
+            for (let prop of ['storeKey', 'modifiedDate', 'lastModifiedDate']) {
+                Object.defineProperty(body, prop, {
+                    value: response[prop]
+                    , enumerable: false
+                    , configurable: true
+                    , writable: true
+                })
             }
 
             return body;
@@ -11686,7 +11704,13 @@ xover.Request = function (request, ...args) {
                     stored_document = !xover.session.disableCache && await storehouse.get(request.url);
                     if (stored_document && (!expiry || !stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
                         original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
-                        request.url = new xover.URL(stored_document.name)
+                        Object.defineProperties(original_response, {
+                            "url": { value: new xover.URL(stored_document.name) }
+                            , "storeKey": { value: stored_document.key }
+                            , "lastModifiedDate": { value: stored_document.lastModifiedDate }
+                            , "lastModified": { value: stored_document.lastModified }
+                            , "size": { value: stored_document.size }
+                        })
                     }
                     //}
                     if (settings.progress instanceof HTMLElement) {
