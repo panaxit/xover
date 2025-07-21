@@ -679,7 +679,7 @@ xover.dom.Observer = function (target_node = window.document) {
         intersection_observer.observe(element);
     });
     const updateSections = function (render = false) {
-        let node_set = this.querySelectorAll(`[xo-source],[xo-stylesheet]`)
+        let node_set = this.findAll(`[xo-source],[xo-stylesheet]`)
         for (const el of [...xover.sections].filter(el => !el.checkVisibility())) {
             xover.sections.delete(el);
         }
@@ -6445,19 +6445,6 @@ xover.modernize = async function (targetWindow) {
                     }
                 }
 
-                Object.defineProperty(ShadowRoot.prototype, 'cloneNode', { //ShadowRoot are DocumentFragments that are not natively clonable. We added method to allow comparison with isEqualNode 
-                    value: function cloneNode(deep = false) {
-                        const fragment = document.createDocumentFragment();
-                        this.childNodes.forEach(node => {
-                            fragment.appendChild(node.cloneNode(deep));
-                        });
-                        return fragment;
-                    },
-                    writable: false,
-                    configurable: false,
-                    enumerable: false
-                })
-
                 Object.defineProperty(URL.prototype, 'matches', {
                     value: function (...args) {
                         let predicate = args.pop();
@@ -7204,12 +7191,16 @@ xover.modernize = async function (targetWindow) {
                                         document.replaceContent(response);
                                     }
                                     for (let prop of ['storeKey', 'modifiedDate', 'lastModifiedDate']) {
+                                        if (response[prop] == undefined) {
+                                            delete document[prop]
+                                        } else {
                                         Object.defineProperty(document, prop, {
                                             value: response[prop]
                                             , enumerable: false
                                             , configurable: true
                                             , writable: true
                                         })
+                                    }
                                     }
                                     //window.dispatchEvent(new xover.listener.Event('fetch', { url: response.url, href: (response.url || {}).href, tag: '', document: document, store: store, old: old, target: document }, document));
                                     return Promise.resolve(document);
@@ -7665,7 +7656,7 @@ xover.modernize = async function (targetWindow) {
                         //if (this.scopeNode instanceof Node && this.scopeNode.parentNode && this.scopeNode.name == this.closest('*').getAttribute("xo-slot")) return this.scopeNode;
                         //if (this.ownerDocument instanceof XMLDocument) return null;
                         try {
-                            if (this.hasOwnProperty("scope")) return this.scope;
+                            //if (this.hasOwnProperty("scope")) return this.scope;
                             let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
                             let section = this.section;
                             let source = this.source;
@@ -9416,14 +9407,33 @@ xover.modernize = async function (targetWindow) {
                     return this;
                 }
 
-                XMLDocument.cloneNode = XMLDocument.cloneNode || XMLDocument.prototype.cloneNode;
-                XMLDocument.prototype.cloneNode = function (...args) {
-                    let cloned_element = XMLDocument.cloneNode.apply(this, args);
-                    cloned_element.source = this.source;
-                    cloned_element.store = this.store;
-                    //cloned_element.href = this.href;
-                    cloned_element.url = this.url;
-                    return cloned_element;
+                Object.defineProperty(ShadowRoot.prototype, 'cloneNode', { //ShadowRoot are DocumentFragments that are not natively clonable. We added method to allow comparison with isEqualNode 
+                    value: function cloneNode(deep = false) {
+                        const fragment = document.createDocumentFragment();
+                        this.childNodes.forEach(node => {
+                            fragment.appendChild(node.cloneNode(deep));
+                        });
+                        return fragment;
+                    },
+                    writable: false,
+                    configurable: false,
+                    enumerable: false
+                })
+
+                Document.cloneNode = Document.cloneNode || Document.prototype.cloneNode;
+                Document.prototype.cloneNode = function (...args) {
+                    let clone = Document.cloneNode.apply(this, args);
+                    for (let prop of ['url', 'storeKey', 'modifiedDate', 'lastModifiedDate']) {
+                        Object.defineProperty(clone, prop, {
+                            value: this[prop]
+                            , enumerable: false
+                            , configurable: true
+                            , writable: true
+                        })
+                    }
+                    clone.source = this.source;
+                    clone.store = this.store;
+                    return clone;
                 }
 
                 HTMLScriptElement.cloneNode = HTMLScriptElement.cloneNode || HTMLScriptElement.prototype.cloneNode;
@@ -9717,6 +9727,18 @@ xover.modernize = async function (targetWindow) {
                                             if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                 param_value = eval(`\`${param.value}\``)
                                             }
+                                                if (param_value != undefined) {
+                                                    xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
+                                                }
+                                            } catch (e) {
+                                                //xsltProcessor.setParameter(null, param.getAttribute("name"), "")
+                                                Promise.reject(e);
+                                            }
+                                        };
+                                        for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'document:')]`)) {
+                                            try {
+                                                let param_name = param.getAttribute("name").split(/:/).pop()
+                                                let param_value = eval(`(this.${param_name.replace(/-/g, '.')})`)
                                             if (param_value != undefined) {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                             }
@@ -10428,9 +10450,9 @@ xover.modernize = async function (targetWindow) {
                                     !instanceOf.call(el, HTMLHtmlElement) && el.attributes.toArray().filter(attr => attr.name.split(":")[0] === 'xmlns').remove();
                                     if (![HTMLStyleElement, HTMLScriptElement, HTMLLinkElement].includes(el.constructor)) {
                                         tag && el.setAttributeNode(el.getAttributeNode("xo-source") || el.createAttributeNS(null, "xo-source", tag));
-                                        if (tag === "context:store" && !el.hasOwnProperty("store")) {
+                                        /*if (tag === "context:store" && !el.hasOwnProperty("store")) {
                                             Object.defineProperty(el, 'store', { configurable: false, enumerable: false, writable: true, value: stylesheet.store || self });
-                                        }
+                                        }*/
                                         stylesheet_href && el.setAttributeNode(el.getAttributeNode("xo-stylesheet") || el.createAttributeNS(null, "xo-stylesheet", stylesheet_href));
                                     }
                                 }
@@ -10987,7 +11009,7 @@ xover.Response = function (response, request) {
         response = new Response(response, { status: !response ? 204 : 200, headers });
     }
     const _original = response.clone();
-    let url = response.url || request.url;
+    let url = request.url;
     let file_name = new URL(url).pathname.replace(new RegExp(location.pathname.replace(/[^/]+$/, "")), "");
     if (response.status == 404) {
         if (file_name in xover.sources.defaults) {
@@ -11007,7 +11029,11 @@ xover.Response = function (response, request) {
             return request;
         }
     });
-    response.url = url;
+    Object.defineProperty(response, 'url', {
+        get: function () {
+            return url;
+        }
+    });
     let _basepath = response.headers.get("x-basepath") || '';
     Object.defineProperty(response, 'basepath', {
         get: function () {
@@ -11703,10 +11729,10 @@ xover.Request = function (request, ...args) {
                     let storehouse = await xover.storehouse.sources;
                     stored_document = !xover.session.disableCache && await storehouse.get(request.url);
                     if (stored_document && (!expiry || !stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
+                        request.url = new xover.URL(stored_document.name)
                         original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
                         Object.defineProperties(original_response, {
-                            "url": { value: new xover.URL(stored_document.name) }
-                            , "storeKey": { value: stored_document.key }
+                            "storeKey": { value: stored_document.key }
                             , "lastModifiedDate": { value: stored_document.lastModifiedDate }
                             , "lastModified": { value: stored_document.lastModified }
                             , "size": { value: stored_document.size }
@@ -12913,6 +12939,7 @@ xover.dom.combine = async function (target, new_node) {
             target_preceding_siblings = current.select("preceding-sibling::comment()").filter(el => el.relatedNode = target);
             change_preceding_siblings = change.select("preceding-sibling::comment()");
         }
+        [...change.querySelectorAll(`slot.placeholder`)].remove();
         let result = current;
         let active_element = document.activeElement;
         let selector, selection, current_value;
