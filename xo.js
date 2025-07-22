@@ -2466,7 +2466,8 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                     //}
                     xover.cache.manifest.set(key, key_url);
                     return value.constructor === {}.constructor
-                        && (
+                    && (url.toString().matches(key) ||
+                        (
                             url.protocol == key_url.protocol
                         ) && (
                             !key_url.pathname[1]
@@ -2481,6 +2482,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
                                 return !predicate ? url.searchParams.has(key) : url.searchParams.get(key) == predicate
                             })
                         )
+                    )
                 }
             } catch (e) {
                 if (xover.session.debug) {
