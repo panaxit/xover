@@ -3577,7 +3577,7 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
     if (this === xover.xml && node1.nodeType === Node.ELEMENT_NODE && node1.hasAttribute("xo-stylesheet")) {
         return all_differences;
     }
-    if ((node1.attributes || {})["xo-scope"] != (node2.attributes || {})["xo-scope"] || node1.hasOwnProperty("scope") && node2.hasOwnProperty("scope") && node1.scope !== node2.scope) {
+    if (`${(node1.attributes || {})["xo-scope"]}` !== `${(node2.attributes || {})["xo-scope"]}`/* || node1.hasOwnProperty("scope") && node2.hasOwnProperty("scope") && node1.scope !== node2.scope*/) {
         all_differences.push(new Map([[node1, node2]]));
         return all_differences;
     }
@@ -9871,7 +9871,7 @@ xover.modernize = async function (targetWindow) {
                                         if (response instanceof Promise) {
                                             return response.then(() => self.transform(xsl, config)).catch(e => {
                                                 if (e.status == 404) {
-                                                    source.append(document.createComment("ack:empty"))
+                                                    //source.append(document.createComment("ack:empty"))
                                                     return self.transform(xsl, config);
                                                 } else {
                                                     throw (e)
@@ -10830,7 +10830,7 @@ class MutationSet extends Array {
                 let oldValue = mutation.oldValue;
                 const staticSet = new Set((target.getAttribute("xo-static") || "").split(/\s+/).filter(Boolean));
                 if (oldValue !== null && !target.hasAttribute(attr)) {
-                    staticSet.add(`-${attr}`);
+                    staticSet.add(`-@${attr}`);
                 }
                 if (attr === "class") {
                     const prev = new Set((oldValue || '').split(/\s+/).filter(Boolean));
@@ -12754,7 +12754,7 @@ xover.dom.applyScripts = async function (scripts = []) {
                         let section = (xover.context || {}).section;
                         let xo_stylesheet = (instanceOf.call(section, HTMLElement) && section || document.createElement("p")).getAttribute("xo-stylesheet");
                         let result = (function () {
-                            if (window.document.contains(xover.context.parentNode)) {
+                            if (window.document.contains(target)) {/*xover.context.parentNode*/
                                 try {
                                     return eval.apply(this, arguments)
                                 } catch (e) {
