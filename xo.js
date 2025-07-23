@@ -9840,6 +9840,11 @@ xover.modernize = async function (targetWindow) {
                                     }
                                     if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"][@standalone="yes"]|//xsl:template//html:body')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
                                         //use <xsl:output method="xml"/> to avoid html rules (like embedding invalid items or duplicating <br>) //TODO: Analyze combinations
+                                            if (!xsl.single(`/xsl:*/xsl:output`)) {
+                                                const output = xsl.createElementNS("http://www.w3.org/1999/XSL/Transform", "xsl:output");
+                                                output.setAttribute("method", "xml");
+                                                xsl.documentElement.prepend(output);
+                                            }
                                         let transformed = xsltProcessor.transformToFragment(xml, document);
                                         let newDoc;
                                         if (transformed) {
@@ -10277,6 +10282,9 @@ xover.modernize = async function (targetWindow) {
                                 //if (xsl instanceof Document && xsl.selectSingleNode('xsl:*')) {
                                 //    xsl.href = xsl.href || ""
                                 //}
+                                if (!xsl) {
+                                    continue
+                                }
                                 data = data || this.cloneNode(true);
                                 xsl instanceof Document && await xsl.ready;
                                 if (xsl instanceof Document) { //TODO: Is there any chance that xsl is not a document?
@@ -12073,6 +12081,11 @@ xover.xml.initialize = async function (target) {
         stylesheet.before(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:name" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="name()"/></xsl:template>`))
         stylesheet.before(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:value" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="."/></xsl:template>`))
     }
+    for (let file_ref of target.select(`//xsl:value-of[starts-with(@select,"file:")]`)) {
+        let param_name = file_ref.getAttribute("select").split(/:/).pop()
+        let param_value = eval(`(url.${param_name.replace(/^file:/, '').replace(/-/g, '.')})`)
+        file_ref.replaceWith(xover.xml.createNode(`<xsl:text>${param_value || ''}</xsl:text>`))
+    }
     if (imports.length) {
         await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
         function assert(condition, message) {
@@ -12102,7 +12115,7 @@ xover.xml.initialize = async function (target) {
                 return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
             }
         } catch (e) {
-            const url = e.url;
+            const url = e.url || '';
             let custom_event = new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, target);
             window.dispatchEvent(custom_event);
             if (!custom_event.defaultPrevented) {
