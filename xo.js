@@ -9840,11 +9840,11 @@ xover.modernize = async function (targetWindow) {
                                     }
                                     if (xsl.documentElement.getAttribute("xmlns") && !(xsl.selectSingleNode('//xsl:output[@method="html"][@standalone="yes"]|//xsl:template//html:body')) /*xover.browser.isIOS()*/) {// && ((result || {}).documentElement || {}).namespaceURI == "http://www.w3.org/1999/xhtml" ) {
                                         //use <xsl:output method="xml"/> to avoid html rules (like embedding invalid items or duplicating <br>) //TODO: Analyze combinations
-                                            if (!xsl.single(`/xsl:*/xsl:output`)) {
-                                                const output = xsl.createElementNS("http://www.w3.org/1999/XSL/Transform", "xsl:output");
-                                                output.setAttribute("method", "xml");
-                                                xsl.documentElement.prepend(output);
-                                            }
+                                            //if (!xsl.single(`/xsl:*/xsl:output`)) {
+                                            //    const output = xsl.createElementNS("http://www.w3.org/1999/XSL/Transform", "xsl:output");
+                                            //    output.setAttribute("method", "xml");
+                                            //    xsl.documentElement.prepend(output);
+                                            //}
                                         let transformed = xsltProcessor.transformToFragment(xml, document);
                                         let newDoc;
                                         if (transformed) {
