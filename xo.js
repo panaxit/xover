@@ -7688,7 +7688,7 @@ xover.modernize = async function (targetWindow) {
                                         } else if (attr.localName == "xo-source") {
                                             scope = source;
                                         } else {
-                                            scope = source.selectFirst(`//*[@xo:id="${attr}"]`) || section.source.selectFirst(`//*[@xo:id="${attr}"]`) || source.selectFirst(`//*[@id="${attr}"]`) || section.source.selectFirst(`//*[@id="${attr}"]`) || attr.localName == "xo-scope" && section.source.selectFirst(attr.value) || undefined;
+                                            scope = source.selectFirst(`//*[@xo:id="${attr}"]`) || section.source && section.source.selectFirst(`//*[@xo:id="${attr}"]`) || source.selectFirst(`//*[@id="${attr}"]`) || section.source && section.source.selectFirst(`//*[@id="${attr}"]`) || attr.localName == "xo-scope" && section.source && section.source.selectFirst(attr.value) || undefined;
                                             if (instanceOf.call(scope, Attr) && scope.localName == 'id' && scope.namespaceURI == xover.spaces["xover"]) {
                                                 scope = scope.ownerElement;
                                             }
@@ -10008,7 +10008,7 @@ xover.modernize = async function (targetWindow) {
                         }
 
                         let source_document = await this.scope;
-                        source_document = source_document.ownerDocument || source_document;
+                        //source_document = source_document.ownerDocument || source_document;
                         if (this.select(`ancestor::*[@xo-stylesheet or @xo-source]`).some(ancestor => ancestor.getAttribute("xo-stylesheet") == stylesheet && ancestor.source == source_document)) {
                             console.warn(`A recursion was prevented`, this)
                             return Promise.resolve(this)
@@ -14195,7 +14195,7 @@ xover.Store = function (xml, ...args) {
                 if (!__document.firstChild) {
                     await self.ready;
                 }
-                let document = __document.cloneNode(true);
+                let document = __document//.cloneNode(true);
                 let stylesheets = instanceOf.call(target, HTMLElement) && target.hasAttribute("xo-stylesheet") && [{ target, href: target.getAttributeNode("xo-stylesheet"), store: self }] || xover.manifest.getSettings(document, 'stylesheets');
                 stylesheets = stylesheets.length ? stylesheets : this.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
                 stylesheets = stylesheets.length ? stylesheets : document.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
