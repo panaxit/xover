@@ -2767,7 +2767,7 @@ Object.defineProperty(xover.session, 'getCurrentStatus', {
 Object.defineProperty(xover.session, 'checkStatus', {
     value: async function (settings) {
         if (!(navigator.onLine || 'session' in xover.server)) return xover.session.status;
-        let server_status = {};
+        let server_status = { "status": xover.session.status };
         //if (!((xover.manifest.server || {}).session)) {
         //    return Promise.reject(new Error("Session endpoint not configured."));
         //}
@@ -3579,7 +3579,7 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
     if (this === xover.xml && node1.nodeType === Node.ELEMENT_NODE && node1.hasAttribute("xo-stylesheet")) {
         return all_differences;
     }
-    if (`${(node1.attributes || {})["xo-scope"]}` !== `${(node2.attributes || {})["xo-scope"]}`/* || node1.hasOwnProperty("scope") && node2.hasOwnProperty("scope") && node1.scope !== node2.scope*/) {
+    if (`${(node1.attributes || {})["xo-scope"]}` !== `${(node2.attributes || {})["xo-scope"]}` || node1.hasOwnProperty("scope") && node2.hasOwnProperty("scope") && node1.scope !== node2.scope) {
         all_differences.push(new Map([[node1, node2]]));
         return all_differences;
     }
@@ -7662,7 +7662,7 @@ xover.modernize = async function (targetWindow) {
                             let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
                             let section = this.section;
                             let source = this.source;
-                            if (instanceOf.call(source, Document) && !source.firstChild) {
+                            if (instanceOf.call(source, Document) && !source.firstChild && this.closest(`[xo-source],[xo-stylesheet]`).contains(this.closest(`[xo-slot]`))) {
                                 let ready = source.ready;
                                 return ready.then(() => this.scope);
                             }
@@ -7723,9 +7723,9 @@ xover.modernize = async function (targetWindow) {
                                 slot = '';
                             }
                             if (!slot && instanceOf.call(this, Text)) slot = 'text()';
-                            if (scope && !instanceOf.call(scope.attributes, NamedNodeMap)) {
-                                scope = scope.documentElement || scope.firstElementChild;
-                            }
+                            //if (scope && !instanceOf.call(scope.attributes, NamedNodeMap)) {
+                            //    scope = scope.documentElement || scope.firstElementChild;
+                            //}
                             if (scope && slot) {
                                 slot = slot.value;
                                 if (!slot) {
@@ -10007,7 +10007,8 @@ xover.modernize = async function (targetWindow) {
                             }
                         }
 
-                        let source_document = this.store;
+                        let source_document = await this.scope;
+                        source_document = source_document.ownerDocument || source_document;
                         if (this.select(`ancestor::*[@xo-stylesheet or @xo-source]`).some(ancestor => ancestor.getAttribute("xo-stylesheet") == stylesheet && ancestor.source == source_document)) {
                             console.warn(`A recursion was prevented`, this)
                             return Promise.resolve(this)
