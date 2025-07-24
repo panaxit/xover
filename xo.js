@@ -10007,7 +10007,7 @@ xover.modernize = async function (targetWindow) {
                             }
                         }
 
-                        let source_document = await this.scope;
+                        let source_document = await scope_handler.get.call(this);
                         //source_document = source_document.ownerDocument || source_document;
                         if (this.select(`ancestor::*[@xo-stylesheet or @xo-source]`).some(ancestor => ancestor.getAttribute("xo-stylesheet") == stylesheet && ancestor.source == source_document)) {
                             console.warn(`A recursion was prevented`, this)
