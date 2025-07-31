@@ -9666,9 +9666,6 @@ xover.modernize = async function (targetWindow) {
                                             }
                                         };
                                         /*Once all dependencies are loaded. Then we can begin transforms*/
-                                        window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, this));
-                                        xsltProcessor.importStylesheet(xsl);
-
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'js:')][text()]`)) {
                                             try {
                                                 xsltProcessor.setParameter(null, param.getAttribute("name"), eval(param.textContent))
@@ -9855,6 +9852,8 @@ xover.modernize = async function (targetWindow) {
                                                 xml.firstElementChild.setAttributeNS(xover.spaces[prefix], prop, xover[prefix][prop]);
                                             }
                                         }
+                                        window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
+                                        xsltProcessor.importStylesheet(xsl);
                                         try {
                                             if (async_mode && typeof (xsltProcessor.asyncTransform) == 'function') {
                                                 return xsltProcessor.asyncTransform(xml, xsl).catch(e => {
