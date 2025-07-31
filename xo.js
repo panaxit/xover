@@ -8287,7 +8287,7 @@ xover.modernize = async function (targetWindow) {
                                         }
                                         target.removeAttribute(attr.name)
                                     }
-                                    let attributes = [...el.attributes].filter(attr => !static.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`) || attr.name === "class" && swap.find(item => item[0] == '.'))
+                                    let attributes = [...el.attributes].filter(attr => !static.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`) || static.includes(`@xo-swap-${attr.name}`) || attr.name === "class" && swap.find(item => item[0] == '.'))
                                     target.applyAttributes(attributes, { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
@@ -8301,10 +8301,10 @@ xover.modernize = async function (targetWindow) {
                                         if (swap && swap_classes.includes('@class')) {
                                             target.className = source.value
                                         } else {
-                                            for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static_classes.includes("@class") && [(swap_classes || `.${class_name}`)].flat().includes(`.${class_name}`))) {
+                                            for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static_classes.includes("@class") && !static_classes.includes(`.${class_name}`)/* && [(swap_classes || `.${class_name}`)].flat().includes(`.${class_name}`)*/)) {
                                                 target.classList.remove(class_name)
                                             }
-                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class")/* && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)*/)
+                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && !static_classes.includes(`.${class_name}`)/* && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)*/)
                                             ) {
                                                 if (class_name[0] == "-") {
                                                     target.classList.remove(class_name.slice(1))
@@ -12491,7 +12491,7 @@ xover.xml.staticMerge = function (node1, node2) {
 
     if (node2.localName == 'template') {
         node2.applyAttributes(node1.attributes)
-    } else if (node1.nodeType === Node.ELEMENT_NODE
+    } else if (node1.nodeType === Node.ELEMENT_NODE && !node1.cloneNode().isEqualNode(node2.cloneNode())
         //&& node1.isEquivalentNode(node2)
         //&& node1.getAttribute("xo-xsl-source") === node2.getAttribute("xo-xsl-source")
         //&& (node1.id && node1.id == node2.id
@@ -12502,7 +12502,7 @@ xover.xml.staticMerge = function (node1, node2) {
         //        && (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '').replace(/^context:.*/, '') == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '').replace(/^context:.*/, '')
         //    ))
     ) {
-        node2.applyAttributes(node1, { swap: (node1.getAttribute("xo-static") || '').split(/\s+/g).map(item => item.replace(/^-/, '')), static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')} ${[...node2.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => /*(["xo-swap-class"].includes(attr.name) && attr.value) ? attr.value.split(/\s+/).map(value => `.${value}`).join(' ') : */`@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*/// ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}
+        node2.applyAttributes(node1, { swap: (node1.getAttribute("xo-static") || '').split(/\s+/g).map(item => item.replace(/^-/, '')), static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')} ${[...node2.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => /*(["xo-swap-class"].includes(attr.name) && attr.value) ? attr.value.split(/\s+/).map(value => `.${value}`).join(' ') : */`@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')} ${attr.value.split(/\s+/g).filter(item => item).map(item => `.${item}`).concat(node1.getAttribute(attr.localName).split(/\s+/g).filter(item => item).map(item => `.${attr.value.split(/\s+/g).filter(item => item).map(item => `.${item}`).concat(node1.getAttribute(attr.localName).split(/\s+/g).filter(item => item)).join(' ')}`)).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*/// ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}
         //node1.applyAttributes(...node2.attributes);
     }
     if (static.length && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase()) {
