@@ -3638,7 +3638,7 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
     const node2_children = [...node2.childNodes].filter(el => ![Node.TEXT_NODE, Node.COMMENT_NODE].includes(el.nodeType) || el.nodeType === Node.TEXT_NODE && el.value.trim());
     if (node1_children.length && node1_children.length == node2_children.length) {
         /*if (node1_children.every((el, ix) => el.constructor == node2_children[ix].constructor || el.localName === 'slot' || node2_children[ix].localName === 'slot')) {*/
-        const child_differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(item => item).flat(Infinity);
+        const child_differences = [...node1_children].map((item, ix) => xover.xml.getDifferences(item, node2_children[ix])).filter(Boolean).flat(Infinity);
         if (attr_differences.length && child_differences.length) {
             all_differences.push(child_differences);
             all_differences.push(attr_differences);
@@ -6177,7 +6177,7 @@ xover.modernize = async function (targetWindow) {
                     Node.prototype.observe = function (...args) {
                         let config = { characterData: true, attributes: true, childList: true, subtree: true, attributeOldValue: true, characterDataOldValue: true }
                         let observer = xover.xml.Observer;
-                        for (arg of args.filter(item => item)) {
+                        for (arg of args.filter(Boolean)) {
                             if (arg.constructor == {}.constructor) {
                                 config = arg
                             } else if (typeof (arg) == 'function') {
@@ -6382,7 +6382,7 @@ xover.modernize = async function (targetWindow) {
                         if (typeof (args[0]) === 'string') {
                             return [...this].filter(el => el.selectSingleNode(args[0]))
                         } else if (typeof (args[0]) === 'function') {
-                            return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
+                            return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(Boolean);
                         }
                     }
                 })
@@ -6457,7 +6457,7 @@ xover.modernize = async function (targetWindow) {
                             return [];
                         }
                     } else if (typeof (args[0]) === 'function') {
-                        return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(item => item);
+                        return [args[0].apply(this, [this].concat([1, 2, 3].slice(1))) && this || null].filter(Boolean);
                     }
                 }
 
@@ -13093,7 +13093,7 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
     let iframe = this;
     iframe.addEventListener('load', function () {
         function loadScript(type, ...files) {
-            files = files.filter(item => item);
+            files = files.filter(Boolean);
             if (!files.length) return;
             let window = this.ownerDocument.defaultView;
             let target = instanceOf.call(this, Node) && this || iframe.contentDocument || iframe.contentWindow.document;
