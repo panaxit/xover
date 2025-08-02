@@ -2100,6 +2100,9 @@ Object.defineProperty(xover.listener, 'on', {
             handler.conditions = handler.conditions || conditions && [] || undefined;
             for (let condition of conditions) {
                 let params;
+                condition = "?" + condition.replace(/=/g, "%3D");
+                condition = condition.replace(/([&?](?:\.?\w+)+[*^$~!]?)%3D/g, "$1=");
+                condition = condition.slice(1);
                 if ('!'.includes(condition[0])) {
                     params = new URLSearchParams("?")
                     params.set(condition, "")
@@ -6123,7 +6126,7 @@ xover.modernize = async function (targetWindow) {
                                 if (String(current_value) === String(old_value)) continue;
                                 let node_event = new xover.listener.Event('change', { srcElement: active_element, element: target, attribute, value: current_value, old: old_value, removedNodes: mutation.removedNodes, addedNodes: mutation.addedNodes, attributes: mutation.attributes }, attribute);
                                 window.dispatchEvent(node_event);
-                                if (node_event.defaultPrevented || current_value == null && target.hasAttributeNS(attribute.namespaceURI, attribute.localName)) delete (mutation.attributes[attribute.namespaceURI] || {})[attribute.localName];
+                                if (attribute.inert || node_event.defaultPrevented || current_value == null && target.hasAttributeNS(attribute.namespaceURI, attribute.localName)) delete (mutation.attributes[attribute.namespaceURI] || {})[attribute.localName];
                                 if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) {
                                     delete mutation.attributes[attribute.namespaceURI];
                                 } else {
@@ -6131,6 +6134,7 @@ xover.modernize = async function (targetWindow) {
                                         field.setAttribute("value", current_value)
                                     }
                                 }
+                                delete attribute.inert;
                             }
                         }
 
@@ -8237,88 +8241,89 @@ xover.modernize = async function (targetWindow) {
                 }
 
                 if (!Element.prototype.hasOwnProperty('applyAttributes')) {
-                    const boolean_attrs = new Set([
-                        "allowfullscreen",  // iframe
-                        "async",            // script
-                        "autofocus",        // input, button, select, textarea
-                        "autoplay",         // audio, video
-                        "checked",          // input (type="checkbox" or "radio")
-                        "controls",         // audio, video
-                        "default",          // track
-                        "defer",            // script
-                        "disabled",         // button, fieldset, input, optgroup, option, select, textarea
-                        "formnovalidate",   // button, input (type="submit")
-                        "hidden",           // global attribute
-                        "ismap",            // img
-                        "itemscope",        // any element (Microdata API)
-                        "loop",            // audio, video
-                        "multiple",         // input (type="file"), select
-                        "muted",            // audio, video
-                        "nomodule",         // script
-                        "novalidate",       // form
-                        "open",            // details, dialog
-                        "readonly",         // input, textarea
-                        "required",         // input, select, textarea
-                        "reversed",         // ol
-                        "selected",         // option
-                        "playsinline",      // video
-                        "draggable",        // global attribute (treated as a boolean in some scenarios)
-                        "spellcheck",       // global attribute (treated as a boolean in some scenarios)
-                        "translate"         // global attribute (treated as a boolean in some scenarios)
-                    ]);
+                    const boolean_attrs = [
+                        "@allowfullscreen",  // iframe
+                        "@async",            // script
+                        "@autofocus",        // input, button, select, textarea
+                        "@autoplay",         // audio, video
+                        "@checked",          // input (type="checkbox" or "radio")
+                        "@controls",         // audio, video
+                        "@default",          // track
+                        "@defer",            // script
+                        "@disabled",         // button, fieldset, input, optgroup, option, select, textarea
+                        "@formnovalidate",   // button, input (type="submit")
+                        "@hidden",           // global attribute
+                        "@ismap",            // img
+                        "@itemscope",        // any element (Microdata API)
+                        "@loop",            // audio, video
+                        "@multiple",         // input (type="file"), select
+                        "@muted",            // audio, video
+                        "@nomodule",         // script
+                        "@novalidate",       // form
+                        "@open",            // details, dialog
+                        "@readonly",         // input, textarea
+                        "@required",         // input, select, textarea
+                        "@reversed",         // ol
+                        "@selected",         // option
+                        "@playsinline",      // video
+                        "@draggable",        // global attribute (treated as a boolean in some scenarios)
+                        "@spellcheck",       // global attribute (treated as a boolean in some scenarios)
+                        "@translate"         // global attribute (treated as a boolean in some scenarios)
+                    ];
                     Object.defineProperty(Element.prototype, 'applyAttributes', {
                         enumerable: false,
                         value: function (source = [], options = {}) {
                             const target = this;
                             let { static = [], swap = [] } = options;
                             let sources = !source.nodeType && typeof source[Symbol.iterator] === 'function' && source.length && [].constructor != source.constructor ? [...source].flat() : [source];
-                            for (const source of sources.flat(Infinity)) {
+                            for (let source of sources.flat(Infinity)) {
                                 if (source.nodeType === Node.ELEMENT_NODE /*&& (target.id || source.id) == (source.id || target.id)
                                     && target.getAttribute("xo-source") == source.getAttribute("xo-source")
                                     && target.getAttribute("xo-stylesheet") == source.getAttribute("xo-stylesheet")
                                     && target.getAttribute("xo-scope") == source.getAttribute("xo-scope")*/
                                 ) {
-                                    const el = source;
                                     let static_attrs = static || [];
-                                    let swap_attrs = [...boolean_attrs].map(item => `@${item}`).filter(attr => !static_attrs.includes(attr)).concat(["@class"].filter(() => swap.find(item => item[0] == '.'))).concat(["@style"].filter(() => swap.find(item => item.indexOf('style:') == 0))).filter(item => !static.includes(item));
-                                    for (let attr of [...target.attributes].filter(attr => !el.hasAttribute(attr.name) && swap_attrs.includes(`@${attr.name}`) && !static_attrs.includes(`@${attr.name}`))) {
-                                        if (boolean_attrs.has(attr.name)) {
+                                    let swap_attrs = [...boolean_attrs, "@class", "@style"].filter(item => !static_attrs.includes(item))/*.concat(["@class"].filter(() => swap.find(item => item[0] == '.'))).concat(["@style"].filter(() => swap.find(item => item.indexOf('style:') == 0))))*/;
+                                    for (let attr of [...target.attributes].filter(attr => !source.hasAttribute(attr.name) && boolean_attrs.includes(`@${attr.name}`) && !static_attrs.includes(`@${attr.name}`))) {
+                                        if (boolean_attrs.includes(`@${attr.name}`)) {
                                             target[attr.name] = false;
                                         }
                                         target.removeAttribute(attr.name)
                                     }
-                                    let attributes = [...el.attributes].filter(attr => !static.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`) || static.includes(`@xo-swap-${attr.name}`) || attr.name === "class" && swap.find(item => item[0] == '.'))
+                                    let attributes = [...source.attributes].filter(attr => !static.includes(`@${attr.name}`) || swap_attrs.includes(`@${attr.name}`) || attr.name === "class" && swap.find(item => item[0] == '.') || attr.name === "class" && static.find(item => item[0] == '.'));
                                     target.applyAttributes(attributes, { static, swap });
                                 } else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
                                     const attr = source;
                                     //if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
                                     if (attr.isEqualNode(target.attributes[attr.name])) continue;
-                                    const source_node = attr.ownerElement;
-                                    if (!target.hasAttribute(attr.name)) target.setAttribute(attr.name, "");
+                                    source = attr.ownerElement;
                                     if (attr.name == "class") {
+                                        if (!target.hasAttribute(attr.name)) target.setAttribute(attr.name, "");
                                         const static_classes = (static || []).filter(el => el[0] == ".");
                                         const swap_classes = swap;
                                         if (swap && swap_classes.includes('@class')) {
-                                            target.className = source.value
+                                            target.className = attr.value
                                         } else {
-                                            for (const class_name of [...target.classList].filter(class_name => !source_node.classList.contains(class_name) && !static_classes.includes("@class") && !static_classes.includes(`.${class_name}`)/* && [(swap_classes || `.${class_name}`)].flat().includes(`.${class_name}`)*/)) {
+                                            for (const class_name of [...target.classList].filter(class_name => swap_classes.includes(`.${class_name}`) && !source.classList.contains(class_name))) {
                                                 target.classList.remove(class_name)
                                             }
-                                            for (const class_name of [...source_node.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && !static_classes.includes(`.${class_name}`)/* && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)*/)
+                                            for (const class_name of [...source.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && !static_classes.includes(`.${class_name}`)/* && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)*/)
                                             ) {
                                                 if (class_name[0] == "-") {
                                                     target.classList.remove(class_name.slice(1))
+                                                } else {
+                                                    target.classList.add(class_name)
                                                 }
-                                                target.classList.add(class_name)
                                             }
                                         }
                                     } else if (attr.name == "style") {
-                                        for (const [property] of [...target.attributeStyleMap].filter(([prop]) => swap.includes(`style:${prop}`))) {
+                                        if (!target.hasAttribute(attr.name)) target.setAttribute(attr.name, "");
+                                        for (const [property] of [...target.attributeStyleMap].filter(([prop]) => swap.includes(prop))) {
                                             target.attributeStyleMap.delete(property);
                                         }
-                                        for (const [property] of [...source_node.attributeStyleMap]) {
-                                            target.style[property] = source_node.style[property];
-                                            //target.attributeStyleMap.set(property, source_node.attributeStyleMap.get(property)) /*This method throws an error for some valid styles*/
+                                        for (const [property] of [...source.attributeStyleMap]) {
+                                            target.style[property] = source.style[property];
+                                            //target.attributeStyleMap.set(property, source.attributeStyleMap.get(property)) /*This method throws an error for some valid styles*/
                                         }
                                     } else {
                                         target.setAttributeNode(attr.cloneNode());
@@ -10890,13 +10895,13 @@ class MutationSet extends Array {
                             .forEach(p => currProps.add(p));
                     }
                     for (const prop of currProps) {
-                        if (staticSet.has(`-style:${prop}`)) {
-                            staticSet.delete(`-style:${prop}`);
+                        if (staticSet.has(`-${prop}`)) {
+                            staticSet.delete(`-${prop}`);
                         }
                     }
                     for (const prop of oldProps) {
                         if (!currProps.has(prop)) {
-                            staticSet.add(`-style:${prop}`);
+                            staticSet.add(`-${prop}`);
                         }
                     }
                 }
@@ -12501,8 +12506,41 @@ xover.xml.staticMerge = function (node1, node2) {
         //        && (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '').replace(/^context:.*/, '') == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '').replace(/^context:.*/, '')
         //    ))
     ) {
-        node2.applyAttributes(node1, { swap: (node1.getAttribute("xo-static") || '').split(/\s+/g).map(item => item.replace(/^-/, '')), static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(node1.getAttribute("xo-swap") || '')} ${(node2.getAttribute("xo-swap") || '')} ${[...node2.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => /*(["xo-swap-class"].includes(attr.name) && attr.value) ? attr.value.split(/\s+/).map(value => `.${value}`).join(' ') : */`@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')} ${attr.value.split(/\s+/g).filter(item => item).map(item => `.${item}`).concat(node1.getAttribute(attr.localName).split(/\s+/g).filter(item => item).map(item => `.${attr.value.split(/\s+/g).filter(item => item).map(item => `.${item}`).concat(node1.getAttribute(attr.localName).split(/\s+/g).filter(item => item)).join(' ')}`)).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean) }); /*What is marked as swap on node2 should be static and visceversa*/// ${[...node2.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(node2.localName == 'template' && node1.hasAttribute(attr_name.substring(1)))).join(' ')}
-        //node1.applyAttributes(...node2.attributes);
+        let target = node2;
+        let source = node1.cloneNode();
+        let static = [];
+        for (let attr of [...source.attributes].filter(attr => source.hasAttribute(`xo-swap-${attr.name}`))) {
+            let swap = source.getAttribute(`xo-swap-${attr.name}`) || '';
+            if (["class", "style"].includes(attr.name)) {
+                static = source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean).map(item => attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name == 'class' ? '.' : ''}${item}`).join(' '));
+                /*static = source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean).map(item => `.${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean)).join(' ')}`);*/
+                let new_value = attr.value.split(/\s+/).filter(item => !swap.split(/\s+/g).includes(item));
+                source.setAttribute(attr.name, new_value.join(' '));
+                source.removeAttribute(`xo-swap-${attr.name}`);
+            } else {
+            }
+        }
+        let swap = (source.getAttribute("xo-static") || '').split(/\s+/g).filter(Boolean).map(item => item.replace(/^-/, ''));
+        `${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `${attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name.replace(/^xo-swap-/, '') === 'class' ? '.' : attr.name.replace(/^xo-swap-/, '') === 'style' ? '@' : ''}${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
+        for (let static_attr of [...target.closest('*').attributes].filter(attr => attr.name.indexOf(`xo-swap-`) == 0)) {
+            let attr = source.getAttributeNode(`${static_attr.name.replace(/^xo-swap-/, '')}`) || {};
+            if (["class", "style"].includes(attr.name)) {
+                swap = static_attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name == 'class' ? '.' : ''}${item}`);
+                /*swap = source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean).map(item => `.${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean)).join(' ')}`);*/
+                //let new_value = attr.value.split(/\s+/).filter(item => !swap.split(/\s+/g).includes(item));
+                //source.setAttribute(attr.name, new_value.join(' '));
+                //source.removeAttribute(`xo-swap-${attr.name}`);
+            }
+        }
+        let target_swap = `${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `${attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name.replace(/^xo-swap-/, '') === 'class' ? '.' : attr.name.replace(/^xo-swap-/, '') === 'style' ? '@' : ''}${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
+
+        swap = swap.filter(item => !target_swap.includes(item));
+
+        target.applyAttributes(source, {
+            swap
+            , static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(source.getAttribute("xo-swap") || '')} ${(target.getAttribute("xo-swap") || '')} ${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => /*(["xo-swap-class"].includes(attr.name) && attr.value) ? attr.value.split(/\s+/).map(value => `.${value}`).join(' ') : */`@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')} ${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean)
+        }); /*What is marked as swap on target should be static and visceversa*/// ${[...target.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(target.localName == 'template' && source.hasAttribute(attr_name.substring(1)))).join(' ')}
+        //source.applyAttributes(...target.attributes);
     }
     if (static.length && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase()) {
         for (let attr of node1.attributes) {
@@ -12675,7 +12713,18 @@ xover.xml.combine = function (target, new_node) {
 
         ////let swap = [current.closest('*').getAttributeNode(`xo-swap-${change.name}`) || {}].filter(attr => attr.name).map(attr => (["xo-swap-class"].includes(attr.name)) ? attr.value.split(/\s+/g).map(value => `.${value}`) : `${attr.name.replace(/^xo-swap-/, '@')}`).flat();
 
-        target.attributes && target.applyAttributes(new_node); //, { swap: `@xo-swap ${(new_node.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) }
+        let source = new_node;
+        for (let swap_attr of [...target.closest('*').attributes].filter(attr => attr.name.indexOf(`xo-swap-`) == 0)) {
+            let attr = source.getAttributeNode(`${swap_attr.name.replace(/^xo-swap-/, '')}`) || {};
+            if (["class", "style"].includes(attr.name)) {
+                swap = swap_attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name == 'class' ? '.' : ''}${item}`);
+                /*swap = source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean).map(item => `.${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean)).join(' ')}`);*/
+                //let new_value = attr.value.split(/\s+/).filter(item => !swap.split(/\s+/g).includes(item));
+                //source.setAttribute(attr.name, new_value.join(' '));
+                //source.removeAttribute(`xo-swap-${attr.name}`);
+            }
+        }
+        target.attributes && target.applyAttributes(new_node, { swap }); //, { swap: `@xo-swap ${(new_node.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) }
         if (instanceOf.call(new_node, CustomElement)) {
             target.initialChildNodes = new_node.initialChildNodes.cloneNode(true);
         } else if (target.shadowMode && !["open", "closed"].includes(target.getAttribute("shadowrootmode"))) {
@@ -15957,7 +16006,7 @@ class TimeoutError extends Error {
 //    }
 //});
 
-xover.listener.on(['change::*[xo-slot]:not([onchange])', 'change::*[name]:not([onchange])'], function () {
+xover.listener.on(['change::*[value][xo-slot]:not([onchange])', 'change::*[value][name]:not([onchange])'], function () {
     if (this.type === 'date' && this.value != '' && !isValidISODate(this.value) || this.preventChangeEvent) {
         this.preventChangeEvent = undefined;
         event.preventDefault();
@@ -15967,7 +16016,7 @@ xover.listener.on(['change::*[xo-slot]:not([onchange])', 'change::*[name]:not([o
     let scope = this.scope;
     if (!scope) return;
     //let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
-    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.value || null : ((srcElement instanceof HTMLSelectElement && srcElement.options[srcElement.selectedIndex].getAttributeNode("value") || srcElement.value));
+    let value = (srcElement instanceof HTMLInputElement && ['checkbox', 'radio'].includes(srcElement.type)) ? srcElement.checked && srcElement.getAttributeNode("value") || null : ((srcElement instanceof HTMLSelectElement && srcElement.options[srcElement.selectedIndex].getAttributeNode("value") || srcElement.value));
     if (instanceOf.call(scope, Attr, Text)) {
         scope.set(value);
     } //else if (scope instanceof Node) {
