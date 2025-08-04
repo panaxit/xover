@@ -320,6 +320,32 @@ xover.stores = new Proxy({}, {
     }
 });
 
+Object.defineProperty(Object.prototype, 'instanceOf', {
+    enumerable: false,
+    value: function (...constructors) {
+        if (this == null) return false;
+        if ("nodeType" in this && (this.ownerDocument || this).defaultView) {
+            constructors = constructors.reduce((array, el) => {
+                array.push((this.ownerDocument || this).defaultView[el.name] || el);
+                array.push(top.window[el.name] || el);
+                array.push(el);
+                return array.distinct();
+            }, []);
+        }
+        return constructors.some(constructor => {
+            if (constructor == CustomElement) {
+                return customElements.get(this.localName) || this.attributes && customElements.get(this.getAttribute("is"))
+            } else if (typeof constructor === "function") {
+                return this instanceof constructor || constructor.name && (this.constructor || {}).name == constructor.name;
+            } else if (constructor && typeof constructor === "object" && "Node" in constructor) {
+                // Check for constructor in a specific context (e.g., iframe)
+                return this instanceof constructor.Node;
+            }
+            return false;
+        })
+    }
+})
+
 xover.data.binding = {};
 xover.data.binding["max_subscribers"] = 30;
 xover.data.binding.sources = {};
@@ -5902,32 +5928,6 @@ xover.modernize = async function (targetWindow) {
                     })
                 }
 
-                Object.defineProperty(Object.prototype, 'instanceOf', {
-                    enumerable: false,
-                    value: function (...constructors) {
-                        if (this == null) return false;
-                        if ("nodeType" in this && (this.ownerDocument || this).defaultView) {
-                            constructors = constructors.reduce((array, el) => {
-                                array.push((this.ownerDocument || this).defaultView[el.name] || el);
-                                array.push(top.window[el.name] || el);
-                                array.push(el);
-                                return array.distinct();
-                            }, []);
-                        }
-                        return constructors.some(constructor => {
-                            if (constructor == CustomElement) {
-                                return customElements.get(this.localName) || this.attributes && customElements.get(this.getAttribute("is"))
-                            } else if (typeof constructor === "function") {
-                                return this instanceof constructor || constructor.name && (this.constructor || {}).name == constructor.name;
-                            } else if (constructor && typeof constructor === "object" && "Node" in constructor) {
-                                // Check for constructor in a specific context (e.g., iframe)
-                                return this instanceof constructor.Node;
-                            }
-                            return false;
-                        })
-                    }
-                })
-
                 Document.createElement = Document.createElement || Document.prototype.createElement;
                 Document.prototype.createElement = function (tag, options = {}) {
                     const element = Document.createElement.call(this, tag, options);
@@ -9837,6 +9837,15 @@ xover.modernize = async function (targetWindow) {
                                             if (!customComponents.length) return;
                                             customComponents.forEach(component => customElements.upgrade(component));
                                         }
+                                        xml = instanceOf.call(xml, Document) ? xml.cloneNode(true) : xover.xml.createDocument(xml);
+                                        if (!instanceOf.call(xml.firstElementChild, HTMLElement, SVGElement) && instanceOf.call((xml.documentElement || xml), Element)) {
+                                            Element.setAttributeNS.call((xml.documentElement || xml), 'http://panax.io/state/environment', "env:store", tag.split(/\?/)[0]);
+                                            Element.setAttributeNS.call((xml.documentElement || xml), 'http://panax.io/state/environment', "env:stylesheet", xsl.resource);
+                                            for (let [prefix, prop] of [...xml.documentElement.attributes].map(attr => [attr.prefix, attr.localName]).concat(xsl.select(`//xsl:param[contains(@name,':')]/@name`).map(param => param.value).distinct().map(param => param.split(":", 2))).filter(([prefix, name]) => prefix in xover && name in xover[prefix])) {
+                                                xml.firstElementChild.setAttributeNS(xover.spaces[prefix], prop, xover[prefix][prop]);
+                                            }
+                                        }
+                                        window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                         const regex = /key\('([^']+)',\s*'([^']+)'\)(\s*\|)?/g;
                                         for (let match of xsl.select(`//xsl:template/@match[contains(.,"key(")]`) || []) {
                                             for (const [fullmatch, name, value, separator = ''] of match.value.matchAll(regex)) {
@@ -9849,15 +9858,6 @@ xover.modernize = async function (targetWindow) {
                                                 if (!match.value) match.parentNode.remove()
                                             }
                                         }
-                                        xml = instanceOf.call(xml, Document) ? xml.cloneNode(true) : xover.xml.createDocument(xml);
-                                        if (!instanceOf.call(xml.firstElementChild, HTMLElement, SVGElement) && instanceOf.call((xml.documentElement || xml), Element)) {
-                                            Element.setAttributeNS.call((xml.documentElement || xml), 'http://panax.io/state/environment', "env:store", tag.split(/\?/)[0]);
-                                            Element.setAttributeNS.call((xml.documentElement || xml), 'http://panax.io/state/environment', "env:stylesheet", xsl.resource);
-                                            for (let [prefix, prop] of [...xml.documentElement.attributes].map(attr => [attr.prefix, attr.localName]).concat(xsl.select(`//xsl:param[contains(@name,':')]/@name`).map(param => param.value).distinct().map(param => param.split(":", 2))).filter(([prefix, name]) => prefix in xover && name in xover[prefix])) {
-                                                xml.firstElementChild.setAttributeNS(xover.spaces[prefix], prop, xover[prefix][prop]);
-                                            }
-                                        }
-                                        window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                         xsltProcessor.importStylesheet(xsl);
                                         try {
                                             if (async_mode && typeof (xsltProcessor.asyncTransform) == 'function') {
