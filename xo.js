@@ -9845,7 +9845,7 @@ xover.modernize = async function (targetWindow) {
                                                 xml.firstElementChild.setAttributeNS(xover.spaces[prefix], prop, xover[prefix][prop]);
                                             }
                                         }
-                                        window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: this instanceof Document && this || this.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
+                                        window.dispatchEvent(new xover.listener.Event('beforeTransform', { listeners: before_listeners, document: xml instanceof Document && xml || xml.ownerDocument, node: this, store: xml.store, stylesheet: xsl }, xml));
                                         const regex = /key\('([^']+)',\s*'([^']+)'\)(\s*\|)?/g;
                                         for (let match of xsl.select(`//xsl:template/@match[contains(.,"key(")]`) || []) {
                                             for (const [fullmatch, name, value, separator = ''] of match.value.matchAll(regex)) {
