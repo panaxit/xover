@@ -2145,7 +2145,7 @@ Object.defineProperty(xover.listener, 'on', {
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
-                if (["mouseout", "mouseleave"].includes(base_event)) {
+                if (["mouseout", "mouseleave", "mousemove"].includes(base_event)) {
                     xover.listener.on(`mousemove`, function () {
                         let target = this.closest(predicate);
                         if (target) {
@@ -7063,6 +7063,7 @@ xover.modernize = async function (targetWindow) {
                     }
                     while (imports.length) {
                         for (let node of imports) {
+                            const output = xsl.single(`/*/xsl:output`);
                             const named_params = xsl.select(`//xsl:stylesheet/xsl:param`).map(node => node.getAttribute("name"));
                             const named_variables = xsl.select(`//xsl:stylesheet/xsl:variable`).map(node => node.getAttribute("name"));
                             const named_templates = xsl.select(`//xsl:template[@name]`).map(node => node.getAttribute("name"));
@@ -7070,6 +7071,11 @@ xover.modernize = async function (targetWindow) {
                             let source = xover.sources[href];
                             await source.ready;
                             source = source.cloneNode(true);
+                            const imported_outputs = source.select(`/*/xsl:output`);
+                            if (!output && imported_outputs.length) {
+                                imports[0].after(imported_outputs.shift());
+                            }
+                            imported_outputs.remove();
                             if (xsl.selectSingleNode(`//comment()[contains(.,'ack:imported-from "${href}" ===')]`)) {
                                 node.remove();
                             } else if (source && source.documentElement && source.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
@@ -9989,7 +9995,7 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 try {
                                     //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                                    window.dispatchEvent(new xover.listener.Event('transform', { source: xml, original: xml, xsl, tag: tag, result, transformed: result, listeners: after_listeners }, result));
+                                    window.dispatchEvent(new xover.listener.Event('transform', { source: xml, original: xml, xsl, tag: tag, result, transformed: result, listeners: after_listeners }, xml));
                                     //}
                                 } catch (e) { }
                                 return result
