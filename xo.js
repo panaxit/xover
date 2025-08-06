@@ -7071,6 +7071,7 @@ xover.modernize = async function (targetWindow) {
                             let source = xover.sources[href];
                             await source.ready;
                             source = source.cloneNode(true);
+                            !output && source.select(`/*/xsl:output[@standalone="yes"]`).remove(); //xsl:output standalone only works in the main stylesheet
                             const imported_outputs = source.select(`/*/xsl:output`);
                             if (!output && imported_outputs.length) {
                                 imports[0].after(imported_outputs.shift());
