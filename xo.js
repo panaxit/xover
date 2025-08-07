@@ -400,24 +400,39 @@ Object.defineProperty(xover.storehouse, 'sources', {
             let file = new File([`${source}`], name, {
                 type: (type || "text/plain").split(",")[0],
             });
-            _add(file, record_key);
+            let record = {
+                file,
+                name,
+                type: file.type,
+                lastModified: file.lastModified,
+                headers
+            };
+            return _add(record);
         }
         const _put = store.put;
         store.put = function (source, key = '', type) {
-            let file_name, name;
+            let file_name, name, headers;
             if (instanceOf.call(key, URL)) {
-                file_name = key.href
-                name = key.hash
+                file_name = key.href;
+                name = key.hash;
+                headers = [...key.headers];
             } else {
-                file_name = key
-                name = key
+                file_name = key;
+                name = key;
             }
             if (source.constructor === {}.constructor) source = JSON.stringify(source);
             if (source instanceof Node) source = source.outerHTML || source.innerHTML || source.toString();
             let file = new File([`${source}`], file_name, {
                 type: (type || "text/plain").split(",")[0],
             });
-            _put(file, name);
+            let record = {
+                file,
+                name: file_name,
+                type: file.type,
+                lastModified: file.lastModified,
+                headers
+            };
+            return _put(record, name);
         }
         const _get = store.get;
         store.get = async function (key = '') {
@@ -427,7 +442,15 @@ Object.defineProperty(xover.storehouse, 'sources', {
                 if (records.length == 1) return records[0][1];
                 return records;
             } else {
-                return await _get(key);
+                let record = await _get(key);
+                if (record?.file) {
+                    // Inject metadata for easier usage
+                    record.file.headers = new Headers(record.headers || {});
+                    record.file.name = record.name;
+                    record.file.type = record.type;
+                    record.file.lastModified = record.lastModified;
+                }
+                return record?.file || null;
             }
         }
         return store;
@@ -11769,7 +11792,9 @@ xover.Request = function (request, ...args) {
                     let storehouse = await xover.storehouse.sources;
                     stored_document = !xover.session.disableCache && await storehouse.get(request.url);
                     if (stored_document && (!expiry || !stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
-                        request.url = new xover.URL(stored_document.name)
+                        request.url = new xover.URL(stored_document.name);
+                        request.url.request = request;
+                        request.headers = stored_document.headers;
                         original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
                         Object.defineProperties(original_response, {
                             "storeKey": { value: stored_document.key }
