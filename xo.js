@@ -4581,8 +4581,11 @@ Object.defineProperty(URL.prototype, 'extension', {
 URL.pathname = URL.pathname || Object.getOwnPropertyDescriptor(URL.prototype, 'pathname');
 Object.defineProperty(xover.URL.prototype, 'pathname', {
     get: function () {
-        const pathname = URL.pathname.get.call(this);
+        let pathname = URL.pathname.get.call(this);
         try {
+            if (this.origin !== location.origin && this.origin !== 'null') {
+                pathname = this.origin + pathname;
+            }
             return pathname.replace(/[#?].*/, '').replace(new RegExp(`^${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '')}${location.pathname.replace(/[^\/]+$/, "")}`), "");
         } catch (e) {
             console.log(pathname)
@@ -5392,6 +5395,8 @@ xover.modernize = async function (targetWindow) {
             if (typeof (Name) == 'undefined') Name = function (node = this) { return node instanceof Element ? (node.getAttributeNode("Name") || node.getAttributeNode("name")) : node.nodeName }
 
             if (typeof (Sum) == 'undefined') Sum = function (x, y) { return +x + +y }
+
+            if (typeof (Count) == 'undefined') Count = function (acc, curr) { return (typeof acc === 'number' && typeof curr !== 'undefined') ? acc + 1 : 2 }
 
             if (typeof (Find) == 'undefined') Find = function (selector, target = document) { return selector ? target.querySelector(selector) : target.contains(this) && this }
 
