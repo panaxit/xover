@@ -2143,9 +2143,12 @@ Object.defineProperty(xover.listener, 'on', {
             predicate = predicate.join("::");
             [scoped_event, ...conditions] = scoped_event.split(/\?/g);
             let [base_event, scope] = scoped_event.split(/:/).reverse();
+            try {
+                handler.scope = scope && eval(scope) || undefined;
+            } catch (e) {e}
+            if (scope && typeof(handler.scope) !== 'function') base_event = [scope, base_event].join(':');
             window.removeEventListener(base_event, xover.listener.dispatcher);
             window.addEventListener(base_event, xover.listener.dispatcher/*, options --removed for it might cause event to trigger multiple times*/);
-            handler.scope = scope && eval(scope) || undefined;
             handler.conditions = handler.conditions || conditions && [] || undefined;
             for (let condition of conditions) {
                 let params;
