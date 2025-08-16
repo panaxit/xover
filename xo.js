@@ -9935,8 +9935,11 @@ xover.modernize = async function (targetWindow) {
                                         }
                                         result && [...result.children].map(el => el instanceof HTMLElement && el.select('//@*[starts-with(., "`") and substring(., string-length(.))="`"]').map(val => { try { val.value = eval(val.value.replace(/\$\{\}/g, '')) } catch (e) { console.log(e) } }));
                                         if (!(result && result.documentElement) && !xml.documentElement) {
-                                            xml.appendChild(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
-                                            return Promise.reject(xml.transform("empty.xslt"));
+                                            if (xover.session.debug) {
+                                                xml.appendChild(xover.xml.createNode(`<xo:empty xo:id="empty" xmlns:xo="http://panax.io/xover"/>`).seed())
+                                                return Promise.reject(xml.transform("empty.xslt"));
+                                            }
+                                            return Promise.reject(top.document.createComment("ack:empty"));
                                         }
                                         if ((xover.session.debug || {})["transform"] || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
                                             console.timeEnd(timer_id);
