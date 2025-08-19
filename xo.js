@@ -2145,8 +2145,8 @@ Object.defineProperty(xover.listener, 'on', {
             let [base_event, scope] = scoped_event.split(/:/).reverse();
             try {
                 handler.scope = scope && eval(scope) || undefined;
-            } catch (e) {e}
-            if (scope && typeof(handler.scope) !== 'function') base_event = [scope, base_event].join(':');
+            } catch (e) { e }
+            if (scope && typeof (handler.scope) !== 'function') base_event = [scope, base_event].join(':');
             window.removeEventListener(base_event, xover.listener.dispatcher);
             window.addEventListener(base_event, xover.listener.dispatcher/*, options --removed for it might cause event to trigger multiple times*/);
             handler.conditions = handler.conditions || conditions && [] || undefined;
@@ -4929,7 +4929,7 @@ Object.defineProperty(xover.session, 'cache_name', {
         return xover.session.getKey("cache_name") || "";
     }
     , set(input) {
-        xover.session.version = input.replace(`${location.hostname}_`, '').replace("_", ".");
+        xover.session.version = input.replace(new RegExp(`${location.hostname}[_-]`), '').replace(/_/, ".");
         xover.dom.updateTitle();
     }
 });
@@ -8322,7 +8322,7 @@ xover.modernize = async function (targetWindow) {
                                 ) {
                                     let static_attrs = static || [];
                                     let swap_attrs = [...boolean_attrs, "@class", "@style"].filter(item => !static_attrs.includes(item))/*.concat(["@class"].filter(() => swap.find(item => item[0] == '.'))).concat(["@style"].filter(() => swap.find(item => item.indexOf('style:') == 0))))*/;
-                                    for (let attr of [...target.attributes].filter(attr => !source.hasAttribute(attr.name) && boolean_attrs.includes(`@${attr.name}`) && !static_attrs.includes(`@${attr.name}`))) {
+                                    for (let attr of [...target.attributes].filter(attr => !source.hasAttribute(attr.name) && boolean_attrs.concat(swap).includes(`@${attr.name}`) && !static_attrs.includes(`@${attr.name}`))) {
                                         if (boolean_attrs.includes(`@${attr.name}`)) {
                                             target[attr.name] = false;
                                         }
@@ -9696,6 +9696,7 @@ xover.modernize = async function (targetWindow) {
                                         xsl = xsl.cloneNode(true);
                                         xsl.processor = new XSLTProcessor();
                                         let xsltProcessor = xsl.processor;
+                                        xml = instanceOf.call(xml, Document) ? xml.cloneNode(true) : xover.xml.createDocument(xml);
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'globalization:')]`)) {
                                             let param_name = param.getAttribute("name").split(/:/).pop()
                                             if (param.value != undefined) {
@@ -9720,13 +9721,14 @@ xover.modernize = async function (targetWindow) {
                                         };
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'session:')]`)) {
                                             try {
-                                                let param_name = param.getAttribute("name").split(":").pop();
+                                                let [prefix, param_name] = param.getAttribute("name").split(/:/);
                                                 //if (!(param_name in xover.session)) xover.session[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
                                                 let param_value = xover.session[param.getAttribute("name").split(/:/).pop()];
                                                 if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9736,13 +9738,14 @@ xover.modernize = async function (targetWindow) {
                                         };
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'store-state:')]`)) {
                                             try {
-                                                let param_name = param.getAttribute("name").split(/:/).pop();
+                                                let [prefix, param_name] = param.getAttribute("name").split(/:/);
                                                 //if (!(param_name in xover.state)) xover.state[param_name] = [eval(`(${param.textContent !== '' ? param.textContent : undefined})`), ''].coalesce();
                                                 let param_value = this.store instanceof xover.Store && this.store.state[param_name] || undefined;/*, xover.site[param_name] removed to avoid unwanted behavior*/
                                                 if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9752,12 +9755,13 @@ xover.modernize = async function (targetWindow) {
                                         };
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'store:')]`)) {
                                             try {
-                                                let param_name = param.getAttribute("name").split(/:/).pop();
+                                                let [prefix, param_name] = param.getAttribute("name").split(/:/);
                                                 let param_value = !(this.store instanceof xover.Store) ? null : param_name.indexOf("-") != -1 ? eval(`(this.store.${param_name.replace(/-/g, '.')})`) : this.store[param_name];
                                                 if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9767,12 +9771,13 @@ xover.modernize = async function (targetWindow) {
                                         };
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'state')]`)) {
                                             try {
-                                                let param_name = param.getAttribute("name").split(/:/).pop()
+                                                let [prefix, param_name] = param.getAttribute("name").split(/:/);
                                                 let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.state.${param_name.replace(/-/g, '.')})`) : xover.site.state[param_name];
                                                 if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9782,12 +9787,13 @@ xover.modernize = async function (targetWindow) {
                                         };
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'site:')]`)) {
                                             try {
-                                                let param_name = param.getAttribute("name").split(/:/).pop()
+                                                let [prefix, param_name] = param.getAttribute("name").split(/:/);
                                                 let param_value = param_name.indexOf("-") != -1 ? eval(`(xover.site.${param_name.replace(/-/g, '.')})`) : xover.site[param_name];
                                                 if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9797,9 +9803,10 @@ xover.modernize = async function (targetWindow) {
                                         };
                                         for (let param of xsl.selectNodes(`//xsl:stylesheet/xsl:param[starts-with(@name,'document:')]`)) {
                                             try {
-                                                let param_name = param.getAttribute("name").split(/:/).pop()
+                                                let [prefix, param_name] = param.getAttribute("name").split(/:/);
                                                 let param_value = eval(`(this.${param_name.replace(/-/g, '.')})`)
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9815,6 +9822,7 @@ xover.modernize = async function (targetWindow) {
                                                     param_value = eval(`\`${param.value}\``)
                                                 }
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9836,6 +9844,7 @@ xover.modernize = async function (targetWindow) {
                                                     }
                                                 }
                                                 if (param_value != undefined) {
+                                                    xml.documentElement && xml.documentElement.setAttribute(`${prefix}:${param_name}`, param_value);
                                                     xsltProcessor.setParameter(null, param.getAttribute("name"), param_value);
                                                 }
                                             } catch (e) {
@@ -9875,7 +9884,6 @@ xover.modernize = async function (targetWindow) {
                                             if (!customComponents.length) return;
                                             customComponents.forEach(component => customElements.upgrade(component));
                                         }
-                                        xml = instanceOf.call(xml, Document) ? xml.cloneNode(true) : xover.xml.createDocument(xml);
                                         if (!instanceOf.call(xml.firstElementChild, HTMLElement, SVGElement) && instanceOf.call((xml.documentElement || xml), Element)) {
                                             Element.setAttributeNS.call((xml.documentElement || xml), 'http://panax.io/state/environment', "env:store", tag.split(/\?/)[0]);
                                             Element.setAttributeNS.call((xml.documentElement || xml), 'http://panax.io/state/environment', "env:stylesheet", xsl.resource);
@@ -10896,14 +10904,15 @@ class MutationSet extends Array {
             } else if (mutation.type == "attributes") {
                 if (target.closest(mutation.attributeName.split('-').map((attr, ix, arr) => `[xo-silence*="@${arr.slice(0, ix + 1).join('-') + (arr.length > 1 ? '-' : '') + '\\*'}"]`).join(','))) continue;
                 let attribute = target.getAttributeNodeNSOrMock(mutation.attributeNamespace, mutation.attributeName);
-                if (String(attribute.value) == String(mutation.oldValue) || attribute.silent) {
+                let attr = attribute.name;
+                let oldValue = mutation.oldValue;
+                if (String(attribute.value) == String(oldValue) || attribute.silent) {
                     delete attribute.silent;
                     continue;
                 }
-                let attr = attribute.name;
-                let oldValue = mutation.oldValue;
+                let swap_items = (target.getAttribute("xo-swap") || '').split(/\s+/g);
                 const staticSet = new Set((target.getAttribute("xo-static") || "").split(/\s+/).filter(Boolean));
-                if (oldValue !== null && !target.hasAttribute(attr)) {
+                if (oldValue !== null && !target.hasAttribute(attr) && !swap_items.includes(`@${attr}`)) {
                     staticSet.add(`-@${attr}`);
                 }
                 if (attr === "class") {
@@ -10915,7 +10924,7 @@ class MutationSet extends Array {
                         }
                     }
                     for (const cls of prev) {
-                        if (!curr.has(cls)) {
+                        if (!curr.has(cls) && !swap_items.includes(`.${attr}`)) {
                             staticSet.add(`-.${cls}`);
                         }
                     }
@@ -10941,7 +10950,7 @@ class MutationSet extends Array {
                         }
                     }
                     for (const prop of oldProps) {
-                        if (!currProps.has(prop)) {
+                        if (!currProps.has(prop) && !swap_items.includes(`@${attr}`)) {
                             staticSet.add(`-${prop}`);
                         }
                     }
@@ -11143,7 +11152,7 @@ xover.Response = function (response, request) {
     });
     Object.defineProperty(self, 'render', {
         value: function () {
-            let response = this.json || this.document || this.body || `${this.statusText}: ${file_name}`;
+            let response = /*this.json || */this.document || this.body || `${this.statusText}: ${file_name}`;
             if (this.status == 404 && decodeURI(file_name).indexOf("{$") != -1) {
                 console.warn(`Couldn't fetch: ${file_name}`)
             } else if (response instanceof HTMLElement) {
@@ -11152,8 +11161,8 @@ xover.Response = function (response, request) {
                 return String(response.message).render()
             } else if (typeof (response.render) === 'function') {
                 return response.render()
-            } else {
-                response.render && response.render();
+            } else if (typeof (response.render) === 'function') {
+                response.render();
             }
         }
     });
@@ -11293,23 +11302,27 @@ xover.Response = function (response, request) {
                 case "json":
                 case "manifest":
                     body = xover.json.tryParse(response_content);
-                    Object.defineProperty(response, 'json', {
-                        get: function () {
-                            return body;
+                    if (body.constructor === {}.constructor) {
+                        Object.defineProperty(response, 'json', {
+                            get: function () {
+                                return body;
+                            }
+                        });
+                        if ((request.headers.get('Accept') || '').toLowerCase().indexOf("xml") != -1) {
+                            try {
+                                body = xover.xml.fromJSON(body);
+                                Object.defineProperty(response, 'xml', {
+                                    get: function () {
+                                        return body;
+                                    }
+                                });
+                                _body_type = 'xml';
+                            } catch (e) {
+                                console.warn(e);
+                            }
                         }
-                    });
-                    if ((request.headers.get('Accept') || '').toLowerCase().indexOf("xml") != -1) {
-                        try {
-                            body = xover.xml.fromJSON(body);
-                            Object.defineProperty(response, 'xml', {
-                                get: function () {
-                                    return body;
-                                }
-                            });
-                            _body_type = 'xml';
-                        } catch (e) {
-                            console.warn(e);
-                        }
+                    } else {
+                        body = html(body)
                     }
                     break;
                 case "blob":
@@ -11400,16 +11413,16 @@ xover.Response = function (response, request) {
                     }
                 });
             }
-
-            for (let prop of ['storeKey', 'modifiedDate', 'lastModifiedDate']) {
-                Object.defineProperty(body, prop, {
-                    value: response[prop]
-                    , enumerable: false
-                    , configurable: true
-                    , writable: true
-                })
+            if (typeof (body) === 'object') {
+                for (let prop of ['storeKey', 'modifiedDate', 'lastModifiedDate']) {
+                    Object.defineProperty(body, prop, {
+                        value: response[prop]
+                        , enumerable: false
+                        , configurable: true
+                        , writable: true
+                    })
+                }
             }
-
             return body;
         }
     });
@@ -11770,7 +11783,8 @@ xover.Request = function (request, ...args) {
                         ////    }
                     }
                     if (args.length) {
-                        debugger
+                        if (xover.session.debug) debugger;
+                        console.warn(`xover.Request.fetch: Extra arguments are being ignored`);
                     }
                     const url = request.url;
                     const payload = (args[0] || {}).body || args.length && args || request.body
@@ -11820,7 +11834,7 @@ xover.Request = function (request, ...args) {
                     }
 
                     if (request.protocol === 'local:' && request.hash) {
-                        return new xover.Response(xover.sources.defaults[request.hash], request);
+                        return new xover.Response(xover.sources.defaults[request.hash] || new Comment("ack:no-content"), request);
                     } else if (!original_response) {
                         stored_document = null;
                         const { signal } = controller;
@@ -12564,7 +12578,6 @@ xover.xml.staticMerge = function (node1, node2) {
             }
         }
         let swap = (source.getAttribute("xo-static") || '').split(/\s+/g).filter(Boolean).map(item => item.replace(/^-/, ''));
-        `${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `${attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name.replace(/^xo-swap-/, '') === 'class' ? '.' : attr.name.replace(/^xo-swap-/, '') === 'style' ? '@' : ''}${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
         for (let static_attr of [...target.closest('*').attributes].filter(attr => attr.name.indexOf(`xo-swap-`) == 0)) {
             let attr = source.getAttributeNode(`${static_attr.name.replace(/^xo-swap-/, '')}`) || {};
             if (["class", "style"].includes(attr.name)) {
@@ -12578,10 +12591,10 @@ xover.xml.staticMerge = function (node1, node2) {
         let target_swap = `${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `${attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name.replace(/^xo-swap-/, '') === 'class' ? '.' : attr.name.replace(/^xo-swap-/, '') === 'style' ? '@' : ''}${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
 
         swap = swap.filter(item => !target_swap.includes(item));
-
+        let static_attributes = `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source @id ${(target.getAttribute("xo-swap") || '')} ${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')} ${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
         target.applyAttributes(source, {
             swap
-            , static: `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source ${(source.getAttribute("xo-swap") || '')} ${(target.getAttribute("xo-swap") || '')} ${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => /*(["xo-swap-class"].includes(attr.name) && attr.value) ? attr.value.split(/\s+/).map(value => `.${value}`).join(' ') : */`@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')} ${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean)
+            , static: static_attributes
         }); /*What is marked as swap on target should be static and visceversa*/// ${[...target.attributes].map(attr => `@${attr.name}`).filter(attr_name => !(target.localName == 'template' && source.hasAttribute(attr_name.substring(1)))).join(' ')}
         //source.applyAttributes(...target.attributes);
     }
@@ -12675,7 +12688,6 @@ xover.xml.combine = function (target, new_node) {
             target.replaceWith(replacement);
             //target.shadowRoot && target.shadowRoot.replaceChildren();
             //target.remove()
-            //target.remove()
             target = replacement;
         }
         //target.initialChildNodes = new_node.initialChildNodes || target.initialChildNodes;
@@ -12757,9 +12769,11 @@ xover.xml.combine = function (target, new_node) {
         ////let swap = [current.closest('*').getAttributeNode(`xo-swap-${change.name}`) || {}].filter(attr => attr.name).map(attr => (["xo-swap-class"].includes(attr.name)) ? attr.value.split(/\s+/g).map(value => `.${value}`) : `${attr.name.replace(/^xo-swap-/, '@')}`).flat();
 
         let source = new_node;
-        for (let swap_attr of [...target.closest('*').attributes].filter(attr => attr.name.indexOf(`xo-swap-`) == 0)) {
+        for (let swap_attr of [...source.closest('*').attributes].filter(attr => attr.name.indexOf(`xo-swap-`) == 0)) {
             let attr = source.getAttributeNode(`${swap_attr.name.replace(/^xo-swap-/, '')}`) || {};
+            swap.push(`@${attr.name}`)
             if (["class", "style"].includes(attr.name)) {
+                swap = swap.concat(swap_attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name == 'class' ? '.' : ''}${item}`))
                 swap = swap_attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name == 'class' ? '.' : ''}${item}`);
                 /*swap = source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean).map(item => `.${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(source.getAttribute(attr.localName).split(/\s+/g).filter(Boolean)).join(' ')}`);*/
                 //let new_value = attr.value.split(/\s+/).filter(item => !swap.split(/\s+/g).includes(item));
@@ -12767,7 +12781,11 @@ xover.xml.combine = function (target, new_node) {
                 //source.removeAttribute(`xo-swap-${attr.name}`);
             }
         }
-        target.attributes && target.applyAttributes(new_node, { swap }); //, { swap: `@xo-swap ${(new_node.getAttribute("xo-swap") || '')}`.split(/\s+/g).distinct().filter(Boolean) }
+
+        let swap_attributes = target.attributes && `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source @id ${(target.getAttribute("xo-swap") || '')}`.split(/\s+/g).concat(swap).distinct().filter(Boolean);
+        target.attributes && target.applyAttributes(source, {
+            swap: swap_attributes
+        })
         if (instanceOf.call(new_node, CustomElement)) {
             target.initialChildNodes = new_node.initialChildNodes.cloneNode(true);
         } else if (target.shadowMode && !["open", "closed"].includes(target.getAttribute("shadowrootmode"))) {
@@ -16234,6 +16252,7 @@ xover.listener.on('Response:reject?status=401', function ({ response, request })
         json.message.render()
     } else {
         console.error(`Unauthorized access to ${response.href}`)
+        response.render();
     }
 })
 
