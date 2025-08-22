@@ -2110,7 +2110,22 @@ Object.defineProperty(xover.listener, 'off', {
 });
 
 Object.defineProperty(xover.listener, 'on', {
-    value: function (name_or_list, handler, options = {}) {
+    value: function (...args) {
+        let name_or_list = [], handler
+        for (let i = args.length - 1; i >= 0; --i) {
+            if (!args[i]) continue;
+            let item = args.shift();
+            if (typeof (item) == 'function') {
+                handler = item;
+                break;
+            } else if (item.constructor === [].constructor) {
+                name_or_list = name_or_list.concat(item);
+            } else {
+                name_or_list.push(item);
+            }
+        }
+        let [options = {}, other_options = {}] = args;
+
         let window = this;
         if (toString.call(window) != '[object Window]') {
             window = top.window
@@ -11216,7 +11231,7 @@ xover.Response = function (response, request) {
             } else {
                 const clonedResponse = response.clone();
                 response_content = charset.indexOf("iso-8859-1") == -1 && await response.text() || "";
-                if (charset.indexOf("iso-8859-1") != -1 || response_content.indexOf('�', 2) != -1) {
+                if (charset.indexOf("iso-8859-1") != -1 || response_content.indexOf('�', 2) != -1 || response_content.indexOf('�', 0) != -1) {
                     const buffer = await clonedResponse.arrayBuffer();
                     const decoder = new TextDecoder('iso-8859-1');
                     const text = decoder.decode(buffer);
@@ -14327,8 +14342,9 @@ xover.Store = function (xml, ...args) {
                 let stylesheets = instanceOf.call(target, HTMLElement) && target.hasAttribute("xo-stylesheet") && [{ target, href: target.getAttributeNode("xo-stylesheet"), store: self }] || xover.manifest.getSettings(document, 'stylesheets');
                 stylesheets = stylesheets.length ? stylesheets : this.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
                 stylesheets = stylesheets.length ? stylesheets : document.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
-
                 window.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
+                stylesheets = stylesheets.length ? stylesheets : this.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
+                stylesheets = stylesheets.length ? stylesheets : document.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
                 //stylesheets = instanceOf.call(target, HTMLElement) && target.getAttributeNode("xo-stylesheet") || [..._store_stylesheets, ...document.stylesheets].map(stylesheet => stylesheet.data).distinct().map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
                 //if (target) {
                 //    return document.render(stylesheets.map(stylesheet => {
@@ -16309,6 +16325,8 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
             }
         } else if (reason instanceof HTMLElement) {
             xover.dom.alert(reason);
+        } else if (reason.nodeType === Node.COMMENT_NODE) {
+            console.warn(`${reason}`);
         } else if (typeof (reason.render) != 'undefined') {
             reason.render();
         } else {
