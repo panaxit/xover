@@ -6034,8 +6034,8 @@ xover.modernize = async function (targetWindow) {
                 Object.defineProperty(XMLDocument.prototype, 'ready', {
                     enumerable: false,
                     get: async function () {
+                        const self = this;
                         try {
-                            const self = this;
                             if (!self.firstChild) {
                                 if (self.source) {
                                     //self.observe();
@@ -6048,8 +6048,12 @@ xover.modernize = async function (targetWindow) {
                             await xover.xml.initialize.call(self);
                             return self;
                         } catch (e) {
-                            if (e instanceof Response && e.status == 499) {
-                                e = ''
+                            if (e instanceof Response) {
+                                if (e.status == 499) {
+                                    e = ''
+                                } else if (e.status == 404) {
+                                    self.appendChild(window.document.createComment("ack:no-content"))
+                                }
                             }
                             return Promise.reject(e)
                         }
