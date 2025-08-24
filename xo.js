@@ -2647,7 +2647,12 @@ xover.server = new Proxy({}, {
             //} else if (typeof (endpoint) == 'string') {
             //    url = new xover.URL(endpoint, undefined, xover.manifest.getSettings)
             //}
-            request = xover.Request.call(this, endpoint, ...args);
+            url = new xover.URL(`server:${key}`, undefined, xover.manifest.getSettings)
+            if (instanceOf.call(this, xover.Request, xover.URL)) { 
+                let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = this.settings || this;
+                xover.json.combine.call(url.settings, { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal });
+            }
+            request = xover.Request.call(url, endpoint, ...args);
             if (this instanceof Request) {
                 //const { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = this.settings;
                 //settings = { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } || {};
@@ -4362,8 +4367,8 @@ xover.URL = function (href, base, options = {}) {
     }
     //if (!(this instanceof xover.URL)) return new xover.URL(href, base, options);
     options = typeof (options) == 'function' ? { fn: options } : { ...options }
-    if (!new.target && instanceOf.call(this, xover.Request)) {
-        let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = this;
+    if (!new.target && instanceOf.call(this, xover.Request, xover.URL)) {
+        let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = this.settings;
         if (instanceOf.call(body, XMLDocument) && !headers.has("content-type")) {
             headers.set("content-type", "application/xml; charset=UTF-8")
         }
