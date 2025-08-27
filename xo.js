@@ -6053,6 +6053,7 @@ xover.modernize = async function (targetWindow) {
                                     e = ''
                                 } else if (e.status == 404) {
                                     self.appendChild(window.document.createComment("ack:no-content"))
+                                    return self;
                                 }
                             }
                             return Promise.reject(e)
@@ -14381,6 +14382,7 @@ xover.Store = function (xml, ...args) {
                 stylesheets = stylesheets.length ? stylesheets : this.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
                 stylesheets = stylesheets.length ? stylesheets : document.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
                 let renders = await document.render(stylesheets);
+                renders = [renders].flat(Infinity);
                 renders = await Promise.all(renders);
                 return renders;
             }).then((...renders) => {
