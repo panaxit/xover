@@ -1919,7 +1919,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
         let returnValue;
         for (let handler of [...handlers.values()].reverse()) {
             try {
-                if (event.propagationStopped || event.cancelBubble) break;
+                if (event.propagationStopped || (event.srcEvent || {}).propagationStopped || event.cancelBubble || (event.srcEvent || {}).cancelBubble) break;
                 if (event.defaultPrevented && handler.priority < 0) continue;
                 if (instanceOf.call(target, Request) && xover.listener.history.has(handler, target)) continue; //TODO: Check between overflowed and this method
                 if (xover.listener.history.overflowed(handler, target)) {
@@ -6197,7 +6197,7 @@ xover.modernize = async function (targetWindow) {
                                 if (!Object.keys(mutation.attributes[attribute.namespaceURI] || {}).length) {
                                     delete mutation.attributes[attribute.namespaceURI];
                                 } else {
-                                    for (let field of [...document.querySelectorAll(`*[xo-slot][value]:not([onchange],[type=checkbox],[type=radio]),form *[name][value]:not([onchange],[type=checkbox],[type=radio])`)].filter(el => el.scope === attribute && el.value !== current_value)) {
+                                    for (let field of [...document.querySelectorAll(`*[xo-slot${attribute.namespaceURI ? '*=":' : '="'}${attribute_name}"]:not([onchange],[type=checkbox],[type=radio])[value]:not([value="${current_value}"]), form *[name${attribute.namespaceURI ? '*=":' : '="'}${attribute_name}"]:not([type=checkbox],[type=radio])[value]:not([value="${current_value}"])`)].filter(el => el.value !== current_value && el.scope === attribute)) {
                                         field.setAttribute("value", current_value)
                                     }
                                 }
@@ -16162,10 +16162,10 @@ class TimeoutError extends Error {
 //    }
 //});
 
-xover.listener.on(['change::*[value][xo-slot]:not([onchange])', 'change::*[value][name]:not([onchange])'], function () {
+xover.listener.on(['change::*[value][xo-slot]:not([onchange]):not([type*="time"]):not([type*="date"])', 'change::*[value][name]:not([onchange]):not([type*="time"]):not([type*="date"])', 'focusout::*[xo-slot][type*="time"]', 'focusout::*[xo-slot][type*="date"]'], function () {
     if (this.type === 'date' && this.value != '' && !isValidISODate(this.value) || this.preventChangeEvent) {
         this.preventChangeEvent = undefined;
-        event.preventDefault();
+        event && event.preventDefault();
         return;
     }
     let srcElement = this;
