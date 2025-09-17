@@ -4289,10 +4289,10 @@ xover.getSource = function (key) {
         if (key[0] === "#") {
             source.observe();
         }
-        if (key[0] === "#" && key[1]) {
-            source.url.tags.add(key)
-            source.url.hash = key;
-        }
+        //if (key[0] === "#" && key[1]) {
+        //    source.url.tags.add(key)
+        //    source.url.hash = key;
+        //}
         return source;
     } else {
         let document = xover.xml.createDocument();
@@ -4523,21 +4523,21 @@ Object.defineProperty(xover.URL.prototype, 'request', {
     }
 })
 
-Object.defineProperty(xover.URL.prototype, 'tags', {
-    get: function () {
-        let tags = new Set();
-        if (!Object.hasOwnProperty(this, "tags")) {
-            Object.defineProperty(this, 'tags', {
-                get: function () {
-                    let hash = this.hash;
-                    hash && tags.add('#' + hash.replace(/^#/, '').split(/#|\?/)[0]);
-                    return tags;
-                }
-            })
-        }
-        return tags;
-    }
-})
+//Object.defineProperty(xover.URL.prototype, 'tags', {
+//    get: function () {
+//        let tags = new Set();
+//        if (!Object.hasOwnProperty(this, "tags")) {
+//            Object.defineProperty(this, 'tags', {
+//                get: function () {
+//                    let hash = this.hash;
+//                    hash && tags.add('#' + hash.replace(/^#/, '').split(/#|\?/)[0]);
+//                    return tags;
+//                }
+//            })
+//        }
+//        return tags;
+//    }
+//})
 
 Object.defineProperty(xover.URL.prototype, 'fetch', {
     get: function () {
@@ -8404,14 +8404,13 @@ xover.modernize = async function (targetWindow) {
                                     if (attr.name == "class") {
                                         if (!target.hasAttribute(attr.name)) target.setAttribute(attr.name, "");
                                         const static_classes = (static || []).filter(el => el[0] == ".");
-                                        const swap_classes = swap;
-                                        if (swap && swap_classes.includes('@class')) {
+                                        if (swap && swap.includes('@class')) {
                                             target.className = attr.value
                                         } else {
-                                            for (const class_name of [...target.classList].filter(class_name => swap_classes.includes(`.${class_name}`) && !source.classList.contains(class_name))) {
+                                            for (const class_name of [...target.classList].filter(class_name => swap.includes(`.${class_name}`) && !source.classList.contains(class_name))) {
                                                 target.classList.remove(class_name)
                                             }
-                                            for (const class_name of [...source.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && !static_classes.includes(`.${class_name}`)/* && (swap_classes.includes(`.*`) || swap_classes.includes(`.`) || swap_classes.includes(`.${class_name}`)*/)
+                                            for (const class_name of [...source.classList].filter(class_name => !target.classList.contains(class_name) && !static_classes.includes("@class") && !static_classes.includes(`.${class_name}`))
                                             ) {
                                                 if (class_name[0] == "-") {
                                                     target.classList.remove(class_name.slice(1))
@@ -8422,6 +8421,10 @@ xover.modernize = async function (targetWindow) {
                                         }
                                     } else if (attr.name == "style") {
                                         if (!target.hasAttribute(attr.name)) target.setAttribute(attr.name, "");
+                                        if (swap && swap.includes('@style')) {
+                                            target.style = attr.value
+                                            continue;
+                                        }
                                         for (const [property] of [...target.attributeStyleMap].filter(([prop]) => swap.includes(prop))) {
                                             target.attributeStyleMap.delete(property);
                                         }
@@ -11735,8 +11738,8 @@ xover.Request = function (request, ...args) {
             const requests = [];
             for (let [key, params] of sources) {
                 let request = xover.Request.call(this, key, params);
-                request.url.hash = url.hash;
-                request.tags.add(...url.tags)
+                //request.url.hash = url.hash;
+                request.tags.add(url.hash)
                 requests.push(request.fetch.apply(this, args));
             }
             //await Promise.allSettled(requests)
@@ -11752,9 +11755,8 @@ xover.Request = function (request, ...args) {
                 try {
                     let request = new xover.Request(key, ...args)
                     request.url.hash = url.hash;
-                    request.tags.add(...url.tags)
+                    request.tags.add(url.hash)
                     response = await request.fetch.apply(this, args);
-
                 } catch (e) {
                     if (sources.length && e instanceof Response && e.status === 404) continue;
                     if (!e) {
@@ -12622,7 +12624,7 @@ xover.xml.staticMerge = function (node1, node2) {
         && (
             node1.nodeType !== Node.ELEMENT_NODE
             || (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/ == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/
-            && (node1.getAttribute("xo-xsl-source") || node2.getAttribute("xo-xsl-source")) === node2.getAttribute("xo-xsl-source")
+            && (node1.getAttribute("xo-xsl-source") == node2.getAttribute("xo-xsl-source") && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id")))            
         )
     )) {
         return false;
@@ -12749,10 +12751,10 @@ xover.xml.combine = function (target, new_node) {
     //}
     let swap = document.firstElementChild.cloneNode().classList;
     swap.value = target.nodeType === Node.ELEMENT_NODE && (new_node.nodeType === Node.ELEMENT_NODE && new_node.getAttribute("xo-swap") || target.getAttribute("xo-swap")) || "";
-    let static = document.firstElementChild.cloneNode().classList;
-    static.value = target.nodeType === Node.ELEMENT_NODE && target.getAttribute("xo-static") || "";
-    let swap_rules = (new_node.nodeType === Node.ELEMENT_NODE && new_node.getAttribute("xo-swap") || '').split(/\s+/g);
-    (target.staticAttributes instanceof Array && (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase())) && static.add(...(target.staticAttributes || []).filter(attr => !swap_rules.includes(attr)));
+    //let static = document.firstElementChild.cloneNode().classList;
+    //static.value = target.nodeType === Node.ELEMENT_NODE && target.getAttribute("xo-static") || "";
+    //let swap_rules = (new_node.nodeType === Node.ELEMENT_NODE && new_node.getAttribute("xo-swap") || '').split(/\s+/g);
+    //(target.staticAttributes instanceof Array && (target.constructor != HTMLElement && target.constructor === new_node.constructor || target.nodeName.toUpperCase() == new_node.nodeName.toUpperCase())) && static.add(...(target.staticAttributes || []).filter(attr => !swap_rules.includes(attr)));
     if (target instanceof HTMLElement && new_node.nodeType === Node.ELEMENT_NODE && (new_node.namespaceURI || '').indexOf("http://www.w3.org") == -1) {
         let text = target.ownerDocument.createTextNode(new_node);
         new_node = document.createElement(`code`);
@@ -13239,7 +13241,7 @@ xover.dom.combine = async function (target, new_node) {
         } else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && current.localName === 'slot' && current.classList.contains("placeholder")) {
             current.replaceWith(change)
         } else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && change.localName === 'slot' && change.classList.contains("placeholder")) {
-            if (target.contains((current.closest("[xo-xsl-source]") || {}).parentNode)) {
+            if (target.contains((current.closest("[xo-xsl-source]") || current).parentNode)) {
                 current.remove() //TODO: Check what are the rules to remove
             } else {
                 change.remove()
@@ -16015,8 +16017,12 @@ function isFunction(a) {
 function existsFunction(path) {
     const root = this ?? globalThis;
     path = path || '';
+    try {
     const fn = path.split('.').reduce((obj, key) => obj?.[key], root);
     return typeof fn === "function";
+    } catch (e) {
+        return false
+    }
 }
 
 function isObject(a) {
