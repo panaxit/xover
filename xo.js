@@ -1621,6 +1621,7 @@ xover.listener.Event = function (event_name, params = {}, context = (event || {}
     let [scoped_event, predicate] = event_name.split(/::/);
     let args = context instanceof ErrorEvent && { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno } || context instanceof Event && {} || { detail: params, cancelable: true };
     let _event = eval(`new ${(context instanceof ErrorEvent) && context.constructor.name || 'CustomEvent'}(${context instanceof Event && `'${context.constructor.name}'` || 'scoped_event'}, {cancelable: true, bubbles: true, ...args})`);
+    if (!xo.listener.get(event_name)) return _event; //optimize by returning simple event if no listener
     let _srcEvent = event;
     Object.defineProperty(_event, 'srcEvent', {
         get: function () {
@@ -2187,15 +2188,15 @@ Object.defineProperty(xover.listener, 'on', {
             }
 
             let event_array = xover.listener.get(base_event) || new Map();
-            let handler_map = event_array.get(`[${handler.selectors.join(',')}]=>${handler.toString()}`) || new Map();
+            let handler_map = event_array.get(`[${handler.selectors.join(',')}]=>${handler.name || handler.toString() }`) || new Map();
             handler_map.set(predicate, handler);
-            event_array.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler_map);
+            event_array.set(`[${handler.selectors.join(',')}]=>${handler.name || handler.toString() }`, handler_map);
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
                 if (["mouseout", "mouseleave", "mousemove"].includes(base_event)) {
                     xover.listener.on(`mousemove`, function () {
-                        let target = this.closest(predicate);
+                        let target = this && typeof(this.closest) == 'function' && this.closest(predicate);
                         if (target) {
                             target.custom_events = target.custom_events || new Map();
                             target.custom_events.set(`${base_event}::${predicate}`, new xover.listener.Event(`${base_event}::${predicate}`, { ...event.detail }, target));
@@ -2302,7 +2303,7 @@ xover.listener.on(['pageshow', 'popstate'], async function (event) {
     if (xover.session.status == 'authorizing') xover.session.status = null;
     xover.session.store_id = xover.session.store_id;
     xover.site.sections.render()
-    xover.stores.seed.render()
+    xover.stores.active.render()
     //let item;
     //try {
     //    item = document.querySelector(`${(location.hash || '').replace(/^#/, '') && location.hash || ''}:not([xo-source],[xo-stylesheet])`);
@@ -9525,14 +9526,31 @@ xover.modernize = async function (targetWindow) {
                     }
                 }
 
-                Node.prototype.duplicate = function (options = { seed: true }) {
-                    let new_node = this.cloneNode(true);
-                    this.appendAfter(new_node);
-                    if (options instanceof Object && options.seed && new_node.hasAttributeNS("http://panax.io/xover", "id")) {
-                        new_node = new_node.seed(true);
+                Node.prototype.duplicate = function (...args) {
+                    let options = typeof (args[args.length - 1]) == 'object' && args.pop() || { seed: true }
+                    let times = typeof (args[args.length - 1]) == 'number' && args.pop() || 1
+                    if (times <= 0) return
+
+                    const ns = "http://panax.io/xover"
+                    const parent = this.parentNode
+                    if (!parent) return
+
+                    // Construye todos los clones en memoria
+                    const frag = this.ownerDocument.createDocumentFragment()
+                    const clones = new Array(times)
+                    for (let i = 0; i < times; i++) {
+                        let clone = this.cloneNode(true)
+                        if (options.seed && clone.hasAttributeNS(ns, "id")) {
+                            clone = clone.seed(true)
+                        }
+                        clones[i] = clone
+                        frag.appendChild(clone)
                     }
-                    window.dispatchEvent(new xover.listener.Event('duplicate', { source: this }, new_node));
-                    return new_node;
+
+                    parent.insertBefore(frag, this.nextSibling)
+                    window.dispatchEvent(new xover.listener.Event('duplicate', { source: this, clones }), this)
+
+                    return clones[clones.length - 1]
                 }
 
                 Document.prototype.seed = function (...args) {
