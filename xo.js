@@ -10135,7 +10135,7 @@ xover.modernize = async function (targetWindow) {
                                 } catch (e) { }
                                 return result
                             } catch (ready) { //TODO: Check if this should be replaced catch block above
-                                ready.then(() => self.transform(xsl, config)).catch(e => {
+                                ready && typeof(ready.then)=='function' && ready.then(() => self.transform(xsl, config)).catch(e => {
                                     if (e.status == 404) {
                                         return self.transform(xsl, config);
                                     } else {
@@ -10466,7 +10466,7 @@ xover.modernize = async function (targetWindow) {
                                         keys.filter(key => !referencers.find(name => name.indexOf(`key('${key.value}'`) !== -1)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
 
                                         //xsl.select(`//xsl:key/@name`).filter(key => !xsl.selectFirst(`//xsl:template//@*[name()='select' or name()='match' or name()='test'][contains(.,"key('${key.value}'")]|//xsl:template//html:*/@*[contains(.,"key('${key.value}'")]`)).forEach(key => key.parentNode.replaceWith(new Comment(`ack:removed: ${key.parentNode.nodeName} '${key}'`)));
-                                        xsl.documentElement.prepend(new Comment("ack:optimized"))
+                                        (xsl.documentElement || xsl.createElement("p")).prepend(new Comment("ack:optimized"))
                                     }
                                 }
                                 if (stylesheet.assert && !data.selectFirst(stylesheet.assert)) {
@@ -10590,6 +10590,7 @@ xover.modernize = async function (targetWindow) {
                                 ////    requestAnimationFrame(() => {
                                 ////        setTimeout(async () => {
                                 dom = await data.transform(xsl);
+                                if (!(dom && dom.nodeType)) continue;
                                 dom.select(`//@*[name()="xo:id"]`).remove(); // provisionally removes xo:id attributes
                                 dom.select(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove();
                                 dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode && el.parentNode.removeAttributeNode(el));
