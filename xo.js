@@ -11738,7 +11738,10 @@ xover.Request = function (request, ...args) {
         [request, method] = request.split(/\s+/).reverse();
         if (request.split(/:/)[0] == 'server') {
             if (method) args.push({ method });
-            request = xover.Request.call(this, `xover.server.${request.split(/:/).reverse()[0]}`, ...args);
+            let requester = this.hash;
+            let endpoint = request.split(/:/).reverse()[0];
+            if (!xover.manifest.server[endpoint]) return Promise.reject(`Endpoint "${endpoint}"${!requester?'':` requested by "${requester}"`} is not configured in manifest`);
+            request = xover.Request.call(this, `xover.server.${enpoint}`, ...args);
             return request;
         } else if (existsFunction(request)) {
             source = `function:${request}`;
