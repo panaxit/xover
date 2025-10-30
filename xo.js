@@ -11742,7 +11742,7 @@ xover.Request = function (request, ...args) {
             let requester = this.hash;
             let endpoint = request.split(/:/).reverse()[0];
             if (!xover.manifest.server[endpoint]) return Promise.reject(`Endpoint "${endpoint}"${!requester?'':` requested by "${requester}"`} is not configured in manifest`);
-            request = xover.Request.call(this, `xover.server.${enpoint}`, ...args);
+            request = xover.Request.call(this, `xover.server.${endpoint}`, ...args);
             return request;
         } else if (existsFunction(request)) {
             source = `function:${request}`;
@@ -12335,7 +12335,7 @@ xover.xml.initialize = async function (target) {
         try {
             let rejections = [];
             await target.consolidate();
-            target.select(`//xsl:template//@xo:use-attribute-sets`).remove();
+            //target.select(`//xsl:template//@xo:use-attribute-sets`).remove();
             for (let param of target.select(`*/xsl:param[@name]`)) {
                 xover.listener.params[param.attributes.name] = xover.listener.params[param.attributes.name] || new Set();
                 xover.listener.params[param.attributes.name].add(param);
