@@ -2912,8 +2912,10 @@ Object.defineProperty(xover.session, 'login', {
                 password = password instanceof HTMLElement ? xover.cryptography.encodeMD5(password.value) : password;
                 xover.session.user_login = username;
                 xover.session.status = 'authorizing';
-                await xover.server.login(...args, new Headers({ authorization: `Basic ${btoa(username + ':' + password)}` }), (return_value, request) => { xover.session[`${request.url.host}:id`] = return_value.id });
+                let authorization = `Basic ${btoa(username + ':' + password)}`;
+                await xover.server.login(...args, new Headers({ authorization }), (return_value, request) => { xover.session[`${request.url.host}:id`] = return_value.id });
                 xover.session.status = 'authorized';
+                xover.session.id_token = authorization;
                 if (xover.site.seed === '#login') {
                     window.location = '#'
                 } else {
@@ -5329,7 +5331,7 @@ Object.defineProperty(xover.stores, 'active', {
             ////if (hashtag != (history.state.seed || (window.top || window).location.hash || xover.stores["#"].tag)) {//(history.state.hash || (window.top || window).location.hash)
             //if (xover.stores[xover.site.active] !== input) {
             //    //xover.dom.history.push((window.top || window).location.hash);
-                xover.site.active = hashtag;
+            xover.site.active = hashtag;
             //}
             ///*await */xover.stores[hashtag].render();
         }
@@ -6231,7 +6233,7 @@ xover.modernize = async function (targetWindow) {
                                     //for (let field of [...document.querySelectorAll(`*[xo-slot${attribute.namespaceURI ? '*=":' : '="'}${attribute_name}"]:not([onchange],[type=checkbox],[type=radio])[value]:not([value="${current_value}"]), form *[name${attribute.namespaceURI ? '*=":' : '="'}${attribute_name}"]:not([type=checkbox],[type=radio])[value]:not([value="${current_value}"])`)].filter(el => el.value !== current_value && el.scope === attribute)) {
                                     //    field.setAttribute("value", current_value)
                                     //}
-                                    }
+                                }
                                 delete attribute.inert;
                             }
                         }
@@ -6261,7 +6263,10 @@ xover.modernize = async function (targetWindow) {
                         }
                         renders.push(section.render())
                     }
-                    Promise.all(renders).then(() => {
+                    if (xover.stores.active.document === (self.ownerDocument || self)) {
+                        renders.push(xover.stores.active.render())
+                    }
+                    Promise.allSettled(renders).then(() => {
                         if (active_element.ownerDocument && !active_element.ownerDocument.contains(active_element)) {
                             active_element = document.activeElement || document.documentElement
                         }
@@ -8122,11 +8127,11 @@ xover.modernize = async function (targetWindow) {
                             //    //return Node.textContent.set.call(this, value);
                             //    return this.firstChild;
                             //} else {
-                                Node.textContent.set.call(this, value);
-                                return this.firstChild;
+                            Node.textContent.set.call(this, value);
+                            return this.firstChild;
                             //}
-                            }
                         }
+                    }
                 );
 
                 Object.defineProperty(Node.prototype, 'value',
@@ -8551,8 +8556,8 @@ xover.modernize = async function (targetWindow) {
                     if (namespace !== null) {
                         target.setAttributeNS(namespace, attribute, value, options);
                     } else {
-                            Element.setAttribute.call(this, attribute, value);
-                        }
+                        Element.setAttribute.call(this, attribute, value);
+                    }
                     if (["value"].includes(attribute) && target.hasOwnProperty(attribute) && target[attribute] != `${value}`) {
                         target[attribute] = value
                     }
@@ -8843,7 +8848,7 @@ xover.modernize = async function (targetWindow) {
                 //    let attribute_node = this.getAttributeNode(attribute);
                 //    attribute_node && attribute_node.remove();
                 //    return this;
-                    //}
+                //}
 
                 //Element.prototype.removeAttribute = function (attribute, refresh) {
                 //    if (!this.hasAttribute(attribute)) return;
@@ -9448,7 +9453,7 @@ xover.modernize = async function (targetWindow) {
                 //    } else {
                 //        Element.insertBefore.apply(this, arguments);
                 //    }
-                        //}
+                //}
 
                 Element.append = Element.append || Element.prototype.append
                 Element.prototype.append = function (...args) {
@@ -10650,12 +10655,12 @@ xover.modernize = async function (targetWindow) {
                                     //    && target.constructor === documentElement.constructor
                                     //)) {
                                     let new_target = target.isEquivalentNode(documentElement) && target || null;
+                                    const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || xsl.resource;
+                                    const xo_source = documentElement.getAttributeNode("xo-source") || target.getAttributeNode("xo-source") || store && store.tag || null;
+                                    xo_source && documentElement.setAttribute("xo-source", xo_source);
+                                    xo_stylesheet && documentElement.setAttribute("xo-stylesheet", xo_stylesheet);
                                     if (!new_target) {
-                                        const xo_source = documentElement.getAttributeNode("xo-source") || target.getAttributeNode("xo-source");
-                                        const xo_stylesheet = documentElement.getAttribute("xo-stylesheet") || documentElement.getAttribute("xo-stylesheet") || xsl.resource;
                                         const id = documentElement.id || target.getAttribute("id") || "";
-                                        xo_source && documentElement.setAttribute("xo-source", xo_source);
-                                        xo_stylesheet && documentElement.setAttribute("xo-stylesheet", xo_stylesheet);
 
                                         new_target = target.queryChildrenAll(`[xo-stylesheet="${xo_stylesheet}"],[id="${id}"]`)[0] || !target.hasAttribute("xo-stylesheet") && target.appendChild(document.createElement("slot", { "xo-source": xo_source, "xo-stylesheet": documentElement.getAttributeNode("xo-stylesheet") })) || target; //[xo-source="${xo_source}"]
                                         if (xo_source && xo_source.value === "context:store") {
@@ -12326,41 +12331,41 @@ xover.xml.initialize = async function (target) {
         file_ref.replaceWith(xover.xml.createNode(`<xsl:text>${param_value || ''}</xsl:text>`))
     }
     //if (imports.length) {
-        await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
-        function assert(condition, message) {
-            if (!condition) {
-                throw new Error(message);
-            }
+    await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
+    function assert(condition, message) {
+        if (!condition) {
+            throw new Error(message);
         }
-        try {
-            let rejections = [];
-            await target.consolidate();
-            //target.select(`//xsl:template//@xo:use-attribute-sets`).remove();
-            for (let param of target.select(`*/xsl:param[@name]`)) {
-                xover.listener.params[param.attributes.name] = xover.listener.params[param.attributes.name] || new Set();
-                xover.listener.params[param.attributes.name].add(param);
-            }
-            if (xover.session.debug) {
-                target.select(`//xsl:*[xsl:param]`).forEach(template => {
-                    let param_names = [...template.select(`xsl:param/@name`).map(param => param.value)];
-                    try {
-                        assert(param_names.length == [...new Set(param_names)].length, `Los nombres de los parámetros deben ser únicos en: ${template.nodeName} ${template.select(`@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}>`)
-                    } catch (e) {
-                        rejections.push(e)
-                    }
-                })
-            }
-            if (rejections.length) {
-                return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
-            }
-        } catch (e) {
-            const url = e.url || '';
-            let custom_event = new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, target);
-            window.dispatchEvent(custom_event);
-            if (!custom_event.defaultPrevented) {
-                return Promise.reject(e);
-            }
+    }
+    try {
+        let rejections = [];
+        await target.consolidate();
+        //target.select(`//xsl:template//@xo:use-attribute-sets`).remove();
+        for (let param of target.select(`*/xsl:param[@name]`)) {
+            xover.listener.params[param.attributes.name] = xover.listener.params[param.attributes.name] || new Set();
+            xover.listener.params[param.attributes.name].add(param);
         }
+        if (xover.session.debug) {
+            target.select(`//xsl:*[xsl:param]`).forEach(template => {
+                let param_names = [...template.select(`xsl:param/@name`).map(param => param.value)];
+                try {
+                    assert(param_names.length == [...new Set(param_names)].length, `Los nombres de los parámetros deben ser únicos en: ${template.nodeName} ${template.select(`@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")}>`)
+                } catch (e) {
+                    rejections.push(e)
+                }
+            })
+        }
+        if (rejections.length) {
+            return Promise.reject(xover.xml.createNode(`<fieldset xmlns="http://www.w3.org/1999/xhtml"><legend>En el archivo ${url.href || url}, se encuentran los siguientes problemas: </legend><ol>${rejections.map(item => `<li>${item.href || item.url || item}${item.status == 404 ? ' - No encontrado' : ''}</li>`)}</ol></fieldset>`));
+        }
+    } catch (e) {
+        const url = e.url || '';
+        let custom_event = new xover.listener.Event('importFailure', { tag: url.toString(), url, response: e, request: url }, target);
+        window.dispatchEvent(custom_event);
+        if (!custom_event.defaultPrevented) {
+            return Promise.reject(e);
+        }
+    }
     //}
     if (target.documentElement && target.documentElement.namespaceURI == 'http://www.w3.org/1999/XSL/Transform') {
         target.documentElement.set("exclude-result-prefixes", target.documentElement.attributes.toArray().filter(attr => attr.prefix == 'xmlns').map(attr => attr.localName).distinct().join(" "));
@@ -12658,7 +12663,7 @@ xover.xml.staticMerge = function (node1, node2) {
         && (
             node1.nodeType !== Node.ELEMENT_NODE
             || (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/ == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/
-            && (node1.getAttribute("xo-xsl-source") == node2.getAttribute("xo-xsl-source") && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id")))            
+            && (node1.getAttribute("xo-xsl-source") == node2.getAttribute("xo-xsl-source") && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id")))
         )
     )) {
         return false;
