@@ -1762,7 +1762,7 @@ Object.defineProperty(xover.listener, 'matches', {
         if (/*!context.disconnected && */xover.listener.get(event_type)) { //TODO: check if this is needed
             let tags = new Set(event_tags, [context.tag]);
             let handlers = [...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat().map(([predicate, fn]) => [predicate || '', fn]);
-            for (let [, handler] of handlers.filter(([predicate]) => !predicate && (!default_predicate[event_type] || typeof (context.matches) == 'function' && context.matches(default_predicate[event_type])) || predicate[0] == '#' && (tags.has(predicate) || tags.has(predicate.replace(/^#/, ''))) || typeof (context.matches) == 'function' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || handler.scope.name /*validates if it's a constructor*/&& existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+            for (let [, handler] of handlers.filter(([predicate]) => !predicate && (!default_predicate[event_type] || typeof (context.matches) == 'function' && context.matches(default_predicate[event_type])) || predicate[0] == '#' && (tags.has(predicate) || tags.has(predicate.replace(/^#/, ''))) || typeof (context.matches) == 'function' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || handler.scope.name /*validates if it's a constructor*/ && existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
                 fns.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler);
             }
         }
@@ -2188,15 +2188,15 @@ Object.defineProperty(xover.listener, 'on', {
             }
 
             let event_array = xover.listener.get(base_event) || new Map();
-            let handler_map = event_array.get(`[${handler.selectors.join(',')}]=>${handler.name || handler.toString() }`) || new Map();
+            let handler_map = event_array.get(`[${handler.selectors.join(',')}]=>${handler.name || handler.toString()}`) || new Map();
             handler_map.set(predicate, handler);
-            event_array.set(`[${handler.selectors.join(',')}]=>${handler.name || handler.toString() }`, handler_map);
+            event_array.set(`[${handler.selectors.join(',')}]=>${handler.name || handler.toString()}`, handler_map);
             xover.listener.set(base_event, event_array);
 
             if (predicate) {
                 if (["mouseout", "mouseleave", "mousemove"].includes(base_event)) {
                     xover.listener.on(`mousemove`, function () {
-                        let target = this && typeof(this.closest) == 'function' && this.closest(predicate);
+                        let target = this && typeof (this.closest) == 'function' && this.closest(predicate);
                         if (target) {
                             target.custom_events = target.custom_events || new Map();
                             target.custom_events.set(`${base_event}::${predicate}`, new xover.listener.Event(`${base_event}::${predicate}`, { ...event.detail }, target));
@@ -2493,7 +2493,7 @@ Object.defineProperty(xover.Manifest.prototype, 'init', {
                         let manifest = await xover.fetch.json(url).catch(e => console.error(e));
                         xover.json.combine.call(xover.manifest, manifest);
                     } catch (e) {
-                        Promise.reject(e);
+                        console.error(e);
                     }
                 }
                 xover.manifest = new xover.Manifest(xover.manifest);
@@ -7955,7 +7955,7 @@ xover.modernize = async function (targetWindow) {
                         if (!this) return null;
                         let scope_store = this.closest(`[xo-source],[xo-stylesheet]`) || document.createElement("p");
                         let store = scope_store.getAttribute(`xo-source`) || 'inherit';
-                        if (store === 'inherit' && typeof((this.parentNode || {}).closest) === 'function' && this.parentNode.closest('[xo-source]')) {
+                        if (store === 'inherit' && typeof ((this.parentNode || {}).closest) === 'function' && this.parentNode.closest('[xo-source]')) {
                             return store_handler.get.call(this.parentNode.closest('[xo-source]'))
                         }
                         return store in xover.stores ? xover.stores[store] : null;
@@ -10130,12 +10130,12 @@ xover.modernize = async function (targetWindow) {
                                 }
                                 try {
                                     //if (((arguments || {}).callee || {}).caller != xover.xml.transform) {
-                                    window.dispatchEvent(new xover.listener.Event('transform', { source: this, original: this, stylesheet:xsl, xsl, tag: tag, result, transformed: result, listeners: after_listeners }, xml));
+                                    window.dispatchEvent(new xover.listener.Event('transform', { source: this, original: this, stylesheet: xsl, xsl, tag: tag, result, transformed: result, listeners: after_listeners }, xml));
                                     //}
                                 } catch (e) { }
                                 return result
                             } catch (ready) { //TODO: Check if this should be replaced catch block above
-                                ready && typeof(ready.then)=='function' && ready.then(() => self.transform(xsl, config)).catch(e => {
+                                ready && typeof (ready.then) == 'function' && ready.then(() => self.transform(xsl, config)).catch(e => {
                                     if (e.status == 404) {
                                         return self.transform(xsl, config);
                                     } else {
@@ -11741,7 +11741,7 @@ xover.Request = function (request, ...args) {
             if (method) args.push({ method });
             let requester = this.hash;
             let endpoint = request.split(/:/).reverse()[0];
-            if (!xover.manifest.server[endpoint]) return Promise.reject(`Endpoint "${endpoint}"${!requester?'':` requested by "${requester}"`} is not configured in manifest`);
+            if (!xover.manifest.server[endpoint]) return Promise.reject(`Endpoint "${endpoint}"${!requester ? '' : ` requested by "${requester}"`} is not configured in manifest`);
             request = xover.Request.call(this, `xover.server.${endpoint}`, ...args);
             return request;
         } else if (existsFunction(request)) {
@@ -13276,7 +13276,7 @@ xover.dom.combine = async function (target, new_node) {
             current.replaceWith(change)
         } else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && change.localName === 'slot' && change.classList.contains("placeholder")) {
             if (target.contains((current.closest("[xo-xsl-source]") || current).parentNode)) {
-                current.remove({silent:true}) //TODO: Check what are the rules to remove
+                current.remove({ silent: true }) //TODO: Check what are the rules to remove
             } else {
                 change.remove()
             }
