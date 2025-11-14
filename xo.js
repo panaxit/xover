@@ -1133,6 +1133,10 @@ xover.init.customComponents = async function () {
                     return clone;
                 }
 
+                isEqualNode(target) {
+                    return this.cloneNode() === target.cloneNode();
+                }
+
                 attributeChangedCallback(name, oldValue, newValue) {
                     if (oldValue === null || oldValue === newValue) return;
                     if ('_'+name in this) {
@@ -1945,67 +1949,69 @@ Object.defineProperty(xover.listener, 'dispatcher', {
             key = key.slice(operator.length);
           }
           let [arg, ...props] = key.split(/(?<=[\w\d])\./g);
-          let context;
+          let scope;
           try {
             if (arg in (event.detail || {})) {
-              context = event.detail;
+              scope = event.detail;
               props.unshift(arg);
             } else if (arg in event) {
-              context = event;
+              scope = event;
               props.unshift(arg);
             } else {
-              context = eval(arg); //(['window', 'location'].includes(arg.split('.')[0]) || eval(arg) === xover)
+              scope = eval(arg); //(['window', 'location'].includes(arg.split('.')[0]) || eval(arg) === xover)
             }
-            if (context && props.length) {
-              props.unshift("context");
-              context = eval(props.join('.'))
+            if (scope && props.length) {
+              props.unshift("scope");
+              scope = eval(props.join('.'))
             }
           } catch (e) {
             for (let [ix, prop] of Object.entries(props)) {
-              if (!context) continue;
-              if (typeof (context[prop.split(/\(/)[0]]) == 'function') {
-                context[prop.split(/\(/)[0]]
+              if (!scope) continue;
+              if (typeof (scope[prop.split(/\(/)[0]]) == 'function') {
+                scope[prop.split(/\(/)[0]]
               }
-              context = context[prop] != null ? context[prop] : props.length - 1 != ix ? {} : null;
+              scope = scope[prop] != null ? scope[prop] : props.length - 1 != ix ? {} : null;
             }
           }
-          if (context instanceof Document) {
-            context = (context.href || '').replace(/^\//, '')
+          if (scope instanceof Document) {
+            scope = (scope.href || '').replace(/^\//, '')
+          } else if (typeof (scope) === 'function') {
+            scope = scope.call(context, event.detail)
           }
-          if (context == undefined) return false;
+          if (scope == undefined) return false;
           if (!condition) {
             switch (operator) {
               case "!!":
-                return !!context
+                return !!scope
               case "!":
-                return !context
+                return !scope
               default:
-                return context
+                return scope
             }
           } else {
             condition = condition.replace(new RegExp(`^("|')(.*)\\1$`, 'g'), '$2');
             result = false
             switch (operator) {
               case "!!":
-                result = !!(context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                result = !!(scope instanceof Node ? scope : `${scope}`).matches(`${condition}`)
                 break;
               case "!":
-                result = !(context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                result = !(scope instanceof Node ? scope : `${scope}`).matches(`${condition}`)
                 break;
               case "*":
-                result = `${context}`.indexOf(`${condition}`) != -1
+                result = `${scope}`.indexOf(`${condition}`) != -1
                 break;
               case "^":
-                result = `${context}`.indexOf(`${condition}`) == 0
+                result = `${scope}`.indexOf(`${condition}`) == 0
                 break;
               case "$":
-                result = `${context}`.matches(`${condition}$`);
+                result = `${scope}`.matches(`${condition}$`);
                 break;
               case "~":
-                result = `${context}`.matches(`\\b${condition}\\b`);
+                result = `${scope}`.matches(`\\b${condition}\\b`);
                 break;
               default:
-                result = (context instanceof Node ? context : `${context}`).matches(`${condition}`)
+                result = (scope instanceof Node ? scope : `${scope}`).matches(`${condition}`)
             }
             if (negated) {
               result = !result;
@@ -6277,7 +6283,7 @@ xover.modernize = async function (targetWindow) {
         })
 
         xover.listener.on(`mutate::xsl:*`, function ({ mutations }) {
-          if (!event.defaultPrevented) {
+          if (!(event || {}).defaultPrevented) {
             mutations.clear()
           }
         })
@@ -6607,29 +6613,24 @@ xover.modernize = async function (targetWindow) {
           }
         })
 
-        Object.defineProperty(Request.prototype, 'matches', {
-          value: function (...args) {
-            if (this.url.matches(...args)) {
+        const request_response_matches = function (args) {
+          if (!args) return true;
+          for (let arg of args.split("|")) {
+            let [predicate, hash] = arg.split(/#/g);
+            hash = hash ? `#${hash}` : '';
+            if ((!predicate || predicate && this.url.matches(predicate)) && (!hash || hash && (this.tags.has(hash) || this.target === xover.sources[hash]))) {
               return true
             }
-            let node = this.documentElement;
-            return node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node))
           }
+          return false;
+        }
+
+        Object.defineProperty(Request.prototype, 'matches', {
+          value: request_response_matches
         })
 
         Object.defineProperty(Response.prototype, 'matches', {
-          value: function (...args) {
-            let predicate = args.pop();
-            let tag = this.tag || event && event.detail && event.detail.tag || '';
-            if (predicate[0] == '#') {
-              if (tag == predicate || predicate == tag.split(/[:\?~]/)[0]) {
-                return true;
-              }
-              return false;
-            }
-            let node = this.documentElement;
-            return node && [node.ownerDocument].find(el => el && el.selectNodes(predicate).includes(node))
-          }
+          value: request_response_matches
         })
 
         Element.matches = Element.matches || Object.getOwnPropertyDescriptor(Element.prototype, 'matches');
@@ -8465,7 +8466,7 @@ xover.modernize = async function (targetWindow) {
         MutationObserver.prototype.observe = function (target, options) {
           target.observers = target.observers || new Map();
           target.observers.set(this, options);
-          return typeof(MutationObserver.observe)==='function' && MutationObserver.observe.apply(this, arguments) || false;
+          return typeof (MutationObserver.observe) === 'function' && MutationObserver.observe.apply(this, arguments) || false;
         }
 
         if (!Node.prototype.hasOwnProperty('connect')) {
@@ -11573,6 +11574,18 @@ xover.Response = function (response, request) {
 }
 xover.Response.prototype = Object.create(Response.prototype);
 
+Object.defineProperty(xover.Response.prototype, 'tags', {
+   get: function () {
+      return this.request.tags;
+   }
+})
+
+Object.defineProperty(xover.Response.prototype, 'target', {
+   get: function () {
+      return this.request.target;
+   }
+})
+
 xover.QUERI = function (href) {
   function encodeValue(value) {
     if (!value) return value;
@@ -11876,9 +11889,10 @@ xover.Request = function (request, ...args) {
         } else {
           request.contextNode = this;
         }
+        request.target = request.contextNode;
         args = xover.json.evaluate(args);
         request.apply(args);
-        let parameters = xover.json.evaluate.call(request.contextNode, request.parameters);
+        let parameters = xover.json.evaluate.call(request.target, request.parameters);
         if (typeof (fn) === 'function') {
           request.fetching = fn.apply(request, instanceOf.call(parameters, Array) ? parameters : [parameters]);
           return request.fetching;
@@ -11946,7 +11960,7 @@ xover.Request = function (request, ...args) {
             debugger
           }
 
-          request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { document: instanceOf.call(this.contextNode, Document) ? this.contextNode : null, context: this.contextNode, tags: request.tags, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url, args }, request);
+          request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { document: instanceOf.call(request.target, Document) ? request.target : null, context: request.target, target: request.target, tags: request.tags, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url, args }, request);
           window.dispatchEvent(request.before_event);
           await request.before_event.detail.returnValue;
           if (request.before_event.cancelBubble || request.before_event.defaultPrevented) return;
@@ -11989,7 +12003,7 @@ xover.Request = function (request, ...args) {
           if (controller.signal.aborted) return Promise.reject(new Response(null, { status: 499, statusText: "Client Closed Request" }));
           return_value = await response.body;
           if (!["opaque"].includes(response.type)) {
-            let fetch_event = new xover.listener.Event('fetch', { body: response.body, document: response.document, json: response.json, result: return_value, url: response.url, response, request }, return_value); //document: return_value, tag: tag_string, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url
+            let fetch_event = new xover.listener.Event('fetch', { body: response.body, document: response.document, json: response.json, result: return_value, url: response.url, response, request, target: request.target }, response); //document: return_value, tag: tag_string, settings: url.settings, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url
             window.dispatchEvent(fetch_event);
             if (fetch_event.detail.returnValue instanceof Error) {
               return Promise.reject(fetch_event.detail.returnValue);
@@ -13198,7 +13212,7 @@ xover.dom.combine = async function (target, new_node) {
       iframe.addEventListener('load', () => {
         const idoc = iframe.contentDocument;
         idoc.open();
-        idoc.write(html_content);
+        idoc.write(xover.string.htmlDecode(html_content));
         idoc.close();
         iframe.removeAttribute('src');
       });
