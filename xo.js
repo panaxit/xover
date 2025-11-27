@@ -9752,8 +9752,12 @@ xover.modernize = async function (targetWindow) {
                     xml = xml.transform(stylesheet.document || stylesheet.href || stylesheet);
                   }
                   return xml;
-                }
-                xsl = xsl.cloneNode(true);
+                 }
+                 let xsl_props = { target: xsl.target }
+                 xsl = xsl.cloneNode(true);
+                 for (let [prop, value] of Object.entries(xsl_props)) {
+                    xsl[prop] = value;
+                 }
                 let high_priority_scripts = xsl.select(`//html:script[@fetchpriority="high"]`).map(script => script.modify(node => node.select(`descendant::xsl:*`).remove()));
 
                 if (high_priority_scripts.length) {
@@ -9788,9 +9792,9 @@ xover.modernize = async function (targetWindow) {
                     ////if (navigator.userAgent.indexOf("iPhone") != -1 || xover.debug["xover.xml.consolidate"]) {
                     ////    xsl = xover.xml.consolidate(xsl); //Corregir casos cuando tiene apply-imports
                     ////}
-                    //let tag = xml.tag || `#${xsl.resource || ""}`;
-                    //xml.tag = tag;
-                    xsl = xsl.cloneNode(true);
+                    ////let tag = xml.tag || `#${xsl.resource || ""}`;
+                    ////xml.tag = tag;
+                    //xsl = xsl.cloneNode(true);
                     xsl.processor = new XSLTProcessor();
                     let xsltProcessor = xsl.processor;
                     xml = instanceOf.call(xml, Document) ? xml.cloneNode(true) : xover.xml.createDocument(xml);
