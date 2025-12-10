@@ -9032,13 +9032,15 @@ xover.modernize = async function (targetWindow) {
 
         HTMLTextAreaElement.value = HTMLTextAreaElement.value || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
         HTMLSelectElement.value = HTMLSelectElement.value || Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
-        var value_handler = {
+        const value_handler = {
           get: function () {
             return this.constructor.value.get.call(this);
           },
           set: function (value) {
             let return_value = this.constructor.value.set.call(this, [value]);
-            this.dispatchEvent(new Event('change'));
+            if ((event || {}).type !== "change") {
+               this.dispatchEvent(new Event('change'));
+            }
             return return_value;
           }
         }
@@ -11961,7 +11963,6 @@ xover.Request = function (request, ...args) {
             request.settings.method = 'POST'
           } else if (args.length && args[0]) {
             request.body.push(args[0]);
-            debugger
           }
 
           request.before_event = request.before_event || new xover.listener.Event('beforeFetch', { document: instanceOf.call(request.target, Document) ? request.target : null, context: request.target, target: request.target, tags: request.tags, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url, args }, request);
@@ -11996,7 +11997,7 @@ xover.Request = function (request, ...args) {
           } else if (!original_response) {
             stored_document = null;
             const { signal } = controller;
-            original_response = await fetch(request.clone(xover.json.evaluate), { signal });
+            original_response = await fetch(await request.clone(xover.json.evaluate), { signal });
           }
 
           if (!original_response && !controller.signal.aborted) return Promise.reject(`No response for ${url}!`);
@@ -12249,12 +12250,23 @@ Object.defineProperty(xover.Request.prototype, 'toString', {
   }
 })
 Object.defineProperty(xover.Request.prototype, 'clone', {
-  value: function (parser) {
+  value: async function (parser) {
     let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = this;
     //url = new xover.URL(req.url, location.origin + location.pathname.replace(/[^/]+$/, "")
-    let config = { method, headers: [...headers], body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal };
+      let config = { method, headers: [...headers], body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal };
     if (typeof (parser) === 'function') {
       config = parser(config);
+    }
+    if (instanceOf.call(config.body, File)) {
+       let file = config.body;
+       config.body = await file.text();
+       if (file.name[0] == "@") {
+          config.headers = new Headers(config.headers);
+          config.headers.set("x-payload-name", file.name)
+          if (file.type) {
+            config.headers.set("content-type", file.type)
+          }
+       }
     }
     return new Request(this.url, config);
   }
