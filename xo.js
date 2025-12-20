@@ -4470,7 +4470,11 @@ xover.URL = function (href, base, options = {}) {
       if (value && value.constructor == {}.constructor) {
         value = JSON.stringify(value)
       }
-      return url.searchParams.set(key, value)
+       if (key[0] === '^') {
+         return url.headers.set(key.substring(1), value)
+       } else {
+         return url.searchParams.set(key, value)
+       }
     }, deleteProperty: function (self, key) {
       return url.searchParams.delete(key)
     }
@@ -12212,12 +12216,20 @@ Object.defineProperty(xover.Request.prototype, 'trackers', {
 Object.defineProperty(xover.Request.prototype, 'abort', {
   get: function () {
     return this.controller ? this.controller.abort.bind(this.controller) : undefined;
-  }
+   }
+})
+
+Object.defineProperty(xover.Request.prototype, 'remove', {
+   value: function () {
+      xover.requests.delete(this);
+   }
 })
 
 Object.defineProperty(xover.Request.prototype, 'updateProgress', {
-  value: async function (_progress) {
-    this.progress = _progress;
+   value: async function (_progress) {
+   this.progress = _progress;
+   let progress_event = new xover.listener.Event('progress', { percent: _progress }, this);
+   window.dispatchEvent(progress_event);
     for (let tracker of [...this.trackers].flat(Infinity)) {
       try {
         for (let progress_bar of tracker.querySelectorAll(`progress,[role=progress][value]`)) {
