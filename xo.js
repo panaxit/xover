@@ -665,6 +665,7 @@ xover.init = async function () {
 					return await xover.sources[href].ready && xover.sources[href];
 				}
 			})).catch((e = {}) => {
+				if (typeof (e) == 'string') e = new Error(e);
 				console.error(`Couldn't start manifest entry`, e);
 				Object.defineProperty(e, 'initiator', {
 					enumerable: false, writable: true, configurable: true,
@@ -6269,17 +6270,39 @@ xover.modernize = async function (targetWindow) {
 						}
 					}
 					if (![...mutated_targets.values()].some(config => Object.values(config).some(arr => Object.values(arr).length))) return;
+					const pending = new Set()
+					function track(p) {
+						pending.add(p)
+						setWorkingOn();
+						p.finally(() => {
+							pending.delete(p)
+							if (pending.size == 0) {
+								!(active_element instanceof HTMLBodyElement) &&
+									active_element instanceof HTMLElement &&
+									active_element.classList.remove("xo-working")
+							}
+						})
+						return p
+					}
+
+					function setWorkingOn() {
+						!(active_element instanceof HTMLBodyElement) &&
+							active_element instanceof HTMLElement &&
+							active_element.classList.add("xo-working")
+					}
+
 					let renders = [];
 					for (let section of sections) {
 						if (!section.checkVisibility()) continue;
-						!(active_element instanceof HTMLBodyElement) && active_element instanceof HTMLElement && active_element.classList.add("xo-working")
-						if (section.contains(active_element)) {
-							await xover.delay(100); //delay to let animations end
+						let parentSection = section.section;
+						if (sections.includes(parentSection)) {
+							parentSection.render().then(() => track(section.render()));
+						} else {
+							track(section.render());
 						}
-						renders.push(section.render())
 					}
 					if (xover.stores.active.document === (self.ownerDocument || self)) {
-						renders.push(xover.stores.active.render())
+						track(xover.stores.active.render())
 					}
 					Promise.allSettled(renders).then(() => {
 						if (active_element.ownerDocument && !active_element.ownerDocument.contains(active_element)) {
@@ -7640,7 +7663,7 @@ xover.modernize = async function (targetWindow) {
 				}
 
 				Element.prototype.isMatchingNode = function (comparedNode) {
-					if (!((comparedNode || {}).nodeType && this.id === comparedNode.id)) return false;
+					if (!((comparedNode || {}).nodeType && this.id === comparedNode.id && this.getAttribute("xo-stylesheet") === comparedNode.getAttribute("xo-stylesheet"))) return false;
 					let matches = Node.prototype.isMatchingNode.call(this, comparedNode);
 					matches = matches || comparedNode.nodeType === Node.ELEMENT_NODE && (this.previousSibling || {}).nodeType === Node.COMMENT_NODE && this.previousSibling.data.indexOf("ack:id") != -1 && this.previousSibling.isEqualNode(comparedNode.previousSibling);
 					return matches;
@@ -10636,9 +10659,11 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 								////    requestAnimationFrame(() => {
 								////        setTimeout(async () => {
 								if (xsl) {
+									action = "combine"
 									xsl.target = target;
 									dom = await data.transform(xsl);
 								} else if (instanceOf.call(data.firstElementChild, HTMLElement, SVGElement)) {
+									action = "replace"
 									dom = data
 								}
 								if (!(dom && dom.nodeType)) continue;
@@ -10732,7 +10757,7 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 										//}
 									}
 
-									if (stylesheet.action === 'replace' || (target.getAttribute("xo-swap") || '').split(/\s+/g).includes("self::*")) {
+									if (action === 'replace' || (target.getAttribute("xo-swap") || '').split(/\s+/g).includes("self::*")) {
 										documentElement.setAttribute("xo-swap", documentElement.getAttribute("xo-swap") || target.getAttribute("xo-swap") || "self::*")
 										if (new_target && new_target.contains(target)) {
 											if (new_target.isEqualNode(documentElement)) {
@@ -12698,6 +12723,196 @@ xover.xml.getDifferentChildren = function (nodeA, nodeB) {
 	}
 	return differentNodes;
 }
+xover.xml.normalizeChildren = function (nodeA, nodeB, options) {
+	options = options || {}
+
+	const includeText = !!options.includeText
+	const ignoreWhitespaceText = options.ignoreWhitespaceText !== false
+	const placeholder_model = document.createElement("slot")
+	placeholder_model.classList.add("placeholder")
+
+	const diffs = new Map()
+
+	Object.defineProperty(diffs, "pairs", { value: [], writable: true, configurable: true })
+	Object.defineProperty(diffs, "moves", { value: [], writable: true, configurable: true })
+	Object.defineProperty(diffs, "debug", { value: {}, writable: true, configurable: true })
+
+	function makePlaceholder() {
+		return placeholder_model.cloneNode(false, { inert: true })
+	}
+
+	function isIgnorable(node) {
+		if (!node) return true
+		if (node.nodeType === Node.COMMENT_NODE) return true
+		if (node.nodeType === Node.TEXT_NODE) {
+			if (!includeText) return true
+			if (ignoreWhitespaceText && !node.nodeValue.trim()) return true
+		}
+		return false
+	}
+
+	function fingerprint(n) {
+		if (!n) return ""
+		if (n.nodeType === Node.TEXT_NODE) return `#text:${n.nodeValue}`
+		if (n.nodeType !== Node.ELEMENT_NODE) return `${n.nodeType}:${n.nodeName}`
+
+		const name = n.localName || n.nodeName.toLowerCase()
+
+		const xo_source = n.getAttribute("xo-source") || ""
+		const xo_sheet = n.getAttribute("xo-stylesheet") || ""
+
+		// firma fuerte primero
+		if (xo_source && xo_sheet) return `${name}|xo:${xo_source}|xs:${xo_sheet}`
+
+		const id = n.id || ""
+		const xsl = n.getAttribute("xo-xsl-source") || ""
+		const scope = n.getAttribute("xo-scope") || ""
+		const slot = n.getAttribute("xo-slot") || ""
+
+		return `${name}|${id}|${xsl}|${scope}|${slot}`
+	}
+
+
+	function nodeKind(n) {
+		if (!n) return "other"
+		if (n.nodeType === Node.TEXT_NODE) return "text"
+		if (n.nodeType === Node.ELEMENT_NODE) {
+			if (["style", "script", "link", "meta"].includes(n.localName)) return "invisible"
+		}
+		return "other"
+	}
+
+	function buildList(parent) {
+		const list = []
+		for (const n of [...parent.childNodes]) {
+			if (isIgnorable(n)) continue
+			list.push(n)
+		}
+		return list
+	}
+
+	function snapshotNeighbors(list) {
+		const meta = new Map()
+		for (let i = 0; i < list.length; i++) {
+			const n = list[i]
+			const prev = list[i - 1] || null
+			const next = list[i + 1] || null
+			meta.set(n, {
+				fp: fingerprint(n),
+				prevFp: prev ? fingerprint(prev) : "",
+				nextFp: next ? fingerprint(next) : "",
+				index: i,
+				kind: nodeKind(n)
+			})
+		}
+		return meta
+	}
+
+	function stableSort(list, meta) {
+		return list
+			.map((n, i) => {
+				const m = meta.get(n) || {}
+				const name = n.nodeType === Node.ELEMENT_NODE ? (n.localName || "") : (n.nodeName || "")
+				return { n, i, k: `${m.kind}::${name}::${m.fp || ""}` }
+			})
+			.sort((a, b) => a.k.localeCompare(b.k) || a.i - b.i)
+			.map(x => x.n)
+	}
+
+	function buildIndexByFp(list, meta) {
+		const index = new Map()
+		for (const n of list) {
+			const m = meta.get(n)
+			if (!m) continue
+			let q = index.get(m.fp)
+			if (!q) index.set(m.fp, q = [])
+			q.push(n)
+		}
+		return index
+	}
+
+	function takeFirst(index, fp) {
+		const q = index.get(fp)
+		if (!q || !q.length) return null
+		return q.shift() || null
+	}
+
+	function markMove(domNode, beforeNode, afterNode, reason) {
+		if (!domNode) return
+		Object.defineProperty(domNode, "__xo_norm", {
+			value: { type: "move", before: beforeNode || null, after: afterNode || null, reason: reason || "" },
+			writable: true,
+			configurable: true
+		})
+		diffs.moves.push(domNode)
+	}
+
+	// 1) listas crudas (sin ordenar)
+	let rawA = buildList(nodeA)
+	let rawB = buildList(nodeB)
+
+	// 2) snapshot de vecinos (sobre el orden real)
+	const metaA = snapshotNeighbors(rawA)
+	const metaB = snapshotNeighbors(rawB)
+
+	// 3) listas ordenadas (para evitar peras con manzanas)
+	let listA = stableSort(rawA, metaA)
+	let listB = stableSort(rawB, metaB)
+
+	// 4) índice por fingerprint en B (cola)
+	const indexB = buildIndexByFp(listB, metaB)
+
+	// 5) alinear A -> B por fingerprint, y producir pares / placeholders
+	for (const a of listA) {
+		const aMeta = metaA.get(a) || {}
+		const b = takeFirst(indexB, aMeta.fp) || null
+
+		if (b) {
+			diffs.set(a, b)
+			diffs.pairs.push([a, b])
+
+			// 6) detectar “se movió”: comparar vecindario antes/después (por fingerprint)
+			const bMeta = metaB.get(b) || {}
+
+			// si el fingerprint coincide pero cambió el contexto, marcamos move
+			// (esto es best-effort: con repetidos puede haber falsos positivos, pero funciona bien con xo-scope/xsl/id)
+			const prevChanged = (aMeta.prevFp || "") !== (bMeta.prevFp || "")
+			const nextChanged = (aMeta.nextFp || "") !== (bMeta.nextFp || "")
+
+			if (prevChanged || nextChanged) {
+				// elegimos ancla preferida: si en el DOM existe el “nuevo prev” en A, mover after; si existe el “nuevo next”, mover before
+				// aquí solo guardamos la intención, el apply-phase decide el ancla real
+				markMove(a, null, null, "neighbors")
+			}
+		} else {
+			// A existe pero en B no: B requiere placeholder (equivale a remove en DOM)
+			const pb = makePlaceholder()
+			nodeB.appendChild(pb)
+			diffs.set(a, pb)
+			diffs.pairs.push([a, pb])
+		}
+	}
+
+	// 7) lo que sobró en B es “insert” (placeholder en A)
+	for (const [fp, queue] of indexB) {
+		while (queue.length) {
+			const b = queue.shift()
+			const pa = makePlaceholder()
+			nodeA.appendChild(pa)
+			diffs.set(pa, b)
+			diffs.pairs.push([pa, b])
+		}
+	}
+
+	diffs.debug = {
+		rawA: rawA.map(n => metaA.get(n) && metaA.get(n).fp || n.nodeName),
+		rawB: rawB.map(n => metaB.get(n) && metaB.get(n).fp || n.nodeName),
+		sortedA: listA.map(n => metaA.get(n) && metaA.get(n).fp || n.nodeName),
+		sortedB: listB.map(n => metaB.get(n) && metaB.get(n).fp || n.nodeName)
+	}
+
+	return diffs
+}
 
 xover.xml.staticMerge = function (node1, node2) {
 	function findEmptyTextNodes(root) {
@@ -12737,6 +12952,9 @@ xover.xml.staticMerge = function (node1, node2) {
 	//    option.checked = !!option.getAttributeNode("checked")
 	//}
 	if (instanceOf.call(node1, HTMLSlotElement)) return;
+	if (this === node1 && node1.hasAttribute("xo-stylesheet")) {
+		return node2.replaceWith(node1.cloneNode(true))
+	}
 
 	let node1_xo_source = node1.attribute["xo-source"];
 	let node2_xo_source = node2.attribute["xo-source"];
@@ -12747,8 +12965,10 @@ xover.xml.staticMerge = function (node1, node2) {
 		node1.isEquivalentNode(node2)
 		&& (
 			node1.nodeType !== Node.ELEMENT_NODE
+			|| node2.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
 			|| (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/ == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/
-			&& (node1.getAttribute("xo-xsl-source") == node2.getAttribute("xo-xsl-source") && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id")))
+			&& (node1.getAttribute("xo-xsl-source") == node2.getAttribute("xo-xsl-source") && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id"))
+		)
 		)
 	)) {
 		return false;
@@ -12849,7 +13069,7 @@ xover.xml.staticMerge = function (node1, node2) {
 		//source.applyAttributes(...target.attributes);
 	}
 	if (static.length && node1.nodeName.toLowerCase() === node2.nodeName.toLowerCase()) {
-		for (let attr of node1.attributes) {
+		for (let attr of node1.attributes || []) {
 			if (!(static.contains("@*") && !(static.contains(`-@${attr.name}`)) || static.contains(`@${attr.name}`))) continue;
 			node2.importAttributeNode(attr);
 		}
@@ -12858,9 +13078,9 @@ xover.xml.staticMerge = function (node1, node2) {
 		node2.replaceChildren(...node1.cloneNode(true).childNodes)
 	}
 	if (node1.nodeType === Node.ELEMENT_NODE && !instanceOf.call(node1, CustomElement)) {
-		let differences = xover.xml.getDifferentChildren(node1, node2);
+		let differences = xover.xml.normalizeChildren(node1, node2);
 		for (const [childA, childB] of [...differences]) {
-			xover.xml.staticMerge(childA, childB)
+			xover.xml.staticMerge.call(childA, childA, childB)
 		}
 	}
 }
@@ -13239,7 +13459,10 @@ xover.dom.combine = async function (target, new_node) {
 	let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
 	post_render_scripts.forEach(script => script_wrapper.append(script));
 
-	await xover.signal.update.call(new_node, function (key) { return new_node.single('./' + key) || new_node.single('./@' + key) || key });
+	await xover.signal.update.call(new_node, function (key) {
+		let scope = (new_node.hasAttribute(key)) ? new_node : this.scope;
+		return scope.single('./' + key) || scope.single('./@' + key) || key
+	});
 	for (const input of [...target.querySelectorAll("input[type=text][value]")].filter(input => input !== document.activeElement && input.value != input.getAttribute("value"))) { //This code syncs the value (usually visible) with its attribute
 		input.setAttribute("value", input.value)
 	}
@@ -15674,7 +15897,7 @@ xover.listener.on('dialog::iframe', function () {
 xover.socket = {};
 xover.socket.connect = function (url, listeners = {}, socket_handler = window.io, config = { transports: ['websocket'] }) {
 	try {
-		if (!socket_handler) return;
+		if (!socket_handler) return Promise.reject('No handler available');
 		const socket_io = socket_handler(url, config);
 		socket_io.on('connect_error', (err) => {
 			console.error(`Socket connection error: ${err.message}`);
