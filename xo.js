@@ -14947,8 +14947,7 @@ xover.Store = function (xml, ...args) {
 				stylesheets = stylesheets.length ? stylesheets : this.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
 				stylesheets = stylesheets.length ? stylesheets : document.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
 				if (!stylesheets.length) {
-					target = target || (xover.manifest.getSettings(this, 'target') || [])[0];
-					stylesheets = [{ target, store: self }];
+					stylesheets = [{ target: target || (xover.manifest.getSettings(this, 'target') || [])[0], store: self }];
 					//return xover.site.sections.filter(section => section.store === self).map(section => section.render());
 				}
 				let renders = await XMLDocument.prototype.render.call(self, stylesheets);
@@ -14981,6 +14980,7 @@ xover.Store = function (xml, ...args) {
 		},
 		writable: true, enumerable: false, configurable: false
 	});
+	Object.defineProperty(this.render, `manager`, { value: render_manager})
 
 	for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstChild', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
 		let prop_desc = Object.getPropertyDescriptor(__document, prop);
