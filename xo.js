@@ -1880,49 +1880,146 @@ xover.listener.maxRecursion = 200;
 class EventHistory {
 	constructor(queryString) {
 		this.handlers = new Map();
+		this.oldValues = new WeakMap(); // Element -> Map(attrName -> Map(oldValue -> count))
 	}
 
+	_key(item) {
+		if (item instanceof Attr) {
+			let el = item.ownerElement || item.parentNode
+			let name = item.name || item.nodeName
+			return { el, name }
+		}
+		return { el: item, name: null }
+	}
+
+	// ====== recursion by handler+target ======
+
 	set(handler, item) {
-		if (item instanceof Attr) this.set(handler, item.ownerElement || item.parentNode); // TODO: Check escenarios for attrs without ownerElement
+
+		let { el } = this._key(item)
+		if (!el) return
+
 		this.handlers.set(handler, (this.handlers.get(handler) || new Map()))
-		let target = this.handlers.get(handler);
-		let count = (target.get(item) || 0) + 1;
-		count = count < 1 ? 1 : count;
-		target.set(item, count < 0 ? 0 : count)
+		let target = this.handlers.get(handler)
+
+		let count = (target.get(el) || 0) + 1
+		count = count < 1 ? 1 : count
+		target.set(el, count)
+
 		xover.delay(100).then(() => {
-			xover.listener.history.delete(handler, item);
+			this.delete(handler, el)
 		})
+
 	}
 
 	get(handler, item) {
-		return (this.handlers.get(handler) || new Map()).get(item);
+		let { el } = this._key(item)
+		if (!el) return
+
+		return (this.handlers.get(handler) || new Map()).get(el)
+
 	}
 
 	delete(handler, item) {
-		if (item instanceof Attr) this.delete(handler, item.ownerElement || item.parentNode);
-		let target = this.handlers.get(handler) || new Map();
-		let count = (target.get(item) || 0) - 1;
-		count = count < 0 ? 0 : count;
+		let { el } = this._key(item)
+		if (!el) return
+
+		let target = this.handlers.get(handler) || new Map()
+		let count = (target.get(el) || 0) - 1
+		count = count < 0 ? 0 : count
+
 		if (count) {
-			target.set(item, count)
+			target.set(el, count)
 		} else {
-			target.delete(item)
+			target.delete(el)
 		}
-		if (!this.handlers.get(handler).size) {
+
+		if (this.handlers.get(handler) && !this.handlers.get(handler).size) {
 			this.handlers.delete(handler)
 		}
 	}
 
 	has(handler, item) {
-		//this.handlers = new Map([...(this.handlers.get(handler) || new Map()).entries()].map(([el, count]) => [el.parentNode, count]))
-		let count = (this.handlers.get(handler) || new Map()).get(item) || (this.handlers.get(handler) || new Map()).get(item) || (this.handlers.get(handler) || new Map()).get(item.ownerElement) || 0;
-		return count > 0;
+		let { el } = this._key(item)
+		if (!el) return false
+
+		let count = (this.handlers.get(handler) || new Map()).get(el) || 0
+		return count > 0
+
 	}
 
 	overflowed(handler, item, maxRecursion = xover.listener.maxRecursion) {
-		let count = this.get(handler, item) || 0;
-		return count > maxRecursion;
+
+		let count = this.get(handler, item) || 0
+		return count > maxRecursion
+
 	}
+
+	// ====== cycle guard by detail.old (Element + attrName) ======
+
+	trackOld(item, old) {
+
+		if (old === undefined) return
+
+		let { el, name } = this._key(item)
+		if (!el || !name) return
+
+		let attrMap = this.oldValues.get(el)
+		if (!attrMap) {
+			attrMap = new Map()
+			this.oldValues.set(el, attrMap)
+		}
+
+		let valueMap = attrMap.get(name)
+		if (!valueMap) {
+			valueMap = new Map()
+			attrMap.set(name, valueMap)
+		}
+
+		let key = `${old}`
+		valueMap.set(key, (valueMap.get(key) || 0) + 1)
+
+		xover.delay(100).then(() => {
+			this.untrackOld(el, name, key)
+		})
+
+	}
+
+	untrackOld(el, name, key) {
+
+		let attrMap = this.oldValues.get(el)
+		if (!attrMap) return
+
+		let valueMap = attrMap.get(name)
+		if (!valueMap) return
+
+		let count = (valueMap.get(key) || 0) - 1
+		count = count < 0 ? 0 : count
+
+		if (count) valueMap.set(key, count)
+		else valueMap.delete(key)
+
+		if (!valueMap.size) attrMap.delete(name)
+
+	}
+
+	hasOld(item, old) {
+
+		if (old === undefined) return false
+
+		let { el, name } = this._key(item)
+		if (!el || !name) return false
+
+		let attrMap = this.oldValues.get(el)
+		if (!attrMap) return false
+
+		let valueMap = attrMap.get(name)
+		if (!valueMap) return false
+
+		return (valueMap.get(`${old}`) || 0) > 0
+
+	}
+
 }
 
 xover.listener.history = new EventHistory();
@@ -1935,6 +2032,24 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 		//if ((context.ownerDocument || context).disconnected && !((event.detail || {}).listeners || {}).size) return;
 		if (event.type === 'change' && context.nodeType === Node.ELEMENT_NODE && context.matches(`input:checked:not([checked])`)) { //fixes attribute discrepance with value
 			context.setAttribute("checked", context.checked)
+		}
+		let eventContext = context
+
+		let old =
+			event &&
+				event.detail &&
+				typeof event.detail === "object"
+				? event.detail.old
+				: undefined
+
+		let hasOldGuard = false
+
+		if (old !== undefined && instanceOf.call(eventContext, Attr)) {
+			if (xover.listener.history.hasOld(eventContext, old)) {
+				return
+			}
+
+			hasOldGuard = true
 		}
 		if (xover.listener.debug.matches.call(context, null, xover.listener.debugger) && !xover.listener.debug.matches.call(context, null, xover.listener.debuggerExceptions)) {
 			debugger;
@@ -2065,10 +2180,22 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 				//    && [event.srcEvent || event] || event.detail.args || [])
 				//    || arguments) //former method
 				returnValue = /*await */handler.apply(context, args); /*Events shouldn't be called with await, but can return a promise*/
-				if (returnValue === undefined && event.type === 'change' && instanceOf.call(context, Attr) && event.detail.value !== context.value) {
-					event.detail.value = context.value;
-					returnValue = false;
+				if (returnValue === undefined && event.type === 'change' && event.detail.stopPropagation !== false && instanceOf.call(context, Attr) && event.detail && "old" in event.detail && context.value === event.detail.old) {
+					let prev = event.detail.value
+					event.detail.value = context.value
+
+					let undo;
+					try {
+						undo = context.dispatch && context.dispatch("undo", {event,handler,target,prev,value: context.value})
+						if (undo == false) shouldStop = false;
+					} catch (e) {
+					}
+
+					//if ("stopPropagation" in event.detail) delete event.detail.stopPropagation;
+					if (undo !== false) {
+						returnValue = false
 					event.stopPropagation()
+				}
 				}
 				if (returnValue !== undefined) {
 					//event.returnValue = returnValue; //deprecated
@@ -2092,7 +2219,13 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 				} else {
 					throw e;
 				}
+			} finally {
+				if (hasOldGuard) {
+					Promise.resolve().then(() => {
+						xover.listener.history.trackOld(eventContext, old)
+					})
 			}
+		}
 		}
 	},
 	writable: true, enumerable: false, configurable: false
@@ -10339,6 +10472,7 @@ xover.modernize = async function (targetWindow) {
 							source_document && await source_document.ready;
 							stylesheets = stylesheet && [stylesheet.value] || [...source_document.stylesheets || []] || [];
 							if (stylesheets.length) {
+								source_document.observe();
 								stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: this.store } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
 								for (let stylesheet of stylesheets) {
 									stylesheet.target = stylesheet.target || self;
@@ -14980,7 +15114,7 @@ xover.Store = function (xml, ...args) {
 		},
 		writable: true, enumerable: false, configurable: false
 	});
-	Object.defineProperty(this.render, `manager`, { value: render_manager})
+	Object.defineProperty(this.render, `manager`, { value: render_manager })
 
 	for (let prop of ['$', '$$', 'cloneNode', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstChild', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml']) {
 		let prop_desc = Object.getPropertyDescriptor(__document, prop);
@@ -16295,20 +16429,6 @@ xover.listener.on('change::@xo-source', function ({ element, value, old }) {
 //    //}
 //})
 
-Object.defineProperty(xover.listener, 'contentEdited', {
-	value: function (event) {
-		let elem = event.srcElement;
-		let source = elem && elem.scope || null
-		if (source instanceof Attr || source instanceof Text) {
-			if (elem.isContentEditable) {
-				source.set(elem.textContent, false)
-			} else {
-				source.set(elem.value, false)
-			}
-		}
-	}, writable: true, enumerable: false, configurable: false
-})
-
 Node.metaNodes = Node.metaNodes || Node.prototype.metaNodes;
 Object.defineProperty(Node.prototype, 'metaNodes', {
 	get: function () {
@@ -16321,11 +16441,25 @@ Object.defineProperty(Node.prototype, 'metaNodes', {
 	}
 })
 
-xover.listener.on('input', function (event) {
+Object.defineProperty(xover.listener, 'contentEdited', {
+	value: function (event) {
+		let elem = event.srcElement;
+		let scope = elem && elem.scope || null
+		if (scope instanceof Attr || scope instanceof Text) {
+			if (elem.isContentEditable) {
+				scope.set(elem.textContent, false)
+			} else {
+				scope.set(elem.value, false)
+			}
+		}
+	}, writable: true, enumerable: false, configurable: false
+})
+
+xover.listener.on('input::[xo-scope]', function (event) {
 	if (event.defaultPrevented) return;
 	let elem = event.srcElement;
 	if (elem.isContentEditable) {
-		elem.addEventListener('blur', xover.listener.contentEdited);
+		elem.addEventListener('focusout', xover.listener.contentEdited);
 	}
 })
 
