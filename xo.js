@@ -2186,7 +2186,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 
 					let undo;
 					try {
-						undo = context.dispatch && context.dispatch("undo", {event,handler,target,prev,value: context.value})
+						undo = context.dispatch && context.dispatch("undo", { event, handler, target, prev, value: context.value })
 						if (undo == false) shouldStop = false;
 					} catch (e) {
 					}
@@ -3317,7 +3317,9 @@ Object.defineProperty(xover.site, 'reference', {
 
 Object.defineProperty(xover.site, 'location', {
 	get() {
-		return { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) }
+		let current_location = { ...Object.fromEntries(Object.entries({ ...location }).filter(([key, value]) => typeof (value) == 'string')) }
+		current_location["url"] = current_location["url"] || new URL(location.href);
+		return current_location;
 	}
 	, enumerable: true
 });
@@ -4823,10 +4825,10 @@ Object.defineProperty(xover.URL.prototype, 'clone', {
 
 Object.defineProperty(URL.prototype, 'filename', {
 	get: function () {
-		let file_parts = this.pathname.split(/\//g);
-		return file_parts.pop()
+		let parts = this.resource.replace(/\/$/, '').split(/\//g)
+		return parts.pop() || ""
 	}
-});
+})
 
 Object.defineProperty(URL.prototype, 'extension', {
 	get: function () {
@@ -4850,6 +4852,36 @@ Object.defineProperty(xover.URL.prototype, 'pathname', {
 		}
 	}
 });
+
+Object.defineProperty(URL.prototype, 'folders', {
+	get: function () {
+		let parts = this.resource.split(/\//g)
+		parts.pop() // filename
+		return parts.filter(Boolean)
+	}
+})
+
+Object.defineProperty(URL.prototype, 'dirname', {
+	get: function () {
+		let parts = this.folders
+		return '/' + parts.join('/') + '/'
+	}
+})
+
+Object.defineProperty(URL.prototype, 'foldername', {
+	get: function () {
+		let parts = this.folders
+		return parts[parts.length - 1] || ""
+	}
+})
+
+Object.defineProperty(URL.prototype, 'parent', {
+	get: function () {
+		let pathname = this.pathname
+		if (!pathname.endsWith('/')) pathname = pathname.replace(/[^/]+$/, '')
+		return new URL(pathname, this.origin)
+	}
+})
 
 Object.defineProperty(URL.prototype, 'resource', {
 	get: function () {
@@ -4897,6 +4929,12 @@ Object.defineProperty(xover.URL.prototype, 'toString', {
 	writable: true
 });
 
+Object.defineProperty(URL.prototype, 'basepath', {
+	get: function () {
+		return ""
+	}
+})
+
 Object.defineProperty(xover.URL.prototype, 'basepath', {
 	get: function () {
 		const pathname = URL.pathname.get.call(this);
@@ -4911,14 +4949,23 @@ Object.defineProperty(xover.URL.prototype, 'basepath', {
 });
 Object.defineProperty(URL.prototype, 'path', {
 	get: function () {
-		let pathname = this.pathname.replace(/[^/]+$/, "");
+		let pathname = this.pathname.replace(/[^/]+$/, "")
 		if (this.origin == window.location.origin) {
-			pathname = pathname.replace(new RegExp(`^/?${location.basepath}/?`), '');
+			let base = (location.basepath || "").replace(/^\/|\/$/g, "")
+			if (base) {
+				let rx = new RegExp(`^/?${escapeRegExp(base)}/?`)
+				pathname = pathname.replace(rx, '')
 		}
-		pathname = !this.basepath ? pathname : pathname.replace(new RegExp(`^/?${this.basepath.replace(/^\/|\/$/, '')}/?`), '');
-		return pathname.replace(/^\/|\/$/, "") + "/";
 	}
-});
+
+		let ownbase = (this.basepath || "").replace(/^\/|\/$/g, "")
+		if (ownbase) {
+			let rx = new RegExp(`^/?${escapeRegExp(ownbase)}/?`)
+			pathname = pathname.replace(rx, '')
+		}
+		return pathname.replace(/^\/|\/$/g, "") + "/"
+	}
+})
 
 Object.defineProperty(URL.prototype, 'params', {
 	get: function () {
@@ -6224,6 +6271,42 @@ xover.modernize = async function (targetWindow) {
 					return element;
 				}
 
+				Document.download = Document.download || Document.prototype.download
+				Document.prototype.download = async function (filename, type = "text/plain") {
+					// TODO: Convert xson to json
+					let source = this.source
+					let suggestedName = filename || (instanceOf.call(source, xover.Source) ? (source.tag || "") : "");
+
+					let content = this.toString()
+
+					if (!filename && window.showSaveFilePicker) {
+						let handle = await window.showSaveFilePicker({
+							suggestedName,
+							types: [{
+								description: "Download file",
+								accept: { [type]: ["." + (suggestedName.split(".").pop() || "txt")] }
+							}]
+						})
+
+						let writable = await handle.createWritable()
+						await writable.write(content)
+						await writable.close()
+						return
+					}
+
+					const blob = new Blob([content], { type })
+					const url = URL.createObjectURL(blob)
+					const document = window.document
+					const a = document.createElement('a')
+					a.href = url
+					a.download = suggestedName
+					document.body.append(a)
+					a.click()
+
+					a.remove()
+					URL.revokeObjectURL(url)
+				}
+
 				Object.defineProperty(Document.prototype, 'ready', {
 					enumerable: false,
 					get: async function () {
@@ -6766,6 +6849,12 @@ xover.modernize = async function (targetWindow) {
 					}
 				}
 
+				if (!NamedNodeMap.prototype.hasOwnProperty('forEach')) Object.defineProperty(NamedNodeMap.prototype, 'forEach', {
+					value: function (fn) {
+						return [...this].forEach(fn)
+					}
+				});
+
 				if (!Array.prototype.hasOwnProperty('Nodes')) Object.defineProperty(Array.prototype, 'Nodes', xo_handler_Nodes);
 
 				if (!Array.prototype.hasOwnProperty('toNodeSet')) Object.defineProperty(Array.prototype, 'toNodeSet', xo_handler_Nodes);
@@ -7126,6 +7215,10 @@ xover.modernize = async function (targetWindow) {
 					value: function (event_name, ...args) {
 						let detail = { target: this, element: this.closest("*"), attribute: this instanceof Attr ? this : null };
 						if (args.length) detail.args = args;
+						if (existsFunction(event_name)) {
+							let fn = eval(event_name);
+							fn.apply(this, ...args || [])
+						}
 						let event = new xover.listener.Event(event_name, detail, this);
 						window.dispatchEvent(event);
 						return event.detail.returnValue;
@@ -10472,7 +10565,7 @@ xover.modernize = async function (targetWindow) {
 							source_document && await source_document.ready;
 							stylesheets = stylesheet && [stylesheet.value] || [...source_document.stylesheets || []] || [];
 							if (stylesheets.length) {
-								source_document.observe();
+								typeof (source_document.observe) === "function" && source_document.observe();
 								stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: this.store } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
 								for (let stylesheet of stylesheets) {
 									stylesheet.target = stylesheet.target || self;
@@ -10946,7 +11039,7 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 									//suspense_dependants.length && await Promise.allSettled(suspense_dependants);
 									action = action || (new_target.tag || tag) !== tag && "replace" || "combine";
 									if (action === 'replace' || (target.getAttribute("xo-swap") || '').split(/\s+/g).includes("self::*")) {
-										documentElement.setAttribute("xo-swap", documentElement.getAttribute("xo-swap") || target.getAttribute("xo-swap") || "self::*")
+										documentElement.setAttribute("xo-swap", documentElement.getAttribute("xo-swap") || target.getAttribute("xo-swap") || "self::*");
 									//	if (new_target && new_target.contains(target)) {
 									//		if (new_target.isEqualNode(documentElement)) {
 									//			targets.push(new_target)
@@ -11267,14 +11360,18 @@ class MutationSet extends Array {
 		let mutated_targets = new Map();
 		let param_listener = new Set();
 		for (let mutation of mutationList.filter(mutation => !["http://panax.io/xover", "http://www.w3.org/2000/xmlns/"].includes(mutation.attributeNamespace))) {
-			let inserted_ids = [];
 			let target = mutation.target.nodeType === Node.TEXT_NODE && mutation.target.parentNode || mutation.target;
+			let inserted_ids = [];
 			let host = target.host || '';
 			if (mutation.attributeName == "xo-static" || [target.closest('.xo-silent,.xo-silent-off') || host.nodeType === Node.ELEMENT_NODE && host || document.createElement('p')].filter(node => node.classList.contains('xo-silent') && !node.classList.contains('xo-silent-off') || instanceOf.call(node, CustomElement)).length) { //TODO: Improve host performance by ignoring descendant changes
 				continue;
 			}
 
 			let value = mutated_targets.get(target) || {};
+			let isHTMLElement = (target.nodeType === Node.ELEMENT_NODE && [xover.spaces["html"], xover.spaces["svg"]].includes(target.namespaceURI))
+			//if (!(target.nodeType === Node.ELEMENT_NODE && [xover.spaces["html"], xover.spaces["svg"]].includes(target.namespaceURI))) {
+			//	//do nothing
+			//} else
 			if (mutation.target instanceof Text) {
 				value.texts = value.texts || new Map();
 				if (!value.texts.has(mutation.target)) {
@@ -11291,6 +11388,7 @@ class MutationSet extends Array {
 				}
 				let swap_items = (target.getAttribute("xo-swap") || '').split(/\s+/g);
 				const staticSet = new Set((target.getAttribute("xo-static") || "").split(/\s+/).filter(Boolean));
+				if (isHTMLElement) {
 				if (oldValue !== null && !target.hasAttribute(attr) && !swap_items.includes(`@${attr}`)) {
 					staticSet.add(`-@${attr}`);
 				}
@@ -11342,6 +11440,7 @@ class MutationSet extends Array {
 					target.setAttribute("xo-static", newStatic);
 					const staticAttr = target.getAttributeNode("xo-static");
 					staticAttr.silent = true;
+				}
 				}
 				let node = target;
 				if (node.matches(`[xo-stylesheet],[xo-source]`)) {
@@ -12781,7 +12880,7 @@ ${el.selectNodes(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${ne
 
 		for (let el of target.selectNodes(`//xsl:template[not(@match="/")]//xsl:element`)) {
 			el.prepend(xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-slot"><xsl:value-of select="name(current()[not(self::*)])"/></xsl:attribute>`));
-			//el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
+			el.prepend(xover.xml.createNode(`<xsl:attribute name="xo-scope"><xsl:value-of select="current()[not(self::*)]/../@xo:id|@xo:id"/></xsl:attribute>`));
 		}
 	}
 	return Promise.resolve(target)
@@ -17070,15 +17169,50 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
 	}
 });
 
-// Initializing basepath to repositories that are part of another repository and we want root (/) to point to this
+/**
+ * basepath
+ * -------
+ * Defines the deployment root of the current project.
+ *
+ * In many deployments the project root is not the same as the server root.
+ * Example:
+ *
+ *   Server root:   http://localhost/
+ *   Project root:  http://localhost/proyecto/
+ *
+ * If a resource is requested using "/recurso.html":
+ *
+ *   Without basepath → http://localhost/recurso.html
+ *   With basepath    → http://localhost/proyecto/recurso.html
+ *
+ * The basepath allows the framework to treat "/" as the project root instead
+ * of the server root. This is especially useful when:
+ *
+ * - Running locally under subfolders (localhost/proyecto/)
+ * - Hosting under GitHub Pages or similar subpaths
+ * - Working with repositories embedded inside other repositories
+ * - Deploying multiple apps under the same domain
+ *
+ * The server may initialize this value using the HTTP header:
+ *
+ *   X-Basepath: proyecto
+ *
+ * which is retrieved during application bootstrap:
+ *
+ *   fetch(location.href, { method: 'HEAD' })
+ *
+ * Once defined, URL utilities in xover use this value to resolve paths
+ * consistently across environments.
+ */
 fetch(window.location.href, { method: 'HEAD' })
 	.then(response => {
-		const basepath = response.headers.get('X-Basepath') || '';
-		location.basepath = basepath;
+		let basepath = response.headers.get('X-Basepath') || ''
+		basepath = basepath.replace(/^\/|\/$/g, '')
+		location.basepath = basepath
 	})
 	.catch(error => {
-		console.error("Failed to retrieve basepath header:", error);
-	});
+		console.error("Failed to retrieve basepath header:", error)
+	})
 
 xo.listener.on(`versionChange`, function (onAccept) {
 	if (confirm(`New version available. Refresh to apply?`)) {
