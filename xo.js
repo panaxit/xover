@@ -2180,9 +2180,9 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 				//    && [event.srcEvent || event] || event.detail.args || [])
 				//    || arguments) //former method
 				returnValue = /*await */handler.apply(context, args); /*Events shouldn't be called with await, but can return a promise*/
-				if (returnValue === undefined && event.type === 'change' && event.detail.stopPropagation !== false && instanceOf.call(context, Attr) && event.detail && "old" in event.detail && context.value === event.detail.old) {
-					let prev = event.detail.value
-					event.detail.value = context.value
+				if (returnValue === undefined && event.type === 'change' && detail.stopPropagation !== false && instanceOf.call(context, Attr) && detail && "old" in detail && context.value === detail.old) {
+					let prev = detail.value
+					detail.value = context.value
 
 					let undo;
 					try {
@@ -2191,7 +2191,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 					} catch (e) {
 					}
 
-					//if ("stopPropagation" in event.detail) delete event.detail.stopPropagation;
+					//if ("stopPropagation" in detail) delete detail.stopPropagation;
 					if (undo !== false) {
 						returnValue = false
 					event.stopPropagation()
@@ -3237,7 +3237,8 @@ xover.siteHandler = {
 	set: function (self, key, input) {
 		try {
 			xover.site[key];
-			let old_value = self[key];
+			let old_value = instanceOf.call(event, HashChangeEvent) ? xover.URL(history.state.origin).hash
+				: self[key];
 			if (old_value != input && key[0] != '#') {
 				let beforeEvent = new xover.listener.Event(`beforeChange::#site:${key}`, { attribute: key, value: input, old: old_value }, { tag: `site:${key}` });
 				window.dispatchEvent(beforeEvent);
@@ -4954,16 +4955,16 @@ Object.defineProperty(URL.prototype, 'path', {
 			let base = (location.basepath || "").replace(/^\/|\/$/g, "")
 			if (base) {
 				let rx = new RegExp(`^/?${escapeRegExp(base)}/?`)
-				pathname = pathname.replace(rx, '')
+				pathname = pathname.replace(rx, "")
 		}
 	}
 
 		let ownbase = (this.basepath || "").replace(/^\/|\/$/g, "")
 		if (ownbase) {
 			let rx = new RegExp(`^/?${escapeRegExp(ownbase)}/?`)
-			pathname = pathname.replace(rx, '')
+			pathname = pathname.replace(rx, "")
 		}
-		return pathname.replace(/^\/|\/$/g, "") + "/"
+		return pathname.replace(/^\/|\/$/g, "")
 	}
 })
 
@@ -4989,6 +4990,12 @@ Object.defineProperty(Location.prototype, 'basepath', {
 		})
 	}
 });
+
+Object.defineProperty(Location.prototype, 'url', {
+	get: function () {
+		return new xover.URL(this.href)
+	}
+})
 
 xover.sources.defaults["#login"] = xover.xml.createDocument(`<?xml-stylesheet type="text/xsl" href="login.xslt" role="login" target="body"?><xo:login xmlns:xo="http://panax.io/xover"/> `);
 
@@ -16594,7 +16601,7 @@ xover.listener.on('click::*[ancestor-or-self::a]', function (event) {
 	if (srcElement.getAttribute("target") == "_self") {
 		xover.site.active = hashtag
 		event.preventDefault();
-	} else if (url.pathname == this.ownerDocument.location.pathname && hashtag != this.ownerDocument.location.hash) {
+	} else if (url.pathname == this.ownerDocument.location.url.pathname && hashtag != this.ownerDocument.location.hash) {
 		xover.site.pushState({ seed: hashtag }, url.toString())
 	}
 });
