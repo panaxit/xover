@@ -16275,6 +16275,10 @@ xover.socket = {};
 xover.socket.connect = function (url, listeners = {}, socket_handler = window.io, config = { transports: ['websocket'] }) {
 	try {
 		if (!socket_handler) return Promise.reject('No handler available');
+		config.query = {
+			...(config.query || {}),
+			source: `${location.hostname}${location.pathname}`.replace(/\/$/, '')
+		}
 		const socket_io = socket_handler(url, config);
 		socket_io.on('connect_error', (err) => {
 			console.error(`Socket connection error: ${err.message}`);
@@ -16326,6 +16330,10 @@ xover.listener.on('databaseChange', async function (changes) {
 
 xover.listener.on('hotreload', async function (file_path) {
 	if (!(xover.session.debug || top.document.querySelector(`meta[name="debug"][content="true"],meta[name="debug"][content="${location.origin + location.basepath}"],meta[name="debug"][content="${location.origin.replace(new RegExp(`^${location.protocol}//`), '') + location.basepath}"]`))) return;
+	file_path = `${file_path || ''}`.replace(/\\/g, '/')
+	if (file_path && !/^(\/|\.{1,2}\/|[a-z][a-z0-9+.-]*:)/i.test(file_path)) {
+		file_path = '/' + file_path
+	}
 	let document = this instanceof Document && this || this.ownerDocument || window.document;
 	[...document.querySelectorAll("[role=alertdialog],dialog")].remove();
 	const file = new xover.URL(file_path);
@@ -16997,6 +17005,7 @@ class TimeoutError extends Error {
 //});
 
 xover.listener.on(['change::*[value][xo-slot]:not([onchange]):not([type*="time"]):not([type*="date"])', 'change::*[value][name]:not([onchange]):not([type*="time"]):not([type*="date"])', 'focusout::*[xo-slot][type*="time"]', 'focusout::*[xo-slot][type*="date"]'], function () {
+	if ((this.namespaceURI || '').indexOf("http://www.w3.org") != 0) return;
 	if (this.type === 'date' && this.value != '' && !isValidISODate(this.value) || this.preventChangeEvent) {
 		this.preventChangeEvent = undefined;
 		event && event.preventDefault();
