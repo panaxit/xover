@@ -5743,7 +5743,7 @@ xover.modernize = async function (targetWindow) {
 							return fn.apply(self, params)
 						} catch (e) {
 							if (e.message.indexOf('Illegal invocation') != -1) {
-								return fn.apply(Window.document, params)
+								return fn.apply(window.document, params)
 							}
 						}
 					} else {
