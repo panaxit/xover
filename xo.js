@@ -416,7 +416,7 @@ Object.defineProperty(xover.storehouse, 'sources', {
 			return _add(record);
 		}
 		const _put = store.put;
-		store.put = function (source, key = '', type) {
+		store.put = function (source, key = '', type = source.type) {
 			let file_name, name, headers;
 			if (instanceOf.call(key, URL)) {
 				file_name = key.href;
@@ -426,11 +426,12 @@ Object.defineProperty(xover.storehouse, 'sources', {
 				file_name = key;
 				name = key;
 			}
-			if (source.constructor === {}.constructor) source = JSON.stringify(source);
+			if (source.constructor === {}.constructor || source.constructor === [].constructor) source = JSON.stringify(source);
 			if (source instanceof Node) source = source.outerHTML || source.innerHTML || source.toString();
-			let file = new File([`${source}`], file_name, {
-				type: (type || "text/plain").split(",")[0],
-			});
+			let file = new File([source], file_name, {
+					type: (type || source?.type || "text/plain").split(",")[0]
+				}
+			);
 			let record = {
 				file,
 				name: file_name,
@@ -468,41 +469,15 @@ Object.defineProperties(xover.storehouse, {
 		value: async function (store_name, key) {
 			let store = await this[store_name];
 			let record = await store.get(key);
-			if (!record || !record.text) return undefined;
+			let body = record ? await record.body : undefined;
 
-			let content = await record.text();
-			let document = content;
-
-			try {
-				let mime_type = (record.type || "").split(";")[0].trim().toLowerCase();
-
-				if (!mime_type || mime_type == "application/octet-stream") {
-					mime_type = /^\s*</.test(content) ? "text/xml" : "text/plain";
-					}
-
-				if (mime_type.indexOf("json") != -1 || /^\s*[\{\[]/.test(content)) {
-					document = JSON.parse(content);
-				} else if (
-					mime_type.indexOf("xml") != -1
-					|| mime_type.indexOf("xsl") != -1
-					|| mime_type.indexOf("xslt") != -1
-					|| /^\s*</.test(content)
-				) {
-					mime_type = "application/xml";
-					document = content && await xover.xml.createDocument(content, { mime_type }) || content;
-				}
-			} catch (e) {
-				console.log(e)
-				document = content;
+			if (body instanceof Document && record) {
+				body.url = xover.URL(record.name)
+				body.lastModifiedDate = record.lastModified;
 			}
 
-			if (document instanceof Document && record) {
-				document.url = xover.URL(record.name)
-				document.lastModifiedDate = record.lastModified;
+			return body
 			}
-
-			return document
-		}
 	},
 	remove: {
 		value: async function (store_name, key) {
@@ -511,10 +486,16 @@ Object.defineProperties(xover.storehouse, {
 		}
 	},
 	write: {
-		value: async function (store_name, key, value, type) {
-			if (value instanceof Node) value = value.cloneNode(true)
+		value: async function (store_name, key, content, type) {
 			let store = await this[store_name];
-			return store.put(value, key, type);
+			if (!(content instanceof File)) {
+				content = File.from(content, key, {
+					type,
+					lastModified: Date.now()
+				});
+			}
+
+			return store.put(content, key);
 		}
 	},
 	open: {
@@ -5420,7 +5401,7 @@ Object.defineProperty(xover.server, 'uploadFile', {
 					let file_id = file.id || xover.cryptography.generateUUID();
 					let saveAs = file.saveAs || file.name || file_id;
 					let parentFolder = (file.parentFolder || '').replace(/\//g, '\\');
-					let request = new xover.Request(xover.manifest.server["uploadFile"] + `?UploadID=${file_id}&saveAs=${saveAs}&parentFolder=${parentFolder}`, { method: 'POST', body: formData, headers: new Headers({ "x-save-as": saveAs, "x-parent-folder": parentFolder, "x-upload-id": file_id })});
+					let request = new xover.Request(xover.manifest.server["uploadFile"] + `?UploadID=${file_id}&saveAs=${saveAs}&parentFolder=${parentFolder}`, { method: 'POST', body: formData, headers: new Headers({ "x-save-as": saveAs, "x-parent-folder": parentFolder, "x-upload-id": file_id }) });
 					request.fetch((return_value, response, request) => { return { return_value, response, request } }).then(async ({ return_value, response, request }) => {
 						let file_name = response.headers.get("File-Name") + `?name=${file.name.normalize()}`;
 						if (!file_name) throw (new Error("Cound't get file name"));
@@ -6281,6 +6262,111 @@ xover.modernize = async function (targetWindow) {
 					return selection
 				}
 
+				Object.defineProperties(File.prototype, {
+					mimeType: {
+						get: function () {
+							let mime_type = `${this.type || ""}`.split(";")[0].trim().toLowerCase();
+							let extension = `${this.name || ""}`.split(".").pop().toLowerCase();
+
+							if (!mime_type || mime_type == "application/octet-stream") {
+								mime_type = xover.mimeTypes[extension]?.split(",")[0] || "text/plain";
+							}
+
+							if (mime_type == "application/xslt+xml" || mime_type == "text/xsl") {
+								mime_type = "application/xml";
+							}
+
+							return mime_type;
+						}
+					},
+
+					bodyType: {
+						get: function () {
+							let mime_type = this.mimeType;
+
+							if (mime_type.indexOf("json") != -1) return "json";
+							if (mime_type.indexOf("html") != -1) return "html";
+							if (mime_type.indexOf("xml") != -1 || mime_type.indexOf("xsl") != -1) return "xml";
+							if (mime_type.startsWith("image/") || mime_type.startsWith("video/") || mime_type.startsWith("audio/")) return "blob";
+
+							return "text";
+						}
+					},
+
+					body: {
+						get: async function () {
+							let content = await this.text();
+
+							switch (this.bodyType) {
+								case "json":
+									return xover.json.tryParse(content);
+
+								case "html":
+									return xover.string.toHTML(content);
+
+								case "xml":
+									return await xover.xml.createDocument(content, {
+										mime_type: this.mimeType
+									});
+
+								case "blob":
+									return this;
+
+								default:
+									return new Text(content);
+							}
+						}
+					}
+				})
+
+				if (!File.hasOwnProperty("from")) {
+					Object.defineProperty(File, 'from', {
+						enumerable: false,
+						value: function (body, name = '', config = { type: body.type }) {
+							let content = body;
+							if (body instanceof File) {
+								return body;
+							} else if (body instanceof Blob) {
+								config.type ||= body.type || "application/octet-stream";
+								content = body;
+							} else if (body instanceof XMLDocument) {
+								config.type = config.type || "application/xml";
+								content = body.toString();
+							} else if (body instanceof Document) {
+								config.type = config.type || "text/html";
+								content = body.documentElement?.outerHTML || body.toString();
+							} else if (body instanceof DocumentFragment) {
+								config.type = config.type || "text/html";
+								content = [...body.childNodes].map(node => node.outerHTML || node.textContent || '').join('');
+							} else if (body instanceof Element) {
+								config.type = config.type || (body.namespaceURI == "http://www.w3.org/1999/xhtml" ? "text/html" : "application/xml");
+								content = body.outerHTML;
+							} else if (body instanceof Node) {
+								config.type = config.type || "text/plain";
+								content = body.textContent || body.toString();
+							} else if (body?.constructor === {}.constructor || body?.constructor === [].constructor) {
+								config.type = config.type || "application/json";
+								content = JSON.stringify(body, null, "\t");
+							} else {
+								config.type = config.type || "text/plain";
+								content = `${body ?? ''}`;
+							}
+
+							return new File([content], name, {
+								type: config.type,
+								lastModified: Date.now()
+							});
+						}
+					})
+				}
+
+				Object.defineProperty(File.prototype, 'toString', {
+					enumerable: false,
+					value: async function () {
+						return await this.text();
+					}
+				});
+
 				if (!Document.prototype.hasOwnProperty("relatedDocuments")) {
 					Object.defineProperty(Document.prototype, 'relatedDocuments', {
 						enumerable: false,
@@ -6984,7 +7070,7 @@ xover.modernize = async function (targetWindow) {
 						let [predicate, hash] = arg.split(/#/g);
 						hash = hash ? `#${hash}` : '';
 						let body = this.body;
-						if ((!predicate || predicate && (this.url.matches(predicate) || body && typeof(body.matches) === 'function' && body.matches(predicate))) && (!hash || hash && (this.tags.has(hash) || this.target === xover.sources[hash]))) {
+						if ((!predicate || predicate && (this.url.matches(predicate) || body && typeof (body.matches) === 'function' && body.matches(predicate))) && (!hash || hash && (this.tags.has(hash) || this.target === xover.sources[hash]))) {
 							return true
 						}
 					}
