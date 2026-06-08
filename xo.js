@@ -475,7 +475,7 @@ Object.defineProperties(xover.storehouse, {
 				if (record && record.type.indexOf("json") != -1) {
 					document = JSON.parse(content)
 				} else {
-					document = content && xover.xml.createDocument(content) || content
+					document = content && await xover.xml.createDocument(content) || content
 				}
 			} catch (e) {
 				console.log(e)
