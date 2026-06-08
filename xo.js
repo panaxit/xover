@@ -6966,7 +6966,8 @@ xover.modernize = async function (targetWindow) {
 					for (let arg of args.split("|")) {
 						let [predicate, hash] = arg.split(/#/g);
 						hash = hash ? `#${hash}` : '';
-						if ((!predicate || predicate && this.url.matches(predicate)) && (!hash || hash && (this.tags.has(hash) || this.target === xover.sources[hash]))) {
+						let body = this.body;
+						if ((!predicate || predicate && (this.url.matches(predicate) || body && typeof(body.matches) === 'function' && body.matches(predicate))) && (!hash || hash && (this.tags.has(hash) || this.target === xover.sources[hash]))) {
 							return true
 						}
 					}
