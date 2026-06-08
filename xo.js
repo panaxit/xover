@@ -466,24 +466,41 @@ Object.defineProperty(xover.storehouse, 'sources', {
 Object.defineProperties(xover.storehouse, {
 	read: {
 		value: async function (store_name, key) {
-			let store;
-			store = await this[store_name];
+			let store = await this[store_name];
 			let record = await store.get(key);
-			let content = record && record.text && await record.text() || undefined;
+			if (!record || !record.text) return undefined;
+
+			let content = await record.text();
 			let document = content;
+
 			try {
-				if (record && record.type.indexOf("json") != -1) {
-					document = JSON.parse(content)
-				} else {
-					document = content && await xover.xml.createDocument(content, { mime_type: record.type.split(";")[0] }) || content
+				let mime_type = (record.type || "").split(";")[0].trim().toLowerCase();
+
+				if (!mime_type || mime_type == "application/octet-stream") {
+					mime_type = /^\s*</.test(content) ? "text/xml" : "text/plain";
+					}
+
+				if (mime_type.indexOf("json") != -1 || /^\s*[\{\[]/.test(content)) {
+					document = JSON.parse(content);
+				} else if (
+					mime_type.indexOf("xml") != -1
+					|| mime_type.indexOf("xsl") != -1
+					|| mime_type.indexOf("xslt") != -1
+					|| /^\s*</.test(content)
+				) {
+					mime_type = "application/xml";
+					document = content && await xover.xml.createDocument(content, { mime_type }) || content;
 				}
 			} catch (e) {
 				console.log(e)
+				document = content;
 			}
+
 			if (document instanceof Document && record) {
 				document.url = xover.URL(record.name)
 				document.lastModifiedDate = record.lastModified;
 			}
+
 			return document
 		}
 	},
