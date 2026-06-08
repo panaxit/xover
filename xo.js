@@ -272,35 +272,39 @@ xover.selectors.invalidXpath = new Set();
 xover.stores = new Proxy({}, {
 	get: function (self, key) {
 		key = key || "#";
+		if (typeof key !== 'string') return;
+		let normalized = xover.normalizeKey(key);
 		if (key in self) {
 			return self[key];
+		} else if (normalized in self) {
+			return self[normalized];
 		} else if (key[0] == '$') {
 			return xover.stores[`#${key.split("$").pop()}`];
 		} else if (key.indexOf('{$') != -1) {
 			return null;
 		} else if (key[0] == '#') {
 			let manifest_key = xover.manifest.getSourceKey(key);
-			self[key] = self[key] || new xover.Store(xover.sources[manifest_key], { tag: key });
-			return self[key];
+			self[normalized] = self[normalized] || new xover.Store(xover.sources[manifest_key], { tag: key });
+			return self[normalized];
 		}
 	},
 	set: function (self, key, value) {
-		let refresh;
+		if (typeof key !== 'string' || key[0] !== '#' && !(key in xover.stores)) {
+			return Promise.reject(`Nombre de store inválido`);
+		}
+
+		let normalized = xover.normalizeKey(key);
+
 		if (value && !(value instanceof xover.Store)) {
-			if (value instanceof XMLDocument && value.stylesheets.length) {
-				value = new xover.Store(value);
+			if (value instanceof XMLDocument) {
+				value = new xover.Store(value, { tag: key });
 			} else {
 				throw (new Error('Supplied store is not valid type'));
 			}
 		}
-		//Object.defineProperty(value.document, 'store', {
-		//    get: function () {
-		//        return value
-		//    }
-		//})
-		//value.document.store = value;
-		self[key] = value
-		return self[key];
+
+		self[normalized] = value;
+		return self[normalized];
 	},
 	deleteProperty: function (self, key) {
 		let exists = key in self
@@ -559,7 +563,9 @@ Object.defineProperties(xover.storehouse, {
 					store.openCursor = function (query) {
 						return new Promise((resolve, reject) => {
 							let args;
-							if (typeof (query) === 'string') {
+							if (!query) {
+								args = [];
+							} else if (typeof query === 'string') {
 								args = [query];
 								query = null;
 							} else if (query.hash) {
@@ -568,7 +574,7 @@ Object.defineProperties(xover.storehouse, {
 								args = [];
 							}
 							let request = IDBObjectStore.prototype.openCursor.apply(store, args);
-							let records = []
+							let records = [];
 							request.onerror = function (event) {
 								reject(event.target.result);
 							};
@@ -586,10 +592,11 @@ Object.defineProperties(xover.storehouse, {
 										}
 									}
 									if (record) {
-										record.key = cursor.key
-										records.push([cursor.key, record])
+										record.key = cursor.key;
+										records.push([cursor.key, record]);
 									}
 									cursor.continue();
+									return;
 								}
 								resolve(records);
 							};
@@ -646,6 +653,7 @@ xover.init = async function () {
 	this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
 		try {
 			await xover.modernize();
+			await xover.stores.restore();
 			xover.dom.Observer();
 			await xover.manifest.init();
 			Object.assign(xover.spaces, xover.manifest.spaces);
@@ -676,7 +684,6 @@ xover.init = async function () {
 				}
 			});
 
-			await xover.stores.restore();
 			//xover.session.cache_name = typeof (caches) != 'undefined' && (await caches.keys()).find(cache => cache.match(new RegExp(`^${location.hostname}_`))) || ""; //causes troubles at firefox
 			xover.dom.updateTitle();
 			let sections = xover.site.sections.map(section => section.render());
@@ -1318,9 +1325,6 @@ xover.init.customComponents = async function () {
 }
 
 xover.initializeElementListeners = function (document = window.document) {
-	const event_handler = function (event, el) {
-		window.dispatchEvent(new xover.listener.Event(event.type, { event: event }, el));
-	};
 	const observer = new MutationObserver((mutationsList, observer) => {
 		if (event && event.type == 'input') return;
 		for (const mutation of mutationsList) {
@@ -1342,10 +1346,14 @@ xover.initializeElementListeners = function (document = window.document) {
 
 	document.querySelectorAll('input,textarea').forEach(el => {
 		for (let event_name of ['focus', 'focusin', 'blur']) {
-			if (xover.listener.get(event_name)) {
-				el.removeEventListener(event_name, event_handler)
-				el.addEventListener(event_name, (event) => event_handler(event, el))
+			let listeners = xover.listener.get(event_name);
+			if (listeners) {
+				for (let [, [[key, fn]]] of [...listeners]) {
+					el.removeEventListener(event_name, fn)
 			}
+				el.removeEventListener(event_name, xover.listener.event_handler)
+				el.addEventListener(event_name, (event) => xover.listener.event_handler(event, el))
+		}
 		}
 	});
 
@@ -1624,6 +1632,9 @@ xover.evaluateReferencers = xover.signal.update;
 xover.json = {};
 
 xover.listener = new Map();
+xover.listener.event_handler = function (event, el) {
+	window.dispatchEvent(new xover.listener.Event(event.type, { event: event }, el));
+};
 xover.listener.params = {};
 xover.listener.Event = function (event_name, params = {}, context = (event || {}).srcElement) {
 	if (!(this instanceof xover.listener.Event)) return new xover.listener.Event(event_name, params, context);
@@ -4473,6 +4484,7 @@ xover.getSource = function (key) {
 	if (typeof (manifest_key) === 'string' && manifest_key.indexOf(".") != -1) {
 		manifest_key = xover.URL(manifest_key).pathname;
 	}
+	manifest_key = xover.normalizeKey(manifest_key);
 	if (self.has(manifest_key)) {
 		return self.get(manifest_key);
 	}
@@ -4495,6 +4507,17 @@ xover.getSource = function (key) {
 	}
 }
 
+xover.normalizeKey = function (key) {
+	if (typeof (key) !== 'string') return key;
+	key = `${key}`.trim();
+
+	if (key.indexOf(".") != -1) {
+		key = xover.URL(key).pathname;
+	}
+
+	return key.toLowerCase();
+}
+
 xover.sources = new Proxy(new Map(), {
 	get: function (self, key) {
 		if (!key) return null;
@@ -4509,20 +4532,26 @@ xover.sources = new Proxy(new Map(), {
 				return result
 			}
 		}
+		let normalized_key = xover.normalizeKey(key);
 		if (key.indexOf('{$') != -1) return null;
 		if (key.indexOf(".") != -1) {
 			key = xover.URL(key).pathname;
 		}
 		if (key in self) {
-			return self[key.toLowerCase()];
+			return self[key]; //.toLowerCase()
 		}
-		return xover.getSource.call(self, key)
+		return xover.getSource.call(self, normalized_key)
 	},
 	set: function (self, key, input) {
+		let normalized_key = xover.normalizeKey(key);
 		if (key.indexOf(".") != -1) {
 			key = xover.URL(key).pathname;
 		}
-		self[key.toLowerCase()] = input;
+		if (instanceOf.call(input, Node)) {
+			self.set(normalized_key, input);
+		} else {
+			xover.sources[normalized_key] = input;
+		}
 	},
 	has: function (self, key) {
 		if (!key) return false;
@@ -4846,7 +4875,7 @@ Object.defineProperty(xover.URL.prototype, 'pathname', {
 			if (this.origin !== location.origin && this.origin !== 'null') {
 				pathname = this.origin + pathname;
 			}
-			return pathname.replace(/[#?].*/, '').replace(new RegExp(`^${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '')}${location.pathname.replace(/[^\/]+$/, "")}`), "");
+			return pathname.replace(/[#?].*/, '').replace(new RegExp(`^${(this.origin === 'http://localhost' ? '/' + pathname.split(/\//)[1] : '/')}${location.pathname.replace(/[^\/]+$/, "")}`), "");
 		} catch (e) {
 			console.log(pathname)
 			debugger
@@ -5371,9 +5400,11 @@ Object.defineProperty(xover.server, 'uploadFile', {
 				reader.onload = function (e) {
 					let formData = new FormData();
 					formData.append(file.name, file);
-
-					let request = new xover.Request(xover.manifest.server["uploadFile"] + `?UploadID=${file.id}&saveAs=${file.saveAs}&parentFolder=${(file.parentFolder || '').replace(/\//g, '\\')}`, { method: 'POST', body: formData });
-					fetch(request).then(async response => {
+					let file_id = file.id || xover.cryptography.generateUUID();
+					let saveAs = file.saveAs || file.name || file_id;
+					let parentFolder = (file.parentFolder || '').replace(/\//g, '\\');
+					let request = new xover.Request(xover.manifest.server["uploadFile"] + `?UploadID=${file_id}&saveAs=${saveAs}&parentFolder=${parentFolder}`, { method: 'POST', body: formData, headers: new Headers({ "x-save-as": saveAs, "x-parent-folder": parentFolder, "x-upload-id": file_id })});
+					request.fetch((return_value, response, request) => { return { return_value, response, request } }).then(async ({ return_value, response, request }) => {
 						let file_name = response.headers.get("File-Name") + `?name=${file.name.normalize()}`;
 						if (!file_name) throw (new Error("Cound't get file name"));
 						if (source && source instanceof Node) {
@@ -7224,7 +7255,15 @@ xover.modernize = async function (targetWindow) {
 						if (args.length) detail.args = args;
 						if (existsFunction(event_name)) {
 							let fn = eval(event_name);
-							fn.apply(this, ...args || [])
+							try {
+								return fn.apply(this, ...args || [])
+							} catch (e) {
+								console.error(e)
+								//continues
+								//if (e.message.indexOf('Illegal invocation') != -1) {
+								//	return fn.apply(window.document, args)
+								//}
+						}
 						}
 						let event = new xover.listener.Event(event_name, detail, this);
 						window.dispatchEvent(event);
@@ -11271,12 +11310,22 @@ Object.defineProperty(xover.stores, 'restore', {
 	value: async function (name_list = []) {
 		name_list = name_list instanceof Array && name_list || [name_list];
 		let restoring = [];
-		if (xover.session.disableCache) return;
+		if (xover.session.disableCache) return restoring;
 
-		//Object.entries(sessionStorage).filter(([key]) => key != '#' && (!name_list.length || name_list.includes(key)) && key.match(/^#/)).forEach(([tag, value]) => {
-		//    console.log('Restoring document ' + tag);
-		//    xover.stores[tag] = new xover.Store(xover.sources[JSON.parse(value)["source"]], { tag: tag });
-		//})
+		let store = await xover.storehouse.sources;
+		let records = await store.openCursor();
+
+		for (let [key, file] of records) {
+			if (name_list.length && !name_list.includes(key)) continue;
+
+			let document = await xover.storehouse.read('sources', key);
+			if (!(document instanceof Document)) continue;
+
+			console.log('Restoring document ' + key);
+			xover.sources[key] = document;
+			restoring.push(xover.sources[key]);
+		}
+
 		return restoring;
 	},
 	writable: false, enumerable: false, configurable: false
@@ -14488,13 +14537,17 @@ xover.Store = function (xml, ...args) {
 	let _async_save;
 	if (!this.hasOwnProperty('save')) {
 		Object.defineProperty(this, 'save', {
-			value: async function () {
+			value: async function (key) {
 				//let source = __document.source;
 				//if (source) {
 				//    xover.session.setKey(store.tag, { source: source.tag });
 				//    source.save();
 				//} else {
-				await xover.storehouse.write('sources', store.url, __document);
+				let tag = key || _tag || store.url.pathname;
+				if (tag !== _tag) {
+					xover.stores[tag] = __document;
+				}
+				await xover.storehouse.write('sources', tag, __document);
 				//}
 			},
 			writable: false, enumerable: false, configurable: false
