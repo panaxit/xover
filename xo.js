@@ -10412,6 +10412,18 @@ xover.modernize = async function (targetWindow) {
 												return Promise.reject(xml.transform("empty.xslt"));
 											}
 											return Promise.reject(top.document.createComment("ack:empty"));
+										} else if (result.documentElement && this.target instanceof Element) {
+											for (let param_name of xsl.selectNodes(`//xsl:stylesheet/xsl:param/@name[not(contains(.,':'))]`)) {
+												let target = this.target;
+												let param = param_name.parentNode;
+												let param_value = target.getAttribute(param_name);
+												if (param_value == undefined && /^\$\{([\S\s]+)\}$/.test(param.value)) {
+													param_value = eval(`\`${param.value}\``)
+												}
+												if (param_value !== undefined && !result.documentElement.hasAttribute(param_name)) {
+													result.documentElement.setAttribute(param.getAttribute("name"), param_value);
+										}
+											}
 										}
 										if ((xover.session.debug || {})["transform"] || xsl.selectSingleNode('//xsl:param[@name="debug:timer" and text()="true"]')) {
 											console.timeEnd(timer_id);
