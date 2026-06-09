@@ -10891,7 +10891,7 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 					Object.defineProperty(XMLDocument.prototype, 'save', {
 						value: async function () {
 							if (this.href) {
-								xover.storehouse.write('sources', this.href, this);
+								xover.storehouse.write('sources', this.pathname, this);
 							} else {
 								console.warn("File can't be saved on storehouse if lacks of href property")
 							}
@@ -11879,7 +11879,7 @@ xover.Response = function (response, request) {
 			let cache_control = response.headers.get("Cache-Control") || request.headers.get("Cache-Control");
 			expiry = (new URLSearchParams(cache_control || {}).get("max-age") || 0) * 1000;
 			if (expiry && !["no-store"].includes(cache_control)) {
-				xover.storehouse.write('sources', request.url.href, response_content, content_type);
+				xover.storehouse.write('sources', request.url.pathname, response_content, content_type);
 			}
 
 			Object.defineProperty(response, 'responseText', {
@@ -14613,7 +14613,7 @@ xover.Store = function (xml, ...args) {
 	if (__document.source instanceof xover.Source && !__document.source.hasOwnProperty("save")) {
 		Object.defineProperty(__document.source, 'save', {
 			value: async function () {
-				xover.storehouse.write('sources', __document.source.tag, __document);
+				xover.storehouse.write('sources', __document.source.pathname, __document);
 			},
 			writable: false, enumerable: false, configurable: false
 		})
