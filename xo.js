@@ -283,8 +283,8 @@ xover.stores = new Proxy({}, {
 		} else if (key.indexOf('{$') != -1) {
 			return null;
 		} else if (key[0] == '#') {
-			let manifest_key = xover.manifest.getSourceKey(key);
-			self[normalized] = self[normalized] || new xover.Store(xover.sources[manifest_key], { tag: key });
+			//let manifest_key = xover.manifest.getSourceKey(key);
+			self[normalized] = self[normalized] || new xover.Store(xover.sources[key], { tag: key });
 			return self[normalized];
 		}
 	},
@@ -651,7 +651,6 @@ xover.init = async function () {
 	this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
 		try {
 			await xover.modernize();
-			await xover.stores.restore();
 			xover.dom.Observer();
 			await xover.manifest.init();
 			Object.assign(xover.spaces, xover.manifest.spaces);
@@ -662,7 +661,7 @@ xover.init = async function () {
 			if (xover.session.status == 'authorized' && 'session' in xover.server) {
 				await xover.session.checkStatus();
 			}
-
+			//await xover.stores.restore();
 			await Promise.all(xover.manifest.start.map(async href => {
 				if (href.constructor === {}.constructor) {
 					let request = new xover.Request(href);
@@ -4373,7 +4372,7 @@ xover.Source = function (tag_name) {
 	return this
 }
 
-for (let prop of ['$', '$$', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml', 'ready', 'relatedDocuments', 'url', 'href', 'resource', 'settings', 'tag']) {
+for (let prop of ['$', '$$', 'normalizeNamespaces', 'contains', 'querySelector', 'querySelectorAll', 'selectSingleNode', 'selectNodes', 'select', 'single', 'selectFirst', 'evaluate', 'getStylesheets', 'createProcessingInstruction', 'firstElementChild', 'insertBefore', 'resolveNS', 'xml', 'ready', 'relatedDocuments', 'url', 'href', 'pathname', 'resource', 'settings', 'tag']) {
 	Object.defineProperty(xover.Source.prototype, prop, {
 		get: function () {
 			return this.document[prop];
@@ -4530,14 +4529,14 @@ xover.sources = new Proxy(new Map(), {
 				return result
 			}
 		}
-		let normalized_key = xover.normalizeKey(key);
+		if (key in self) {
+			return self[key]; //.toLowerCase()
+		}
 		if (key.indexOf('{$') != -1) return null;
 		if (key.indexOf(".") != -1) {
 			key = xover.URL(key).pathname;
 		}
-		if (key in self) {
-			return self[key]; //.toLowerCase()
-		}
+		let normalized_key = xover.normalizeKey(key);
 		return xover.getSource.call(self, normalized_key)
 	},
 	set: function (self, key, input) {
@@ -14659,7 +14658,7 @@ xover.Store = function (xml, ...args) {
 				//    xover.session.setKey(store.tag, { source: source.tag });
 				//    source.save();
 				//} else {
-				let tag = key || _tag || store.url.pathname;
+				let tag = key || store.url.pathname;
 				if (tag !== _tag) {
 					xover.stores[tag] = __document;
 				}
