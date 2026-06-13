@@ -11170,7 +11170,7 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 									attr.remove()
 								}
 
-								let documentElement = dom.queryChildren(":only-child") || dom.queryChildren(`:not(link,script)`) || dom.firstElementChild || dom.lastChild;
+								let documentElement = dom.queryChildren(":only-child") || dom.queryChildren(`:not(link,script,style)`) || dom.firstElementChild || dom.lastChild;
 								if (!documentElement) {
 									return new Comment("ack:empty")
 								}
@@ -12589,7 +12589,7 @@ xover.Request = function (request, ...args) {
 					!stored_document && return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()").forEach(async node => { //urls are interpreted to 
 						let href = `${node.href || node}`;
 						//if (href.match(/^[\.\/]/)) {
-						let url = xover.URL(href.replace(/^~\//,''), ["~"].includes(href[0]) ? '' : response.url); //if href is requested with a leading slash, it must be refering to a document located on root folder. TODO: Check if backslash should be used to location and simple slash to response.url's root //["/", "\\"].includes(href[0])
+						let url = xover.URL(href.replace(/^~\//, ''), ["~"].includes(href[0]) ? '' : response.url); //if href is requested with a leading slash, it must be refering to a document located on root folder. TODO: Check if backslash should be used to location and simple slash to response.url's root //["/", "\\"].includes(href[0])
 						let new_href = url.href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
 						if (href != new_href) {
 							if (node instanceof ProcessingInstruction) {
@@ -13797,7 +13797,7 @@ xover.xml.combine = function (target, new_node) {
 		////}
 		target.metaNodes.remove();
 		target.replaceWith(...new_metaNodes, new_node);
-		restore_focus && typeof(new_node.focus) === "function" && new_node.focus();	
+		restore_focus && typeof (new_node.focus) === "function" && new_node.focus();
 		return new_node
 	} else if (
 		!instanceOf.call(target, ShadowRoot) && (!instanceOf.call(target, HTMLElement) && target.constructor === new_node.constructor || target.nodeName.toLowerCase() == new_node.nodeName.toLowerCase()) && target.id == new_node.id && (target_source || new_source) == (new_source || target_source)
@@ -13985,7 +13985,27 @@ xover.dom.combine = async function (target, new_node) {
 	let document = target.ownerDocument || window.document;
 	let scripts;
 	let script_wrapper = target.ownerDocument.createDocumentFragment();
+	let post_render_scripts = target.ownerDocument.createDocumentFragment();
 	!instanceOf.call(new_node.firstElementChild, HTMLHtmlElement) && script_wrapper.append(...new_node.selectNodes(`html:style|descendant-or-self::*[self::html:script[@src or @async or not(text())][not(@defer)] or self::html:link[@href] or self::html:meta][not(text())]`));
+	if (new_node instanceof DocumentFragment) {
+		let documentElement = new_node.queryChildren(":only-child") || new_node.queryChildren(`:not(link,script,style)`) || new_node.firstElementChild || new_node.lastChild;
+		let previousNode = documentElement.previousElementSibling;
+		while (previousNode) {
+			if (instanceOf.call(previousNode, HTMLScriptElement) || instanceOf.call(previousNode, HTMLLinkElement) || instanceOf.call(previousNode, HTMLMetaElement)) {
+				previousNode.replaceWith(previousNode.ownerDocument.createComment(`${previousNode.localName} removed (preRender)`));
+				script_wrapper.append(previousNode);
+			}
+			previousNode = previousNode.previousElementSibling;
+		}
+		let nextNode = documentElement.nextElementSibling;
+		while (nextNode) {
+			if (instanceOf.call(nextNode, HTMLScriptElement) || instanceOf.call(nextNode, HTMLLinkElement) || instanceOf.call(nextNode, HTMLMetaElement)) {
+				nextNode.replaceWith(nextNode.ownerDocument.createComment(`${nextNode.localName} removed (postRender)`));
+				post_render_scripts.append(nextNode);
+			}
+			nextNode = nextNode.nextElementSibling;
+		}
+	}
 	if (instanceOf.call(target, HTMLElement) && (new_node instanceof Document || new_node instanceof DocumentFragment)) {
 		////if (target.localName != 'code' && !(new_node.firstElementChild instanceof HTMLElement)) {
 		////    let named_slots = target.querySelectorAll("slot[name]");
@@ -14013,11 +14033,11 @@ xover.dom.combine = async function (target, new_node) {
 		}
 		if (!instanceOf.call(new_node, Node)) {
 			new_node = new Text(new_node)
-		} else if (new_node.childElementCount > 1) {
+		} else if (target.nodeName !== 'SLOT' && new_node.childElementCount > 1) {
 			let target_clone = target.cloneNode();
 			target_clone.append(...new_node.childNodes)
 			new_node = target_clone;
-		} else {
+		} else if (new_node.childElementCount <= 1) {
 			new_node = new_node.firstElementChild || new_node.firstChild
 		}
 	}
@@ -14043,8 +14063,10 @@ xover.dom.combine = async function (target, new_node) {
 	window.dispatchEvent(before_dom);
 	if (before_dom.defaultPrevented) return target;
 	target.disconnected = false;
-	let post_render_scripts = new_node.selectNodes('.//*[self::html:script][@src]');
-	post_render_scripts.forEach(script => script_wrapper.append(script));
+	for (let node of new_node.selectNodes('.//*[self::html:script][@src]')) {
+		post_render_scripts.append(node.metaNodes, node);
+	}
+	post_render_scripts.childNodes.forEach(script => script_wrapper.append(script));
 
 	await xover.signal.update.call(new_node, function (key) {
 		let scope = (new_node.hasAttribute(key)) ? new_node : this.scope;
@@ -14225,7 +14247,7 @@ xover.dom.combine = async function (target, new_node) {
 	}
 	//if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 
-	post_render_scripts.length && xover.delay(1).then(() => xover.dom.applyScripts.call(target, post_render_scripts));
+	post_render_scripts.childNodes.length && xover.delay(1).then(() => xover.dom.applyScripts.call(target, post_render_scripts.childNodes));
 	//if (other_scripts.length) {
 	//    xover.dom.applyScripts.call(document, other_scripts);
 	//}

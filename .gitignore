@@ -345,3 +345,4 @@ ASALocalRun/
 healthchecksdb
 /resources/bar-chart
 /panax/post from v12 entity - Proveedor que marca error.xml
+*.patch
