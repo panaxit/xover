@@ -2922,7 +2922,9 @@ xover.server = new Proxy({}, {
 		} else if (!(xover.manifest.server && key in xover.manifest.server)) {
 			throw (new Error(`Endpoint "${key}" not configured`));
 		} else if (!xover.manifest.server[key]) {
-			return null
+			return function () {
+				return Promise.reject(`Endpoint "${key}" is configured but has no valid function.`);
+			}
 		} else {
 			return handler;
 		}
@@ -2964,6 +2966,7 @@ xover.session = new Proxy({}, {
 	},
 	set: async function (self, key, new_value) {
 		let old_value = xover.session.getKey(key);
+		if (self[key] == new_value) return self[key];
 		let before = new xover.listener.Event(`beforeChange::#session:${key}`, { attribute: key, value: new_value, old: old_value }, this);
 		window.dispatchEvent(before);
 		if (before.cancelBubble || before.defaultPrevented) return;
@@ -4285,6 +4288,12 @@ xover.Source = function (tag_name) {
 			return __document;
 		}
 	});
+
+	Object.defineProperty(this, 'childNodes', {
+		get: function () {
+			return this.document.childNodes;
+		}
+	})
 
 	//Object.defineProperty(this, 'progress', {
 	//    get: function () {
@@ -7810,6 +7819,12 @@ xover.modernize = async function (targetWindow) {
 									let targets = []
 									if (e.status != 404 && document && document.render) {
 										window.dispatchEvent(new xover.listener.Event(`failure`, { tag: '', response: document, document }, document));
+										if (e.status == 412 && document instanceof Node) {
+											const comment = this.createComment(`ack:Status ${e.status}${e.statusText ? "" : ": " + e.statusText}`);
+											comment.sentinel = document;
+											comment.source = this.source;
+											this.replaceContent(comment)
+										}
 										//targets = await document.render();
 										if (!(targets && targets.length)) {
 											return Promise.reject(e)
@@ -10492,7 +10507,7 @@ xover.modernize = async function (targetWindow) {
 											let newDoc;
 											if (transformed) {
 												initCustomComponents.call(transformed);
-												if (transformed && transformed.children.length > 1) {
+												if (transformed && (transformed.children.length > 1 || transformed.childNodes.length > 0 && !transformed.firstElementChild)) {
 													newDoc = transformed;
 												} else if (transformed) {
 													newDoc = window.document.cloneNode();//window.document.cloneNode()//document.implementation.createDocument("http://www.w3.org/XML/1998/namespace", "", null);//
@@ -10905,6 +10920,37 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 						value: async function (target = []) {
 							let self = this;
 							await this.ready;
+							let sentinels = [...this.childNodes]
+								.filter(node => node instanceof Comment && node.sentinel);
+
+							if (sentinels.length) {
+								let renders = sentinels.map(comment => {
+									let sentinel = comment.sentinel;
+
+									if (typeof sentinel === 'function') {
+										return sentinel.call(comment, {
+											comment,
+											document: this,
+											source: this.source,
+											target
+										});
+									}
+
+									if (sentinel instanceof Document && typeof sentinel.render === 'function') {
+										return sentinel.render();
+									}
+
+									if (sentinel && typeof sentinel.render === 'function') {
+										return sentinel.render();
+									}
+
+									return null;
+								}).filter(Boolean);
+
+								if (renders.length) {
+									return Promise.all(renders).then(results => results.flat());
+								}
+							}
 							let source = this.source;
 							let stylesheets = target instanceof Array && target || target && [target] || [...this.stylesheets];
 							stylesheets.filter(item => instanceOf.call(item, ProcessingInstruction)).map(stylesheet => stylesheet.data).map(data => {
@@ -10933,8 +10979,8 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 								targets = await Promise.all(targets).then(target => target);
 								return Promise.resolve(targets.flat());
 							}
-							stylesheets = stylesheets.length && stylesheets || this.stylesheets;
 							let data = instanceOf.call(this, xover.Store, xover.Source) ? this.document.cloneNode(true) : instanceOf.call(this, Document) ? this.cloneNode(true) : this;
+							stylesheets = stylesheets.length && stylesheets || this.stylesheets;
 							//let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
 							//stylesheets = self_stylesheets.concat(stylesheets);
 							stylesheets.forEach(stylesheet => {
@@ -11006,7 +11052,7 @@ return /auto|scroll|overlay|hidden/.test(overflow + overflowY + overflowX); */
 											}
 										} else {
 											// Si no es una fuente, sigue resolviendo el selector relativo
-											let next = resolvedBase.querySelector(part);
+											let next = resolvedBase && resolvedBase.querySelector(part) || null;
 											if (next) {
 												resolvedBase = next;
 											} else {
@@ -12543,7 +12589,7 @@ xover.Request = function (request, ...args) {
 					!stored_document && return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()").forEach(async node => { //urls are interpreted to 
 						let href = `${node.href || node}`;
 						//if (href.match(/^[\.\/]/)) {
-						let url = xover.URL(href, ["/", "\\"].includes(href[0]) ? '' : response.url); //if href is requested with a leading slash, it must be refering to a document located on root folder. TODO: Check if backslash should be used to location and simple slash to response.url's root
+						let url = xover.URL(href.replace(/^~\//,''), ["~"].includes(href[0]) ? '' : response.url); //if href is requested with a leading slash, it must be refering to a document located on root folder. TODO: Check if backslash should be used to location and simple slash to response.url's root //["/", "\\"].includes(href[0])
 						let new_href = url.href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
 						if (href != new_href) {
 							if (node instanceof ProcessingInstruction) {
@@ -13751,7 +13797,7 @@ xover.xml.combine = function (target, new_node) {
 		////}
 		target.metaNodes.remove();
 		target.replaceWith(...new_metaNodes, new_node);
-		restore_focus && new_node.focus()
+		restore_focus && typeof(new_node.focus) === "function" && new_node.focus();	
 		return new_node
 	} else if (
 		!instanceOf.call(target, ShadowRoot) && (!instanceOf.call(target, HTMLElement) && target.constructor === new_node.constructor || target.nodeName.toLowerCase() == new_node.nodeName.toLowerCase()) && target.id == new_node.id && (target_source || new_source) == (new_source || target_source)
@@ -15102,6 +15148,12 @@ xover.Store = function (xml, ...args) {
 			//        writable: false, enumerable: false, configurable: false
 			//    });
 			//}
+		}
+	})
+
+	Object.defineProperty(this, 'childNodes', {
+		get: function () {
+			return this.document.childNodes;
 		}
 	})
 
