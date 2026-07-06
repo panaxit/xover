@@ -996,8 +996,160 @@ xover.init.dom = async function () {
 		//    console.log(evt.target.result);
 		//}
 	}
-	xover.init.customComponents();
+	await xover.init.customComponents();
+	await xover.init.behaviors(document);
 }
+
+xover.behaviors = xover.behaviors || new Map();
+
+xover.component = xover.component || {};
+
+xover.component.extend = function (target, methods) {
+	for (const [name, descriptor] of Object.entries(methods)) {
+		if (typeof descriptor === 'function') {
+			Object.defineProperty(target, name, {
+				value: descriptor,
+				writable: true,
+				configurable: true,
+				enumerable: false
+			});
+		}
+		else if (typeof descriptor === 'object') {
+			const current_descriptor = Object.getOwnPropertyDescriptor(target, name) || {};
+
+			Object.defineProperty(target, name, {
+				get: descriptor.get || current_descriptor.get,
+
+				set: descriptor.set ? function (input, ...args) {
+					const privateName = "_" + name;
+					const stackName = "__xover_setting_stack";
+
+					this[stackName] ??= new Set();
+
+					// Si el mismo setter intenta volver a entrar, no ejecutar otra vez el setter del usuario.
+					if (this[stackName].has(name)) {
+						this[privateName] = input;
+						return;
+					}
+
+					const oldValue = this[privateName] ?? this.getAttribute?.(name);
+
+					if (`${oldValue ?? ""}` === `${input ?? ""}`) {
+						return;
+					}
+
+					this[stackName].add(name);
+
+					try {
+						let return_value = descriptor.set.call(this, input, ...args);
+
+						if (return_value === false) return;
+
+						input = return_value !== undefined ? return_value : input;
+						this[privateName] = input;
+					}
+					finally {
+						this[stackName].delete(name);
+					}
+				} : current_descriptor.set,
+
+				configurable: true,
+				enumerable: false
+			});
+		}
+	}
+};
+
+xover.component.applyScripts = async function (host, root) {
+	const constructor = {
+		extend(methods) {
+			xover.component.extend(host, methods);
+		}
+	};
+
+	const scripts = [
+		...(root.matches?.("script") ? [root] : []),
+		...(root.querySelectorAll?.("script") || [])
+	];
+
+	for (const script of scripts.filter(script => script.textContent)) {
+		new Function(
+			"constructor",
+			`
+				let self = this;
+				let parts = this.parts || {};
+				${script.textContent}
+			`
+		).call(host, constructor);
+
+		script.remove();
+	}
+
+	if (typeof host.init === "function") {
+		await host.init(root);
+	}
+};
+
+xover.behavior = function (name, sourceName = name) {
+	xover.behaviors.set(name, sourceName);
+};
+
+xover.init.behaviors = async function (root = document) {
+	const nodes = [];
+
+	if (root.nodeType === Node.ELEMENT_NODE && root.hasAttribute('is')) {
+		nodes.push(root);
+	}
+
+	nodes.push(...(root.querySelectorAll?.('[is]') || []));
+
+	for (const node of nodes) {
+		const names = String(node.getAttribute('is') || '')
+			.split(/\s+/)
+			.filter(Boolean);
+
+		node.__xover_behaviors ??= {};
+
+		for (const name of names) {
+			if (node.__xover_behaviors[name]) continue;
+
+			//// Si existe como customElement real, no lo trates como behavior.
+			//if (customElements.get(name)) continue;
+
+			const source = xover.behaviors.get(name) || xover.sources[name];
+			if (!source) continue;
+			xover.behaviors.set(name, source)
+
+			node.__xover_behaviors[name] = {
+				name,
+				source,
+				disconnect() {
+					if (typeof node.disconnectedCallback === 'function') {
+						node.disconnectedCallback();
+					}
+				}
+			};
+
+			await source.ready;
+
+			await xover.dom.applyScripts.call(
+				node,
+				source.globals?.cloneNode(true).childNodes || []
+			);
+
+			const template = source.cloneNode(true).documentElement;
+			if (!template) continue;
+
+			template.applyAttributes?.(node.attributes);
+
+			//await xover.dom.combine(node, template);
+
+			const content = node.shadowRoot || node;
+
+			await xover.component.applyScripts(node, template.content || template);
+		}
+	}
+};
 
 xover.init.customComponents = async function () {
 	function cloneStylesheet(sharedStylesheet) {
@@ -1005,6 +1157,7 @@ xover.init.customComponents = async function () {
 		clonedStylesheet.replaceSync([...sharedStylesheet.cssRules].map(rule => rule.cssText).join(''));
 		return clonedStylesheet;
 	}
+
 	for (let component_name of Object.keys(xover.manifest.sources).filter(el => el.match(/^[a-zA-Z][^\\.\\/]*$/))) { /*window.document.selectNodes(`//*[starts-with(name(),'px-')]`)*/
 		//let component_name = component.nodeName.toLowerCase();
 		if (customElements.get(component_name)) continue;
@@ -1112,31 +1265,7 @@ xover.init.customComponents = async function () {
                 }
 
                 static extend(methods) {
-                    for (const [name, descriptor] of Object.entries(methods)) {
-                        if (typeof descriptor === 'function') {
-                            // Define as a method
-                            Object.defineProperty(this.prototype, name, {
-                                value: descriptor,
-                                writable: true,
-                                configurable: true,
-                                enumerable: false,
-                            });
-                        } else if (typeof descriptor === 'object') {
-                            const current_descriptor = Object.getOwnPropertyDescriptor(this.prototype, name) || {};
-                            // Define as a getter/setter
-                            Object.defineProperty(this.prototype, name, {
-                                get: descriptor.get || current_descriptor.get,
-                                set: descriptor.set ? function (input, ...args) {
-                                    let return_value = descriptor.set.call(this, input, ...args);
-                                    if (return_value == false) return;
-                                    input = return_value !== undefined ? return_value : \`\${input}\`;
-                                    this["_"+name] = input;
-                                } : current_descriptor.set,
-                                configurable: true,
-                                enumerable: false,
-                            });
-                        }
-                    }
+                    xover.component.extend(this.prototype, methods);
                 }
 
                 cloneNode(deep, options = {}) {
@@ -1152,18 +1281,20 @@ xover.init.customComponents = async function () {
                 }
 
                 attributeChangedCallback(name, oldValue, value) {
-                    if (oldValue === null || oldValue === value) return;
-                    if ('_'+name in this) {
-                        this['_'+name] = value;
-                    }
-                    if (name == 'value') {
-												xover.delay(10).then(() => {
-													let change_event = new xover.listener.Event('change', {oldValue, value, newValue: value}, this);
-													if (typeof(this.change)=='function') this.change(change_event);
-														window.dispatchEvent(change_event);
-												})
-                    }
-                }
+									if (oldValue === null || oldValue === value) return;
+
+									if ('_' + name in this) {
+										this['_' + name] = value;
+									}
+
+									if (name == 'value') {
+										xover.delay(10).then(() => {
+											let change_event = new xover.listener.Event('change', { oldValue, value, newValue: value }, this);
+											if (typeof(this.change) == 'function') this.change(change_event);
+											window.dispatchEvent(change_event);
+										});
+									}
+								}
 
                 adoptedCallback() {
                     if (!this.ownerDocument.contains(this)) return; //usually when cloning
@@ -1248,13 +1379,7 @@ xover.init.customComponents = async function () {
                     if (observable_attributes.size) {
                         this.#observer.observe(this, { attributeOldValue: true, attributeFilter: [...observable_attributes.keys()]})
                     }
-                    for (const script of [...shadowRoot.querySelectorAll("script")].filter(script => script.textContent)) {
-                        new Function(\`const constructor = this.constructor; let self = this; let parts = this.parts;\${script.textContent}\`).call(this);
-                        script.remove();
-                    }
-                    if (typeof(this.init)=='function') {
-                        this.init(shadowRoot);
-                    }
+                    await xover.component.applyScripts(this, shadowRoot);
                     this.#initialChildNodesObserver = new MutationObserver(async (mutations, observer) => {
                         if ((mutations.some(mutation => mutation.removedNodes.length) || mutations.some(mutation => mutation.addedNodes.length))) {
                             self.compose();
@@ -2601,6 +2726,9 @@ xover.Manifest = function (manifest = {}) {
 				source = self[key];
 				if (typeof (source) == 'function') {
 					return source;
+				}
+				if (typeof (source) === 'string' && source.match(/\$[\&\d]/)) {
+					source = xover.json.evaluate.call(new RegExp(/\$[\&\d]/, "gi"), source, key)
 				}
 				return source;
 			}
@@ -4500,9 +4628,6 @@ class HybridMap {
 xover.getSource = function (key) {
 	let self = this;
 	let manifest_key = typeof (key) === 'string' ? xover.manifest.getSource(key) : key;
-	if (typeof (manifest_key) === 'string' && manifest_key.indexOf(".") != -1) {
-		manifest_key = xover.URL(manifest_key).pathname;
-	}
 	manifest_key = xover.normalizeKey(manifest_key);
 	if (self.has(manifest_key)) {
 		return self.get(manifest_key);
@@ -5738,6 +5863,47 @@ Object.defineProperty(xover.stores, 'clear', {
 	},
 	writable: false, enumerable: false, configurable: false
 });
+
+xover.format = function (value, mask, locale = navigator.language) {
+	if (value == null || mask == null || mask === '') return value;
+
+	if (typeof value !== 'number') value = Number(value);
+	if (Number.isNaN(value)) return value;
+
+	// Sección positiva;negativa;cero
+	mask = (mask + ';;').split(';')[value > 0 ? 0 : value < 0 ? 1 : 2] || mask;
+
+	const isPercent = mask.includes('%');
+	if (isPercent) value *= 100;
+
+	const decimal = (mask.split('.')[1] || '').replace(/[^0#]/g, '');
+	const minimumFractionDigits = decimal.replace(/#/g, '').length;
+	const maximumFractionDigits = decimal.length;
+
+	const useGrouping = /#,##/.test(mask);
+
+	let formatted = Math.abs(value).toLocaleString(locale, {
+		useGrouping,
+		minimumFractionDigits,
+		maximumFractionDigits
+	});
+
+	// Reemplazar la parte numérica por el valor formateado
+	formatted = mask.replace(
+		/[#0,]+(?:\.[#0]+)?/,
+		formatted
+	);
+
+	if (isPercent) {
+		formatted = formatted.replace(/%%+/g, '%');
+	}
+
+	if (value < 0 && !mask.includes('-') && !mask.includes('(')) {
+		formatted = '-' + formatted;
+	}
+
+	return formatted;
+};
 
 xover.modernize = async function (targetWindow) {
 	try {
@@ -14350,6 +14516,7 @@ xover.dom.combine = async function (target, new_node) {
 		let scope = (new_node.hasAttribute(key)) ? new_node : this.scope;
 		return scope.single('./' + key) || scope.single('./@' + key) || key
 	});
+	await xover.init.behaviors(new_node);
 	for (const input of [...target.querySelectorAll("input[type=text][value]")].filter(input => input !== document.activeElement && input.value != input.getAttribute("value"))) { //This code syncs the value (usually visible) with its attribute
 		input.setAttribute("value", input.value)
 	}
@@ -16918,6 +17085,19 @@ xover.listener.on('hotreload', async function (file_path) {
 				}
 				try {
 					await source.reload();
+					for (const [behavior_name, behavior_source] of xover.behaviors || []) {
+						if (source !== behavior_source) continue;
+						const selector = `[is~="${CSS.escape(behavior_name)}"]`;
+
+						for (const node of document.querySelectorAll(selector)) {
+							node.__xover_behaviors?.[behavior_name]?.disconnect?.();
+							delete node.__xover_behaviors?.[behavior_name];
+
+							await xover.init.behaviors(node);
+						}
+
+						not_found = false;
+					}
 				} catch (e) {
 					console.error(e)
 				}
