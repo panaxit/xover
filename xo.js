@@ -5962,6 +5962,15 @@ xover.modernize = async function (targetWindow) {
 				});
 				return money.format(x)
 			}
+			if (typeof (Format) == 'undefined') {
+				Format = function (value, format, locale = xover.site?.locale || navigator.language) {
+					if (typeof xover?.format === 'function') {
+						return xover.format(value, format, locale);
+					}
+
+					return value;
+				}
+			}
 			if (typeof (Group) == 'undefined') Group = (result, arg) => {
 				result = result instanceof Node && {} || result;
 				for (let [key, value] of [(arg instanceof Attr && Entries(arg) || arg instanceof Element && [...arg.attributes].map(attr => [attr.name, attr.value]) || [])]) {
@@ -16573,8 +16582,8 @@ xover.json.evaluate = function (value, key) {
 			result[xover.json.evaluate.call(this, key, context_key)] = xover.json.evaluate.call(this, value[key], context_key);
 		}
 	} else if (typeof (value) == 'string') {
-		if (/\$[\d&<]/.test(value)) {
-			value = key.replace(regex, value)
+		if (regex && /\$[\d&<]/.test(value)) {
+			value = value.replace(new RegExp(/\$[\&\d]/, "gi"), key)
 		}
 		if (!regex && self !== xover.json && value.match(/{\$\w+:/)) {
 			value = eval(`with(self) (\`${value.replace(/\{\$(\w+):(.*)\}/, '${$1.$2}')}\`)`)
