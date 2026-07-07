@@ -8604,7 +8604,7 @@ xover.modernize = async function (targetWindow) {
 						}
 						if (instanceOf.call(node, Document) && !(this.nodeType === Node.ATTRIBUTE_NODE && ["xo-source", "xo-scope", "xo-stylesheet"].includes(this.nodeName))) {
 							return node.source//Object.entries(xover.stores).filter(([key, store]) => store.document === node).map(([key, store]) => store)[0]//xover.stores.seed;
-						} else if (instanceOf.call(node, CustomElement, DocumentFragment)) {
+						} else if (instanceOf.call(node, CustomElement, DocumentFragment) && !(node.nodeType === Node.ELEMENT_NODE && node.hasAttribute("is"))) {
 							return node
 						} else if (!instanceOf.call(node, Element)) {
 							return node;
