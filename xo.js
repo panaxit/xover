@@ -2727,8 +2727,8 @@ xover.Manifest = function (manifest = {}) {
 				if (typeof (source) == 'function') {
 					return source;
 				}
-				if (typeof (source) === 'string' && source.match(/\$[\&\d]/)) {
-					source = xover.json.evaluate.call(new RegExp(/\$[\&\d]/, "gi"), source, key)
+				if (typeof (source) === 'string' && source.match(/\$[\&\d]/) && key[0] !== '^') {
+					source = xover.json.evaluate.call(new RegExp(/\$[\&\d]/, "gi"), key, source)
 				}
 				return source;
 			}
@@ -16582,8 +16582,8 @@ xover.json.evaluate = function (value, key) {
 			result[xover.json.evaluate.call(this, key, context_key)] = xover.json.evaluate.call(this, value[key], context_key);
 		}
 	} else if (typeof (value) == 'string') {
-		if (regex && /\$[\d&<]/.test(value)) {
-			value = value.replace(new RegExp(/\$[\&\d]/, "gi"), key)
+		if (regex && regex.test(key)) {
+			value = key.replace(regex, value)
 		}
 		if (!regex && self !== xover.json && value.match(/{\$\w+:/)) {
 			value = eval(`with(self) (\`${value.replace(/\{\$(\w+):(.*)\}/, '${$1.$2}')}\`)`)
