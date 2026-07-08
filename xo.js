@@ -4026,7 +4026,7 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
 		all_differences.push(new Map([[node1, node2]]));
 		return all_differences;
 	}
-	if (!node1.isEquivalentNode(node2) || node1.nodeType === node2.nodeType && node1.nodeType === Node.ELEMENT_NODE && ((node2.getAttribute("xo-swap") || '').split(/\s+/g).includes("self::*") || !(node1.getAttribute("xo-xsl-source") == node2.getAttribute("xo-xsl-source") && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id"))))) {
+	if (!node1.isEquivalentNode(node2) || node1.nodeType === node2.nodeType && node1.nodeType === Node.ELEMENT_NODE && ((node2.getAttribute("xo-swap") || '').split(/\s+/g).includes("self::*") || !(node1.stamp === node2.stamp && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id"))))) {
 		all_differences.push(new Map([[node1, node2]]));
 		return all_differences;
 	}
@@ -4901,6 +4901,87 @@ xover.references.cached = function (name, key, resolver) {
 	}
 	cache.set(key, value);
 	return value;
+}
+
+xover.references.stampDocument = function (stamp) {
+	let node = this && this.nodeType === Node.ATTRIBUTE_NODE ? this.ownerElement : this;
+	node = node && node.nodeType !== Node.ELEMENT_NODE && !instanceOf.call(node, Document) && node.parentElement || node;
+	let stamp_value = node && node.nodeType === Node.ELEMENT_NODE && node.getAttribute("xo-stamp") || "";
+	let ref = stamp || xover.references.parse(stamp_value);
+	if (!node || !node.nodeType) return null;
+	let section = node.closest && node.closest("[xo-stylesheet]") || null;
+	let stylesheet = section && section.getAttribute("xo-stylesheet") || null;
+	let source = ref.hasSourceKey && xover.references.resolveSource.call(node, ref.sourceKey, { kind: "source" }) || stylesheet && xover.sources[stylesheet] || node.ownerDocument && node.ownerDocument.source && node.ownerDocument.source.document || null;
+	return instanceOf.call(source, xover.Source) ? source.document : source;
+}
+
+xover.references.stamp = function () {
+	let target_node = this;
+	if (!target_node || !target_node.nodeType) return null;
+	if (Object.prototype.hasOwnProperty.call(target_node, "stamp")) return target_node.stamp;
+	let node = target_node.nodeType === Node.ATTRIBUTE_NODE ? target_node.ownerElement : target_node;
+	node = node && node.nodeType !== Node.ELEMENT_NODE && !instanceOf.call(node, Document) && node.parentElement || node;
+	if (!node || !node.nodeType) return null;
+	if (Object.prototype.hasOwnProperty.call(node, "stamp")) {
+		let value = node.stamp;
+		if (target_node !== node) Object.defineProperty(target_node, "stamp", { value });
+		return value;
+	}
+	if (instanceOf.call(node, Document)) {
+		Object.defineProperty(node, "stamp", { value: node });
+		return node;
+	}
+	let stamp_root = node.closest && node.closest("[xo-stamp],[xo-source]") || null;
+	if (stamp_root && stamp_root !== node) {
+		let value = stamp_root.stamp;
+		Object.defineProperty(node, "stamp", { value });
+		if (target_node !== node) Object.defineProperty(target_node, "stamp", { value });
+		return value;
+	}
+	let stamp_value = node.nodeType === Node.ELEMENT_NODE && node.getAttribute("xo-stamp") || "";
+	let section = node.closest && node.closest("[xo-stylesheet]") || null;
+	let stamp_cache_key = `${stamp_value}@${section && section.getAttribute("xo-stylesheet") || ""}`;
+	let value = xover.references.cached.call(node, "stamp", stamp_cache_key, () => {
+		if (!stamp_value && node.nodeType === Node.ELEMENT_NODE && node.hasAttribute("xo-source")) {
+			let result = xover.references.resolve.call(node, node.getAttribute("xo-source"), { kind: "source", fallback: xover.references.inheritedSource.call(node) });
+			let source = result.node || result.source || null;
+			return instanceOf.call(source, xover.Source) ? source.document : source;
+		}
+		let stamp = xover.references.parse(stamp_value);
+		let source = xover.references.stampDocument.call(node, stamp);
+		if (!stamp_value) return source;
+		let stamp_id = stamp.selector || stamp.value;
+		let target = source && source.selectFirst && (source.selectFirst(`//*[@xo:id="${stamp_id}"]`) || source.selectFirst(`//*[@id="${stamp_id}"]`));
+		return target || source;
+	});
+	Object.defineProperty(node, "stamp", { value });
+	if (target_node !== node) Object.defineProperty(target_node, "stamp", { value });
+	return value;
+}
+
+xover.references.generatedSource = function () {
+	let node = this && this.nodeType === Node.ATTRIBUTE_NODE ? this.ownerElement : this;
+	if (!node || !node.nodeType) return null;
+	if (node.nodeType === Node.ELEMENT_NODE) {
+		let comment = node.previousSibling;
+		while (comment && comment.nodeType === Node.TEXT_NODE && !comment.textContent.trim()) {
+			comment = comment.previousSibling;
+		}
+		if (comment && comment.nodeType === Node.COMMENT_NODE && comment.data.indexOf("<template") !== -1 && comment.template) {
+			return comment.template.ownerDocument;
+		}
+		let stamp = node.stamp;
+		if (stamp) return instanceOf.call(stamp, Document) ? stamp : stamp.ownerDocument;
+	}
+	return null;
+}
+
+xover.references.scopeDocument = function () {
+	let scope = this && this.scope || null;
+	if (instanceOf.call(scope, xover.Source)) return scope.document;
+	if (instanceOf.call(scope, Document)) return scope;
+	if (instanceOf.call(scope, Attr)) return scope.ownerElement && scope.ownerElement.ownerDocument || null;
+	return scope && scope.ownerDocument || null;
 }
 
 xover.resolveMode = function (mode) {
@@ -6942,7 +7023,13 @@ xover.modernize = async function (targetWindow) {
 					let [first_node] = mutated_targets.keys();
 					let self = first_node instanceof Document || first_node instanceof XMLDocument ? first_node : first_node.ownerDocument;
 					if (!(self && self.firstElementChild)) return;
-					let sections = xover.site.sections.filter(el => el.source == self || el.source && el.source.document === self || el.stylesheet == self || ((el.stylesheet || {}).relatedDocuments || []).flat().find(item => item == self)).sort(el => el.contains(document.activeElement) && -1 || 1);
+					let sections = xover.site.sections.filter(el => {
+						let scope_document = xover.references.scopeDocument.call(el);
+						let stylesheet = el.stylesheet;
+						return scope_document === self
+							|| stylesheet === self
+							|| ((stylesheet || {}).relatedDocuments || []).flat().find(item => item == self)
+					}).sort(el => el.contains(document.activeElement) && -1 || 1);
 					let active_element = event && event.srcElement instanceof Element && event.srcElement || window.document.activeElement || window.document.createElement('p');;
 
 					if (instanceOf.call(event, InputEvent)) await xover.delay(1);
@@ -8842,6 +8929,8 @@ xover.modernize = async function (targetWindow) {
 								return result.node || result.source || new Comment("ack:empty");
 							});
 						}
+						let generated_source = xover.references.cached.call(this, "generated_source", "source", () => xover.references.generatedSource.call(this));
+						if (generated_source) return generated_source;
 
 						let node = this.closest && this.closest(`[xo-source],[xo-stylesheet]`) || this.host || this.ownerDocument || this;
 						if (instanceOf.call(node, Document) && !(this.nodeType === Node.ATTRIBUTE_NODE && ["xo-source", "xo-scope", "xo-stylesheet"].includes(this.nodeName))) {
@@ -8873,16 +8962,29 @@ xover.modernize = async function (targetWindow) {
 				}
 
 				const source_handler = xover.mode === "modern" ? modern_source_handler : legacy_source_handler;
+				const stamp_handler = {
+					get: function () {
+						return xover.references.stamp.call(this);
+					}
+				}
 				xover.modeHandlers = xover.modeHandlers || {};
 				xover.modeHandlers.scope = { legacy: legacy_scope_handler, modern: modern_scope_handler };
 				xover.modeHandlers.source = { legacy: legacy_source_handler, modern: modern_source_handler };
+				xover.modeHandlers.stamp = { legacy: stamp_handler, modern: stamp_handler };
 				xover.applyModeHandlers = function () {
 					let scope_handler = xover.modeHandlers.scope[xover.mode] || xover.modeHandlers.scope.legacy;
 					let source_handler = xover.modeHandlers.source[xover.mode] || xover.modeHandlers.source.legacy;
+					let stamp_handler = xover.modeHandlers.stamp[xover.mode] || xover.modeHandlers.stamp.legacy;
 					for (let prototype of [Node.prototype, HTMLTableCellElement.prototype]) {
 						let descriptor = Object.getOwnPropertyDescriptor(prototype, 'scope');
 						if (!descriptor || descriptor.configurable) {
 							Object.defineProperty(prototype, 'scope', { ...scope_handler, configurable: true });
+						}
+					}
+					for (let prototype of [Node.prototype]) {
+						let descriptor = Object.getOwnPropertyDescriptor(prototype, 'stamp');
+						if (!descriptor || descriptor.configurable) {
+							Object.defineProperty(prototype, 'stamp', { ...stamp_handler, configurable: true });
 						}
 					}
 					for (let prototype of [Text.prototype, Attr.prototype, Element.prototype, Comment.prototype, ProcessingInstruction.prototype]) {
@@ -11181,7 +11283,7 @@ xover.modernize = async function (targetWindow) {
 							}
 						}
 
-						let source_document = await scope_handler.get.call(this);
+						let source_document = await this.scope;
 						if ((source_document || {}).nodeType === Node.COMMENT_NODE && source_document.data == "ack:no-scope") {
 							source_document = this.source;
 						}
@@ -13724,7 +13826,7 @@ xover.xml.initialize = async function (target) {
 			}
 		}
 
-		for (const el of target.selectNodes(`//xsl:template/*[not(self::xsl:* or xsl:attribute[@name="xo-xsl-source"]) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute or @name="xo-xsl-source")] or self::xsl:comment[not(preceding-sibling::xsl:comment or contains(text(),'<template'))]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`) && !(el.previousElementSibling && el.previousElementSibling.matches(`xsl:comment[contains(.,'<template')]`)))) {
+		for (const el of target.selectNodes(`//xsl:template/*[not(self::xsl:* or xsl:attribute[@name="xo-stamp"]) or self::xsl:element or self::xsl:attribute[not(preceding-sibling::xsl:attribute or @name="xo-stamp")] or self::xsl:comment[not(preceding-sibling::xsl:comment or contains(text(),'<template'))]]|//xsl:template//xsl:*//html:option|//xsl:template//html:*[not(parent::html:*)]|//xsl:template//svg:*[not(ancestor::svg:*)]|//xsl:template//xsl:comment[.="debug:info"]`).filter(el => !el.selectFirst(`preceding-sibling::xsl:text|preceding-sibling::text()[normalize-space()!='']`) && !(el.previousElementSibling && el.previousElementSibling.matches(`xsl:comment[contains(.,'<template')]`)))) {
 			const ancestor = el.selectNodes("ancestor::xsl:template[1]|ancestor::xsl:if[1]|ancestor::xsl:for-each[1]|ancestor::xsl:when[1]|ancestor::xsl:otherwise[1]").pop();
 			let create_attribute = (el.selectSingleNode('preceding-sibling::xsl:attribute') || el.matches('xsl:attribute') || el.selectSingleNode('self::html:textarea'))
 			const debug_node = xover.xml.createNode(create_attribute && `<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-debug"><![CDATA[${new xover.URL(url).href}: template ${el.selectNodes(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${attr.value}"`).join(" ")}]]></xsl:attribute>` || `<xsl:comment xmlns:xsl="http://www.w3.org/1999/XSL/Transform">&lt;template
@@ -13734,12 +13836,12 @@ file="${new xover.URL(url).href.replace(/&/g, '&amp;')}"
 &lt;!- -${ancestor.cloneNode().toString().replace(/ xmlns:(\w+)=(["'])([^\2]+?)\2/ig, '').replace(/>/g, '&gt;').replace(/</g, '&lt;').replace(/--/g, '- -')}- -&gt;`}
 ${el.selectNodes(`ancestor::xsl:template[1]/@*`).map(attr => `${attr.name}="${new Text(attr.value).toString()}"`).join(" ")} &lt;/template></xsl:comment>`);
 			const ancestor_id = ancestor.getAttributeNS(xover.spaces["xover"], "id")
-			const source_node = xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-xsl-source"><![CDATA[${ancestor_id}]]></xsl:attribute>`);
-			if (source_node && el.nodeType === Node.ELEMENT_NODE && !el.single("ancestor-or-self::xsl:comment")) {
+			const stamp_node = xover.xml.createNode(`<xsl:attribute xmlns:xsl="http://www.w3.org/1999/XSL/Transform" name="xo-stamp"><![CDATA[${ancestor_id}]]></xsl:attribute>`);
+			if (stamp_node && el.nodeType === Node.ELEMENT_NODE && !el.single("ancestor-or-self::xsl:comment")) {
 				if (el.matches(`xsl:attribute`)) {
-					el.before(source_node)
+					el.before(stamp_node)
 				} else {
-					el.prepend(source_node)
+					el.prepend(stamp_node)
 				}
 			}
 			if (el.selectSingleNode('self::xsl:comment[.="debug:info"]')) {
@@ -14021,11 +14123,12 @@ xover.xml.normalizeChildren = function (nodeA, nodeB, options) {
 		if (xo_source && xo_sheet) return `${name}|xo:${xo_source}|xs:${xo_sheet}`
 
 		const id = n.id || ""
-		const xsl = n.getAttribute("xo-xsl-source") || ""
+		const stamp = n.stamp
+		const stamp_id = instanceOf.call(stamp, Document) ? (stamp.URL || stamp.documentURI || stamp.baseURI || "") : stamp && (stamp.getAttributeNS(xover.spaces["xover"], "id") || stamp.id) || ""
 		const scope = n.getAttribute("xo-scope") || ""
 		const slot = n.getAttribute("xo-slot") || ""
 
-		return `${name}|${id}|${xsl}|${scope}|${slot}`
+		return `${name}|${id}|${stamp_id}|${scope}|${slot}`
 	}
 
 	function matchKey(n) {
@@ -14250,7 +14353,7 @@ xover.xml.staticMerge = function (node1, node2) {
 			node1.nodeType !== Node.ELEMENT_NODE
 			|| node2.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
 			|| (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/ == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/
-			&& (node1.getAttribute("xo-xsl-source") == node2.getAttribute("xo-xsl-source") && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id"))
+			&& (node1.stamp === node2.stamp && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id"))
 			)
 		)
 	)) {
@@ -14344,7 +14447,7 @@ xover.xml.staticMerge = function (node1, node2) {
 		let target_swap = `${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `${attr.value.split(/\s+/g).filter(Boolean).map(item => `${attr.name.replace(/^xo-swap-/, '') === 'class' ? '.' : attr.name.replace(/^xo-swap-/, '') === 'style' ? '@' : ''}${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
 
 		swap = swap.filter(item => !target_swap.includes(item));
-		let static_attributes = `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source @id ${(target.getAttribute("xo-swap") || '')} ${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')} ${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
+		let static_attributes = `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-stamp @id ${(target.getAttribute("xo-swap") || '')} ${[...target.attributes].filter(attr => attr.name.indexOf("xo-swap-") == 0).map(attr => `@${attr.name} ${attr.name.replace(/^xo-swap-/, '@')} ${attr.value.split(/\s+/g).filter(Boolean).map(item => `.${item}`).concat(static).join(' ')}`).join(" ")}`.split(/\s+/g).distinct().filter(Boolean);
 		target.applyAttributes(source, {
 			swap
 			, static: static_attributes
@@ -14473,7 +14576,7 @@ xover.xml.combine = function (target, new_node) {
             /*`${new_node.getAttributeNode("xo-scope")}` !== `${target.getAttributeNode("xo-scope")
             || new_node.getAttributeNode("xo-scope")}` && `${target.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}` == `${new_node.closest(`[xo-stylesheet],[xo-source]`).getAttributeNode("xo-source")}`
             || */swap.contains("self")
-			|| new_node.nodeName.toLowerCase() !== 'body' && !(target.getAttribute("xo-xsl-source") == new_node.getAttribute("xo-xsl-source") && (target.getAttribute("id") || new_node.getAttribute("id")) == (new_node.getAttribute("id") || target.getAttribute("id")))
+			|| new_node.nodeName.toLowerCase() !== 'body' && !(target.stamp === new_node.stamp && (target.getAttribute("id") || new_node.getAttribute("id")) == (new_node.getAttribute("id") || target.getAttribute("id")))
 			|| [...swap].some(predicate => target.matches(predicate))
 		)
 		|| target.constructor !== new_node.constructor && new_node.nodeName.toLowerCase()!=='body' && (
@@ -14557,7 +14660,7 @@ xover.xml.combine = function (target, new_node) {
 			}
 		}
 
-		let swap_attributes = target.attributes && `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-xsl-source @id ${(target.getAttribute("xo-swap") || '')}`.split(/\s+/g).concat(swap).distinct().filter(Boolean);
+		let swap_attributes = target.attributes && `@xo-swap @xo-scope @xo-source @xo-stylesheet @xo-stamp @id ${(target.getAttribute("xo-swap") || '')}`.split(/\s+/g).concat(swap).distinct().filter(Boolean);
 		target.attributes && target.applyAttributes(source, {
 			swap: swap_attributes
 		})
@@ -14920,7 +15023,7 @@ xover.dom.combine = async function (target, new_node) {
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && current.nodeName === 'SLOT' && current.classList.contains("placeholder")) {
 			current.replaceWith(change)
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && change.nodeName === 'SLOT' && change.classList.contains("placeholder")) {
-			if (target.contains((current.closest("[xo-xsl-source]") || current).parentNode)) {
+			if (target.contains((current.closest("[xo-stamp]") || current).parentNode)) {
 				current.remove({ silent: true }) //TODO: Check what are the rules to remove
 			} else {
 				change.remove()
