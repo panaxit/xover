@@ -4915,10 +4915,33 @@ xover.references.stampDocument = function (stamp) {
 	return instanceOf.call(source, xover.Source) ? source.document : source;
 }
 
+xover.references.stampComment = function () {
+	let comment = this;
+	if (!comment || comment.nodeType !== Node.COMMENT_NODE || comment.data.indexOf("<template") === -1) return null;
+	return xover.references.cached.call(comment, "stamp", comment.data, () => {
+		let info = xover.xml.createNode(comment.data.replace(/- -/g, '--'));
+		let file = info.getAttribute("file");
+		let source = file && xover.sources[file] || null;
+		source = instanceOf.call(source, xover.Source) ? source.document : source;
+		let [, , stamp_id] = comment.data.match(/\bxo:id=(["'])(.*?)\1/) || [];
+		let target = stamp_id && source && source.selectFirst && (source.selectFirst(`//*[@xo:id="${stamp_id}"]`) || source.selectFirst(`//*[@id="${stamp_id}"]`));
+		return target || source;
+	});
+}
+
 xover.references.stamp = function () {
 	let target_node = this;
 	if (!target_node || !target_node.nodeType) return null;
 	if (Object.prototype.hasOwnProperty.call(target_node, "stamp")) return target_node.stamp;
+	let comment = target_node.nodeType === Node.COMMENT_NODE ? target_node : target_node.previousSibling;
+	while (comment && comment.nodeType === Node.TEXT_NODE && !comment.textContent.trim()) {
+		comment = comment.previousSibling;
+	}
+	let comment_stamp = xover.references.stampComment.call(comment);
+	if (comment_stamp) {
+		Object.defineProperty(target_node, "stamp", { value: comment_stamp });
+		return comment_stamp;
+	}
 	let node = target_node.nodeType === Node.ATTRIBUTE_NODE ? target_node.ownerElement : target_node;
 	node = node && node.nodeType !== Node.ELEMENT_NODE && !instanceOf.call(node, Document) && node.parentElement || node;
 	if (!node || !node.nodeType) return null;
@@ -4967,8 +4990,9 @@ xover.references.generatedSource = function () {
 		while (comment && comment.nodeType === Node.TEXT_NODE && !comment.textContent.trim()) {
 			comment = comment.previousSibling;
 		}
-		if (comment && comment.nodeType === Node.COMMENT_NODE && comment.data.indexOf("<template") !== -1 && comment.template) {
-			return comment.template.ownerDocument;
+		if (comment && comment.nodeType === Node.COMMENT_NODE && comment.data.indexOf("<template") !== -1) {
+			let stamp = comment.stamp;
+			if (stamp) return instanceOf.call(stamp, Document) ? stamp : stamp.ownerDocument;
 		}
 		let stamp = node.stamp;
 		if (stamp) return instanceOf.call(stamp, Document) ? stamp : stamp.ownerDocument;
