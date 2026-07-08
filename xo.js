@@ -4022,9 +4022,10 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
 	if (this === xover.xml && node1.nodeType === Node.ELEMENT_NODE && node1.hasAttribute("xo-stylesheet")) {
 		return all_differences;
 	}
-	let node1_scope = node1.nodeType === Node.ELEMENT_NODE && node1.scope || null;
-	let node2_scope = node2.nodeType === Node.ELEMENT_NODE && node2.scope || null;
-	if (xover.references.signature.call(node1_scope) !== xover.references.signature.call(node2_scope)) {
+	let different_scope = xover.mode === "modern"
+		? xover.references.signature.call(node1 && node1.nodeType === Node.ELEMENT_NODE && node1.scope || null) !== xover.references.signature.call(node2 && node2.nodeType === Node.ELEMENT_NODE && node2.scope || null)
+		: `${(node1.attributes || {})["xo-scope"]}` !== `${(node2.attributes || {})["xo-scope"]}` || node1.hasOwnProperty("scope") && node2.hasOwnProperty("scope") && node1.scope !== node2.scope;
+	if (different_scope) {
 		all_differences.push(new Map([[node1, node2]]));
 		return all_differences;
 	}
@@ -4909,19 +4910,25 @@ xover.references.signature = function () {
 	let node = this;
 	if (instanceOf.call(node, xover.Source)) node = node.document;
 	if (!node) return "";
-	if (Object.prototype.hasOwnProperty.call(node, "signature")) return node.signature;
 	if (instanceOf.call(node, Attr)) node = node.ownerElement;
+	if (!node) return "";
+	let descriptor = Object.getOwnPropertyDescriptor(node, "signature");
+	if (descriptor && "value" in descriptor) return descriptor.value;
 	if (instanceOf.call(node, Document)) return node.URL || node.documentURI || node.baseURI || "";
 	let is_rendered_node = node.ownerDocument && node.ownerDocument.defaultView && node.nodeType === Node.ELEMENT_NODE;
-	if (is_rendered_node) {
+	if (xover.mode === "modern" && is_rendered_node) {
 		let name = node.localName || node.nodeName.toLowerCase();
 		let id = node.id || "";
 		let stamp = node.stamp;
-		let stamp_id = xover.references.signature.call(stamp);
-		let scope_id = xover.references.signature.call(node.scope);
+		let stamp_id = stamp !== node && xover.references.signature.call(stamp) || "";
+		let scope = node.scope;
+		let scope_id = scope !== node && xover.references.signature.call(scope) || "";
 		let slot = node.getAttribute("xo-slot") || "";
 		let value = `${name}|${id}|${stamp_id}|${scope_id}|${slot}`;
-		Object.defineProperty(node, "signature", { value });
+		descriptor = Object.getOwnPropertyDescriptor(node, "signature");
+		if (!descriptor || descriptor.configurable) {
+			Object.defineProperty(node, "signature", { value });
+		}
 		return value;
 	}
 	if (node.nodeType === Node.ELEMENT_NODE) {
@@ -5037,7 +5044,27 @@ xover.references.scopeDocument = function () {
 	return scope && scope.ownerDocument || null;
 }
 
+xover.modeMeta = function (create = false) {
+	if (typeof (document) == "undefined") return null;
+	let meta = document.querySelector(`meta[name="xo-mode"]`);
+	if (!meta && create && document.head) {
+		meta = document.createElement("meta");
+		meta.setAttribute("name", "xo-mode");
+		document.head.appendChild(meta);
+	}
+	return meta;
+}
+
+xover.syncModeMeta = function (mode) {
+	let meta = xover.modeMeta(true);
+	if (meta) meta.setAttribute("content", mode);
+	return mode;
+}
+
 xover.resolveMode = function (mode) {
+	if (["legacy", "modern"].includes(mode)) return mode;
+	let meta = xover.modeMeta();
+	mode = meta && meta.getAttribute("content") || null;
 	if (["legacy", "modern"].includes(mode)) return mode;
 	let script = typeof (document) != "undefined" && (document.currentScript || [...document.scripts].reverse().find(script => (script.src || "").match(/(^|\/)xo(?:\.min)?\.js(\?|$)/))) || null;
 	mode = script && script.src && new window.URL(script.src, location.href).searchParams.get("mode") || null;
@@ -5054,6 +5081,7 @@ if (!xover.hasOwnProperty("mode")) {
 		},
 		set: function (mode) {
 			xover._mode = xover.resolveMode(mode);
+			xover.syncModeMeta(xover._mode);
 			if (typeof (xover.applyModeHandlers) == "function") {
 				xover.applyModeHandlers();
 			}
@@ -14191,6 +14219,7 @@ xover.xml.normalizeChildren = function (nodeA, nodeB, options) {
 		const xo_sheet = n.getAttribute("xo-stylesheet") || ""
 
 		if (xo_source && xo_sheet) return `${name}|xo:${xo_source}|xs:${xo_sheet}`
+		if (xover.mode !== "modern") return `${name}|${n.id || ""}|${n.getAttribute("xo-scope") || ""}|${n.getAttribute("xo-slot") || ""}`
 
 		return n.signature
 	}
@@ -14416,7 +14445,7 @@ xover.xml.staticMerge = function (node1, node2) {
 		&& (
 			node1.nodeType !== Node.ELEMENT_NODE
 			|| node2.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
-			|| xover.references.signature.call(node1.scope) == xover.references.signature.call(node2.scope)
+			|| (xover.mode === "modern" ? xover.references.signature.call(node1.scope) == xover.references.signature.call(node2.scope) : (node1.getAttribute("xo-scope") || node2.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/ == (node2.getAttribute("xo-scope") || node1.getAttribute("xo-scope") || '')/*.replace(/^context:.* /, '')*/)
 			&& (node1.stamp === node2.stamp && (node1.getAttribute("id") || node2.getAttribute("id")) == (node2.getAttribute("id") || node1.getAttribute("id"))
 			)
 		)
@@ -14595,7 +14624,9 @@ xover.xml.combine = function (target, new_node) {
 	let new_metaNodes = new_node.metaNodes;
 	//if (instanceOf.call(target, CustomElement) && !instanceOf.call(new_node, HTMLTemplateElement)) debugger;
 	let same_source = (new_node.getAttributeNode("xo-stylesheet") || new_node.getAttributeNode("xo-source") || target.getAttributeNode("xo-stylesheet") || target.getAttributeNode("xo-source") || {}).source === (target.getAttributeNode("xo-stylesheet") || target.getAttributeNode("xo-source") || new_node.getAttributeNode("xo-stylesheet") || new_node.getAttributeNode("xo-source") || {}).source || false;
-	let same_scope = target.nodeType === Node.ELEMENT_NODE && new_node.nodeType === Node.ELEMENT_NODE && xover.references.signature.call(target.scope) === xover.references.signature.call(new_node.scope) || false;
+	let same_scope = xover.mode === "modern"
+		? target.nodeType === Node.ELEMENT_NODE && new_node.nodeType === Node.ELEMENT_NODE && xover.references.signature.call(target.scope) === xover.references.signature.call(new_node.scope) || false
+		: (new_node.getAttributeNode("xo-scope") || new_node.getAttributeNode("xo-source") || target.getAttributeNode("xo-scope") || target.getAttributeNode("xo-source") || {}).source === (target.getAttributeNode("xo-scope") || target.getAttributeNode("xo-source") || new_node.getAttributeNode("xo-scope") || new_node.getAttributeNode("xo-source") || {}).source || false;
 
 	if (instanceOf.call(new_node, HTMLTemplateElement)) {
 		new_node.content.querySelectorAll("script").forEach(el => el.replaceWith(el.cloneNode(true, { inert: true })));
