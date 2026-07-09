@@ -1032,12 +1032,6 @@ xover.component.extend = function (target, methods) {
 						return;
 					}
 
-					const oldValue = this[privateName] ?? this.getAttribute?.(name);
-
-					if (`${oldValue ?? ""}` === `${input ?? ""}`) {
-						return;
-					}
-
 					this[stackName].add(name);
 
 					try {
@@ -1060,10 +1054,10 @@ xover.component.extend = function (target, methods) {
 	}
 };
 
-xover.component.applyScripts = async function (host, root) {
-	const constructor = {
+xover.component.applyScripts = async function (host, root, target = host) {
+	const constructor = target && typeof (target.extend) == "function" ? target : {
 		extend(methods) {
-			xover.component.extend(host, methods);
+			xover.component.extend(target, methods);
 		}
 	};
 
@@ -1379,7 +1373,7 @@ xover.init.customComponents = async function () {
                     if (observable_attributes.size) {
                         this.#observer.observe(this, { attributeOldValue: true, attributeFilter: [...observable_attributes.keys()]})
                     }
-                    await xover.component.applyScripts(this, shadowRoot);
+                    await xover.component.applyScripts(this, shadowRoot, this.constructor);
                     this.#initialChildNodesObserver = new MutationObserver(async (mutations, observer) => {
                         if ((mutations.some(mutation => mutation.removedNodes.length) || mutations.some(mutation => mutation.addedNodes.length))) {
                             self.compose();
