@@ -4940,6 +4940,7 @@ xover.references.findAll = function (selector) {
 		if (selector.indexOf(",") != -1) {
 			let selectors = [];
 			let value = "";
+			let hasSeparator = false;
 			for (let i = 0; i < selector.length; i++) {
 				if (selector[i] == "\\" && selector[i + 1] == ",") {
 					value += ",";
@@ -4947,12 +4948,14 @@ xover.references.findAll = function (selector) {
 				} else if (selector[i] == ",") {
 					selectors.push(value.trim());
 					value = "";
+					hasSeparator = true;
 				} else {
 					value += selector[i];
 				}
 			}
 			selectors.push(value.trim());
-			return new NodeSet(...selectors.map(selector => xover.references.findAll.call(source, selector)).flat());
+			if (hasSeparator) return new NodeSet(...selectors.filter(Boolean).map(selector => xover.references.findAll.call(source, selector)).flat());
+			selector = value;
 		}
 		let id = selector.replace(/^#/, "");
 		if (typeof (source.select) == "function") {
