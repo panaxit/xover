@@ -1558,24 +1558,24 @@ class Subscribers extends Map {
 		return this
 	}
 
-	evaluate(...args) {
+	async evaluate(...args) {
 		for (let [ref, parser] of [...this.entries()]) {
 			let element = ref.closest("*");
 			instanceOf.call(element, Element) && element.classList.add("xo-syncing")
-			xover.subscribers.evaluate.apply(this, [ref, args.slice(-1)[0] || parser])
+			await xover.subscribers.evaluate.apply(this, [ref, args.slice(-1)[0] || parser])
 		}
 	}
 }
 
 xover.subscribers = new Structure(new Map(), {
 	evaluate: {
-		value: function (target, contextParser) {
+		value: async function (target, contextParser) {
 			let self = this;
-			const evaluate = function (contextParser) {
+			const evaluate = async function (contextParser) {
 				let ref = this;
 				if (this instanceof Node) {
 					const formula = this.formula || '';
-					const value = formula.replace(/\{[\$\{]([^\}]+)\}?\}/g, (full_match, match) => {
+					const evaluate_match = async (full_match, match) => {
 						let [value, else_value] = match.split(/\s*\|\|\s*/);
 						//let source = ref.source;
 						//source && source.document && await source.document.ready
@@ -1592,7 +1592,7 @@ xover.subscribers = new Structure(new Map(), {
 						} else {/*if (instanceOf.call(scope, Node))*/
 							//await scope.ready
 							try {
-								value = typeof (contextParser) == 'function' ? /*await */contextParser.call(scope, match, full_match) : (scope.documentElement || scope).single(match) || '';
+								value = typeof (contextParser) == 'function' ? await contextParser.call(scope, match, full_match) : (scope.documentElement || scope).single(match) || '';
 								if (match == value) {
 									try {
 										return eval(value)
@@ -1610,7 +1610,19 @@ xover.subscribers = new Structure(new Map(), {
 								/*typeof (e.render) == 'function' ? e.render() : String(e).alert()*/
 							}
 						}
-					})
+					}
+					let value = '';
+					let lastIndex = 0;
+					let formula_match;
+					let has_match = false;
+					let formula_regex = /\{[\$\{]([^\}]+)\}?\}/g;
+					while ((formula_match = formula_regex.exec(formula)) !== null) {
+						has_match = true;
+						value += formula.slice(lastIndex, formula_match.index);
+						value += await evaluate_match(formula_match[0], formula_match[1]);
+						lastIndex = formula_match.index + formula_match[0].length;
+					}
+					value = has_match ? value + formula.slice(lastIndex) : formula;
 					if (ref.textContent != value) {
 						if ([Node.TEXT_NODE, Node.ELEMENT_NODE].includes(ref.nodeType) && (value.indexOf("<") != -1 || value.indexOf("{{") != -1)) {
 							let node = value.indexOf("<") != -1 ? xover.string.toHTML(value) : new Text(value);
@@ -1656,7 +1668,7 @@ xover.subscribers = new Structure(new Map(), {
 			}
 			for (let [subscriber, subelement] of target instanceof Node && [[target, target.formula]] || this instanceof Map && this.entries() || Object.entries(this) || []) {
 				if (subelement instanceof Map && subelement.hasOwnProperty("evaluate")) {
-					subelement.evaluate()
+					await subelement.evaluate()
 					continue;
 				}
 				if (typeof (subelement) !== 'string') continue;
@@ -1674,7 +1686,7 @@ xover.subscribers = new Structure(new Map(), {
 						value: formula
 					})
 				}
-				subscriber.evaluate(contextParser)
+				await subscriber.evaluate(contextParser)
 			}
 		}
 	}
@@ -1747,7 +1759,7 @@ Object.defineProperties(xover.signal, {
 			}
 			if (subscribers.size) {
 				target.subscribers = subscribers;
-				subscribers.evaluate(contextParser);
+				await subscribers.evaluate(contextParser);
 			}
 		}
 	}
@@ -4822,7 +4834,7 @@ xover.references.parse = function (value = this.nodeType === Node.ATTRIBUTE_NODE
 		let hasSourceKey = separator !== -1;
 		let selector = hasSourceKey ? reference.slice(0, separator).trim() : reference;
 		let sourceKey = hasSourceKey ? reference.slice(separator + 1).trim() : null;
-		let sourceAttr = hasSourceKey ? null : attr.parentNode?.parentNode?.section?.attributes[attr.name] || attr.parentNode?.getAttributeNode("xo-source") || null;
+		let sourceAttr = hasSourceKey ? null : attr.parentNode?.parentNode?.section?.attributes?.[attr.name] || attr.parentNode?.getAttributeNode("xo-source") || null;
 
 		return {
 			value,
@@ -8857,7 +8869,7 @@ xover.modernize = async function (targetWindow) {
 							let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
 							let section = this.section;
 							let source = this.source;
-							if (instanceOf.call(source, Document) && !source.firstChild && this.closest(`[xo-source],[xo-stylesheet]`).contains(this.closest(`[xo-slot]`))) {
+							if (source.nodeType === Node.DOCUMENT_NODE && !source.firstChild && this.closest(`[xo-source],[xo-stylesheet]`).contains(this.closest(`[xo-slot]`))) {
 								let ready = source.ready;
 								return ready.then(() => this.scope);
 							}
@@ -8866,7 +8878,7 @@ xover.modernize = async function (targetWindow) {
 							//    this.scopeNode = null;
 							//    return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
 							//} else {
-							let self = this instanceof Element ? this : this.parentNode || this;
+							let self = this.nodeType === Node.ELEMENT_NODE ? this : this.parentNode || this;
 							let ref = self;
 							let scope, slot;
 							do {
@@ -8877,7 +8889,7 @@ xover.modernize = async function (targetWindow) {
 								} else if (ref && ref.attributes) {
 									let attrs = ["xo-scope", "xo:id", "id", "xo-source", "xo-stylesheet"].filter(attr => ref.hasAttribute(attr));
 									while (scope === undefined && attrs.length) {
-										let attr = ref.getAttributeNode(attrs[0]);
+										let attr = ref.attributes[attrs[0]];
 										if (attr.localName == "xo-scope" && attr.value.indexOf('context:') == 0 && (this.contextNode && section.contextNode)) {
 											scope = section.contextNode.selectFirst(`//*[@xo:id="${attr.value}"]`);
 										} else if (attr.localName == "xo-source") {
@@ -8961,69 +8973,53 @@ xover.modernize = async function (targetWindow) {
 					get: function () {
 						try {
 							let original_PropertyDescriptor = this instanceof HTMLTableCellElement && HTMLTableCellElement.scope || {};
-							let self = this instanceof Element ? this : this.parentNode || this;
-							let scope_ref = self.closest && self.closest("[xo-scope]") || self;
-							let scope_value = scope_ref && scope_ref.getAttribute && scope_ref.getAttribute("xo-scope") || "";
-							let parent_scope = scope_ref && scope_ref.parentNode && scope_ref.parentNode.scope || null;
-							let source = parent_scope && (parent_scope.ownerDocument || parent_scope.document || parent_scope) || scope_ref && scope_ref.contextNode && (scope_ref.contextNode.ownerDocument || scope_ref.contextNode) || null;
-							let scope_reference = xover.references.parse(scope_value);
-							let scope_source = scope_reference.hasSourceKey ? xover.references.resolveSource.call(scope_ref, scope_reference.sourceKey, { kind: "scope", fallback: source }) : source;
-							let scope_key = [
-								scope_value,
-								xover.references.signature.call(scope_source),
-								scope_ref && scope_ref.contextNode && (scope_ref.contextNode.getAttribute && scope_ref.contextNode.getAttribute("xo:id") || scope_ref.contextNode.nodeName) || "",
-								scope_ref && scope_ref.parentNode && scope_ref.parentNode.getAttribute && scope_ref.parentNode.getAttribute("xo-scope") || ""
-							].join("|");
-							let scope = xover.references.cached.call(scope_ref || self, "scope", scope_key, () => {
-								if (scope_ref && scope_ref.attributes && scope_ref.hasAttribute("xo-scope")) {
-									let resolved = xover.references.resolve.call(scope_ref, scope_value, { kind: "scope", source: scope_source, fallback: scope_source || source });
-									return resolved.node;
+							let self = this.nodeType === Node.ATTRIBUTE_NODE ? this.parentNode : this.nodeType === Node.ELEMENT_NODE ? this : this.parentNode || this;
+							let context = self.closest && self.closest("[xo-source],[xo-scope],[xo-stylesheet]") || self.section || self;
+							let scope_attr = context && context.getAttributeNode && context.getAttributeNode("xo-scope");
+							let scope_key = scope_attr && `${scope_attr.value}|${scope_attr.source && (scope_attr.source.URL || scope_attr.source.documentURI || scope_attr.source.baseURI) || ""}` || "";
+							let scope = xover.references.cached.call(scope_attr || context || self, "scope", scope_key, () => {
+								if (scope_attr) {
+									let ref = xover.references.parse.call(scope_attr);
+									let source = scope_attr.source;
+									let resolve_scope = source => {
+										let node = ref.collection ? xover.references.findAll.call(source, ref.selector) : xover.references.find.call(source, ref.selector);
+										return node || (!ref.selector ? source : null) || source;
+									}
+									return source && source.ready && !source.firstChild ? source.ready.then(resolve_scope) : resolve_scope(source);
 								}
-								if (scope_ref !== self && instanceOf.call(scope_ref, CustomElement)) return scope_ref;
-								if (scope_ref && scope_ref.contextNode) return scope_ref.contextNode;
-								if (self.parentNode && self.parentNode !== self) return self.parentNode.scope;
-								let section = this.section || self.section || null;
-								return section && section.contextNode || xover.sources.active || xover.sources.seed || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
+								return context && (context.contextNode || context.source) || self.parentNode && self.parentNode.scope || xover.sources.active || xover.sources.seed || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
 							});
 
-							let slot = self.closest && (self.closest('[xo-slot]') || self.closest('[slot]') || self.closest('input[name],textarea[name],select[name]'));
-							if (slot && scope_ref && scope_ref.contains && scope_ref.contains(slot)) {
-								slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || slot.attributes && slot.attributes["name"] || '';
-							} else {
-								slot = '';
-							}
-							if (!slot && instanceOf.call(this, Text)) slot = 'text()';
+							let resolve_slot = scope => {
+								let slot = self.closest && (self.closest('[xo-slot]') || self.closest('[slot]') || self.closest('input[name],textarea[name],select[name]'));
+								if (slot && context && context.contains && context.contains(slot)) {
+									slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || slot.attributes && slot.attributes["name"] || '';
+								} else {
+									slot = '';
+								}
+								if (!slot && this.nodeType === Node.TEXT_NODE) slot = 'text()';
 
-							if (scope && slot) {
-								slot = slot.value || slot;
-								let slot_key = `${scope_key}|${slot}`;
-								return xover.references.cached.call(this, "scope_slot", slot_key, () => {
-									if (!slot) return scope;
-									if (slot === 'text()') {
-										let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
-										this.scopeNode = textNode;
+								if (scope && slot) {
+									slot = slot.value || slot;
+									let slot_key = `${scope_key}|${slot}`;
+									return xover.references.cached.call(this, "scope_slot", slot_key, () => {
+										let apply_slot = scope => {
+											if (!slot) return scope;
+											if (slot === 'text()') return [...scope.childNodes].filter(el => el.nodeType === Node.TEXT_NODE).pop() || (scope.ownerDocument || scope).createTextNode(null);
+											if (slot.indexOf('::') != -1) return scope.selectFirst(slot);
+											return (scope.attributes || {})[slot] || scope.createAttribute(slot, null);
+										}
+										this.scopeNode = Array.isArray(scope) ? new NodeSet(...scope.map(apply_slot).filter(Boolean)) : apply_slot(scope);
 										return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-									}
-									if (slot.indexOf('::') != -1) {
-										let node = scope.selectFirst(slot);
-										this.scopeNode = node;
-										return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-									}
-									let attribute_node = (scope.attributes || {})[slot];
-									try {
-										attribute_node = attribute_node || scope.createAttribute(slot, null);
-										this.scopeNode = attribute_node;
-									} catch (e) {
-										console.error(e, this)
-									}
-									return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-								});
-							}
+									});
+								}
 
-							this.scopeNode = instanceOf.call(scope, xover.Source) ? scope.document : scope;
-							return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
+								this.scopeNode = scope && scope.document || scope;
+								return this.scopeNode || (this.ownerDocument || this).createComment("ack:no-scope");
+							}
+							return scope && typeof (scope.then) == 'function' ? scope.then(resolve_slot) : resolve_slot(scope);
 						} catch (e) {
-							return Promise.reject(e)
+							throw e
 						}
 					}
 				}
@@ -9032,11 +9028,11 @@ xover.modernize = async function (targetWindow) {
 						//let section = this.section || this;
 						//if (!(section instanceof HTMLElement && (this.hasAttribute("xo-stylesheet")))) return null;
 						let node = this.hasOwnProperty("source") && this.source || this.nodeType === Node.ATTRIBUTE_NODE && ["xo-source", "xo-scope", "xo-stylesheet"].includes(this.nodeName) && xover.sources[this] || this.closest(`[xo-source],[xo-stylesheet]`) || this.host || this.ownerDocument || this;
-						if (node instanceof Element) {
+						if (node.nodeType === Node.ELEMENT_NODE) {
 							let xo_source = node.getAttribute("xo-source")
 							if (xo_source == 'inherit') {
 								return (node.parentNode /*|| source.context_source*/ || {}).source || xover.stores.seed;
-							} else if (!node.getAttributeNode("xo-source")) {
+							} else if (!node.hasAttribute("xo-source")) {
 								return this;
 							} else if (xo_source[0].indexOf('#') != -1 && node.hasAttribute("xo-slot")) {
 								return this.parentNode.source
@@ -9049,7 +9045,7 @@ xover.modernize = async function (targetWindow) {
 							return node.source//Object.entries(xover.stores).filter(([key, store]) => store.document === node).map(([key, store]) => store)[0]//xover.stores.seed;
 						} else if (instanceOf.call(node, CustomElement, DocumentFragment)) {
 							return node
-						} else if (!instanceOf.call(node, Element)) {
+						} else if (node.nodeType !== Node.ELEMENT_NODE) {
 							return node;
 						}
 						let source = node.getAttribute("xo-source");
@@ -9057,7 +9053,7 @@ xover.modernize = async function (targetWindow) {
 						if (source && source.indexOf("{$") != -1) {
 							source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
 						}
-						let store = /*source in xover.stores && xover.stores[source] || */xover.sources[source].source;
+						let store = xover.mode === 'legacy' ? xover.sources[source].source : xover.sources[source];
 						return store;
 					}, set: function (value) {
 						if (value == null) {
@@ -15075,8 +15071,8 @@ xover.dom.combine = async function (target, new_node) {
 	}
 	post_render_scripts.childNodes.forEach(script => script_wrapper.append(script));
 
-	await xover.signal.update.call(new_node, function (key) {
-		let scope = (new_node.hasAttribute(key)) ? new_node : this.scope;
+	await xover.signal.update.call(new_node, async function (key) {
+		let scope = (new_node.hasAttribute(key)) ? new_node : await this.scope;
 		return scope.single('./' + key) || scope.single('./@' + key) || key
 	});
 	await xover.init.behaviors(new_node);
