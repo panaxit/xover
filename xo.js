@@ -4852,6 +4852,9 @@ xover.references.parse = function (value = this.nodeType === Node.ATTRIBUTE_NODE
 			hasSourceKey = true;
 		}
 		if (!sourceAttr && hasSourceKey) sourceAttr = attr;
+		if (attr && !sourceAttr && !hasSourceKey && attr.name == "xo-stamp") {
+			sourceAttr = element?.closest("[xo-stylesheet]")?.getAttributeNode("xo-stylesheet") || null;
+		}
 		if (attr && !sourceAttr && !hasSourceKey) {
 			let section = element?.parentNode?.section;
 			sourceAttr = section?.attributes?.[attr.name] || attr.name == "xo-scope" && section?.getAttributeNode("xo-source") || null;
@@ -5041,12 +5044,13 @@ xover.references.signature = function () {
 xover.references.stampDocument = function (stamp) {
 	let node = this && this.nodeType === Node.ATTRIBUTE_NODE ? this.ownerElement : this;
 	node = node && node.nodeType !== Node.ELEMENT_NODE && !instanceOf.call(node, Document) && node.parentElement || node;
-	let stamp_value = node && node.nodeType === Node.ELEMENT_NODE && node.getAttribute("xo-stamp") || "";
-	let ref = stamp || xover.references.parse(stamp_value);
+	let stamp_attr = node && node.nodeType === Node.ELEMENT_NODE && node.getAttributeNode("xo-stamp") || null;
+	let stamp_value = stamp_attr && stamp_attr.value || "";
+	let ref = stamp || (stamp_attr ? xover.references.parse.call(stamp_attr) : xover.references.parse(stamp_value));
 	if (!node || !node.nodeType) return null;
 	let section = node.closest && node.closest("[xo-stylesheet]") || null;
-	let stylesheet = section && section.getAttribute("xo-stylesheet") || null;
-	let source = ref.hasSourceKey && xover.references.resolveSource.call(node, ref.sourceKey, { kind: "source" }) || stylesheet && xover.sources[stylesheet] || node.ownerDocument && node.ownerDocument.source && node.ownerDocument.source.document || null;
+	let stylesheet = section && section.getAttributeNode("xo-stylesheet") || null;
+	let source = ref.sourceAttr && ref.sourceAttr.source || ref.hasSourceKey && xover.references.resolveSource.call(node, ref.sourceKey, { kind: "source" }) || stylesheet && stylesheet.source || node.ownerDocument && node.ownerDocument.source && node.ownerDocument.source.document || null;
 	return instanceOf.call(source, xover.Source) ? source.document : source;
 }
 
@@ -5074,7 +5078,7 @@ xover.references.stamp = function () {
 	}
 	let comment_stamp = xover.references.stampComment.call(comment);
 	if (comment_stamp) {
-		Object.defineProperty(target_node, "stamp", { value: comment_stamp });
+		Object.defineProperty(target_node, "stamp", { value: comment_stamp, configurable: true });
 		return comment_stamp;
 	}
 	let node = target_node.nodeType === Node.ATTRIBUTE_NODE ? target_node.ownerElement : target_node;
@@ -5082,38 +5086,40 @@ xover.references.stamp = function () {
 	if (!node || !node.nodeType) return null;
 	if (Object.prototype.hasOwnProperty.call(node, "stamp")) {
 		let value = node.stamp;
-		if (target_node !== node) Object.defineProperty(target_node, "stamp", { value });
+		if (target_node !== node) Object.defineProperty(target_node, "stamp", { value, configurable: true });
 		return value;
 	}
 	if (instanceOf.call(node, Document)) {
-		Object.defineProperty(node, "stamp", { value: node });
+		Object.defineProperty(node, "stamp", { value: node, configurable: true });
 		return node;
 	}
 	let stamp_root = node.closest && node.closest("[xo-stamp],[xo-source]") || null;
 	if (stamp_root && stamp_root !== node) {
 		let value = stamp_root.stamp;
-		Object.defineProperty(node, "stamp", { value });
-		if (target_node !== node) Object.defineProperty(target_node, "stamp", { value });
+		Object.defineProperty(node, "stamp", { value, configurable: true });
+		if (target_node !== node) Object.defineProperty(target_node, "stamp", { value, configurable: true });
 		return value;
 	}
-	let stamp_value = node.nodeType === Node.ELEMENT_NODE && node.getAttribute("xo-stamp") || "";
-	let section = node.closest && node.closest("[xo-stylesheet]") || null;
-	let stamp_cache_key = `${stamp_value}@${section && section.getAttribute("xo-stylesheet") || ""}`;
-	let value = xover.references.cached.call(node, "stamp", stamp_cache_key, () => {
-		if (!stamp_value && node.nodeType === Node.ELEMENT_NODE && node.hasAttribute("xo-source")) {
-			let result = xover.references.resolve.call(node, node.getAttribute("xo-source"), { kind: "source", fallback: xover.references.inheritedSource.call(node) });
-			let source = result.node || result.source || null;
-			return instanceOf.call(source, xover.Source) ? source.document : source;
-		}
-		let stamp = xover.references.parse(stamp_value);
+	let stamp_attr = node.nodeType === Node.ELEMENT_NODE && node.getAttributeNode("xo-stamp") || null;
+	let stamp_value = stamp_attr && stamp_attr.value || "";
+	let value;
+	if (!stamp_value && node.nodeType === Node.ELEMENT_NODE && node.hasAttribute("xo-source")) {
+		let result = xover.references.resolve.call(node, node.getAttribute("xo-source"), { kind: "source", fallback: xover.references.inheritedSource.call(node) });
+		let source = result.node || result.source || null;
+		value = instanceOf.call(source, xover.Source) ? source.document : source;
+	} else {
+		let stamp = stamp_attr ? xover.references.parse.call(stamp_attr) : xover.references.parse(stamp_value);
 		let source = xover.references.stampDocument.call(node, stamp);
-		if (!stamp_value) return source;
-		let stamp_id = stamp.selector || stamp.value;
-		let target = source && source.selectFirst && (source.selectFirst(`//*[@xo:id="${stamp_id}"]`) || source.selectFirst(`//*[@id="${stamp_id}"]`));
-		return target || source;
-	});
-	Object.defineProperty(node, "stamp", { value });
-	if (target_node !== node) Object.defineProperty(target_node, "stamp", { value });
+		if (!stamp_value) {
+			value = source;
+		} else {
+			let stamp_id = stamp.selector || stamp.value;
+			let target = source && source.selectFirst && (source.selectFirst(`//*[@xo:id="${stamp_id}"]`) || source.selectFirst(`//*[@id="${stamp_id}"]`));
+			value = target || source;
+		}
+	}
+	Object.defineProperty(node, "stamp", { value, configurable: true });
+	if (target_node !== node) Object.defineProperty(target_node, "stamp", { value, configurable: true });
 	return value;
 }
 
@@ -8964,28 +8970,20 @@ xover.modernize = async function (targetWindow) {
 							//    scope = scope.documentElement || scope.firstElementChild;
 							//}
 							if (scope && slot) {
-								slot = slot.value;
-								if (!slot) {
-									return scope;
-								} else if (slot === 'text()') {
-									let textNode = [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
-									this.scopeNode = textNode;
-									return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-								} else if (slot.indexOf('::') != -1) {
-									let node = scope.selectFirst(slot);
-									this.scopeNode = node;
-									return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
-								} else {
-									let attribute_node;
-									attribute_node = (scope.attributes || {})[slot];
+								slot = slot.value || slot;
+								let apply_slot = scope => {
+									if (!slot) return scope;
+									if (slot === 'text()') return [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
+									if (slot.indexOf('::') != -1) return scope.selectFirst(slot);
+									let attribute_node = (scope.attributes || {})[slot];
 									try {
-										attribute_node = attribute_node || scope.createAttribute(slot, null);
-										this.scopeNode = attribute_node;
+										return attribute_node || scope.createAttribute(slot, null);
 									} catch (e) {
 										console.error(e, this)
 									}
-									return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
 								}
+								this.scopeNode = Array.isArray(scope) ? new NodeSet(...scope.map(apply_slot).filter(Boolean)) : apply_slot(scope);
+								return this.scopeNode || this.ownerDocument.createComment("ack:no-scope");
 							}
 							//Implementar para Text $0.selectNodes('ancestor-or-self::*').map(el => el.scope).filter(el => el && el.selectFirst('self::xo:r')).pop().getAttributeNode($0.scope.value)
 							this.scopeNode = scope || original_PropertyDescriptor.get && original_PropertyDescriptor.get.apply(this, arguments) || null;
@@ -9056,6 +9054,12 @@ xover.modernize = async function (targetWindow) {
 						//if (!(section instanceof HTMLElement && (this.hasAttribute("xo-stylesheet")))) return null;
 						let node = this.hasOwnProperty("source") && this.source || this.nodeType === Node.ATTRIBUTE_NODE && ["xo-source", "xo-scope", "xo-stylesheet"].includes(this.nodeName) && xover.sources[this] || this.closest(`[xo-source],[xo-stylesheet]`) || this.host || this.ownerDocument || this;
 						if (node.nodeType === Node.ELEMENT_NODE) {
+							let source_ref = xover.references.parse.call(node);
+							if (source_ref.sourceKey == "inherit") {
+								return (node.parentNode || {}).source || xover.stores.seed;
+							} else if (source_ref.hasSourceKey) {
+								return xover.sources[source_ref.sourceKey];
+							}
 							let xo_source = node.getAttribute("xo-source")
 							if (xo_source == 'inherit') {
 								return (node.parentNode /*|| source.context_source*/ || {}).source || xover.stores.seed;
@@ -9070,7 +9074,7 @@ xover.modernize = async function (targetWindow) {
 						}
 						if (node.nodeType === Node.DOCUMENT_NODE && !(this.nodeType === Node.ATTRIBUTE_NODE && ["xo-source", "xo-scope", "xo-stylesheet"].includes(this.nodeName))) {
 							return node.source//Object.entries(xover.stores).filter(([key, store]) => store.document === node).map(([key, store]) => store)[0]//xover.stores.seed;
-						} else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE || instanceOf.call(node, CustomElement)) {
+						} else if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE || !node.hasAttribute("is") && instanceOf.call(node, CustomElement)) {
 							return node
 						} else if (node.nodeType !== Node.ELEMENT_NODE) {
 							return node;
@@ -9085,7 +9089,8 @@ xover.modernize = async function (targetWindow) {
 						if (source && source.indexOf("{$") != -1) {
 							source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
 						}
-						let store = xover.references.parse.call(source_attr).hasSourceKey ? source_attr.source : xover.mode === 'legacy' ? xover.sources[source].source : xover.sources[source];
+						let source_ref = xover.references.parse.call(source_attr);
+						let store = source_ref.hasSourceKey ? xover.sources[source_ref.sourceKey] : xover.mode === 'legacy' ? xover.sources[source].source : xover.sources[source];
 						return store;
 					}, set: function (value) {
 						if (value == null) {
