@@ -4937,6 +4937,23 @@ xover.references.findAll = function (selector) {
 	if (!source) return new NodeSet();
 	if (!selector || selector === "." || selector === "self") return new NodeSet(source);
 	return xover.references.cached.call(source, "findAll", selector, () => {
+		if (selector.indexOf(",") != -1) {
+			let selectors = [];
+			let value = "";
+			for (let i = 0; i < selector.length; i++) {
+				if (selector[i] == "\\" && selector[i + 1] == ",") {
+					value += ",";
+					i++;
+				} else if (selector[i] == ",") {
+					selectors.push(value.trim());
+					value = "";
+				} else {
+					value += selector[i];
+				}
+			}
+			selectors.push(value.trim());
+			return new NodeSet(...selectors.map(selector => xover.references.findAll.call(source, selector)).flat());
+		}
 		let id = selector.replace(/^#/, "");
 		if (typeof (source.select) == "function") {
 			try {
