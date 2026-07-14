@@ -8756,7 +8756,7 @@ xover.modernize = async function (targetWindow) {
 							|| this.nodeName.toLowerCase() == comparedNode.nodeName.toLowerCase())/*
                         && (xover.sources[this.getAttribute("xo-source") || ''] || xover.sources[comparedNode.getAttribute("xo-source") || '']) === (xover.sources[comparedNode.getAttribute("xo-source") || ''] || xover.sources[this.getAttribute("xo-source") || ''])*/
 							|| instanceOf.call(this, CustomElement) && instanceOf.call(comparedNode, HTMLTemplateElement)
-							|| this.hasAttribute("xo-stylesheet") && this.getAttribute("xo-stylesheet") === comparedNode.getAttribute("xo-stylesheet")
+							//|| this.hasAttribute("xo-stylesheet") && this.getAttribute("xo-stylesheet") === comparedNode.getAttribute("xo-stylesheet")
 						) || false
 					return matches;
 				}
@@ -8990,7 +8990,7 @@ xover.modernize = async function (targetWindow) {
 							//    scope = scope.documentElement || scope.firstElementChild;
 							//}
 							if (scope && slot) {
-								slot = slot.value || slot;
+								slot = slot.nodeType === Node.ATTRIBUTE_NODE ? slot.value : slot.value || slot;
 								let apply_slot = scope => {
 									if (!slot) return scope;
 									if (slot === 'text()') return [...scope.childNodes].filter(el => el instanceof Text).pop() || scope.createTextNode(null);
@@ -9110,7 +9110,7 @@ xover.modernize = async function (targetWindow) {
 							source = source.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
 						}
 						let source_ref = xover.references.parse.call(source_attr);
-						let store = source_ref.hasSourceKey ? xover.sources[source_ref.sourceKey] : xover.mode === 'legacy' ? xover.sources[source].source : xover.sources[source];
+						let store = source_ref.hasSourceKey ? xover.sources[source_ref.sourceKey] : node.hasAttribute("xo-stylesheet") ? xover.sources[source].source : xover.sources[source];
 						return store;
 					}, set: function (value) {
 						if (value == null) {
@@ -9147,6 +9147,12 @@ xover.modernize = async function (targetWindow) {
 						}
 
 						let source = node.getAttribute("xo-source");
+						if (source && node.hasAttribute("xo-stylesheet")) {
+							return xover.references.cached.call(node, "source", source, () => {
+								let result = xover.references.resolve.call(node, source, { kind: "source", fallback: xover.references.inheritedSource.call(node) });
+								return result.source || result.node || new Comment("ack:empty");
+							});
+						}
 						if (source) {
 							return xover.references.cached.call(node, "source", source, () => {
 								let result = xover.references.resolve.call(node, source, { kind: "source", fallback: xover.references.inheritedSource.call(node) });
@@ -9265,7 +9271,11 @@ xover.modernize = async function (targetWindow) {
 						if ((this.namespaceURI || "").indexOf('www.w3.org') == -1) {
 							return (this.ownerDocument || this).source;
 						}
-						let scope_store = this.closest(`[xo-source],[xo-stylesheet]`) || document.createElement("p");
+						let scope_store = this.closest(`[xo-scope],[xo-source],[xo-stylesheet]`) || document.createElement("p");
+						let scope_ref = xover.references.parse.call(scope_store);
+						if (scope_ref.sourceKey && scope_ref.sourceKey in xover.stores) {
+							return xover.stores[scope_ref.sourceKey];
+						}
 						let store = scope_store.getAttribute(`xo-source`) || null;//'inherit';
 						if (store === 'inherit' && typeof ((this.parentNode || {}).closest) === 'function' && this.parentNode.closest('[xo-source]')) {
 							return store_handler.get.call(this.parentNode.closest('[xo-source]'))
@@ -9293,8 +9303,9 @@ xover.modernize = async function (targetWindow) {
 				if (!Node.prototype.hasOwnProperty('stylesheet')) {
 					Object.defineProperty(Node.prototype, 'stylesheet', {
 						get: function () {
-							let stylesheet = (this.closest(`[xo-source],[xo-stylesheet]`) || document.createElement("p")).getAttributeNode("xo-stylesheet");
-							return stylesheet && stylesheet.source || null;
+							let section = this.closest(`[xo-source],[xo-stylesheet]`) || document.createElement("p");
+							let source = section.getAttributeNode("xo-stylesheet") || section.getAttributeNode("xo-source");
+							return source && source.source || null;
 						}
 					});
 				}
@@ -11520,20 +11531,18 @@ xover.modernize = async function (targetWindow) {
 						let self = this;
 						if (!this.checkVisibility() && this.getAttribute("shadowrootmode") != "composed") return;
 						//if (!this.ownerDocument.contains(this)) return;
-						let stylesheet = this.getAttributeNode("xo-stylesheet");
-						if (stylesheet instanceof Node && stylesheet.value.indexOf("{$") != -1) {
-							stylesheet.value = stylesheet.value.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match)
-							if (stylesheet.value.indexOf("{$") != -1) {
-								return;
-							}
-						}
-
-						let source_document = await this.scope;
-						if ((source_document || {}).nodeType === Node.COMMENT_NODE && source_document.data == "ack:no-scope") {
-							source_document = this.source;
-						}
+						if (!(this.hasAttribute("xo-stylesheet") || this.hasAttribute("xo-source"))) return true;
+						let source_attr = this.getAttributeNode("xo-stylesheet") || this.getAttributeNode("xo-source");
+						let store = await this.store || this.ownerDocument.createComment("ack:no-scope");
+						let source = source_attr && xover.sources[source_attr.value] || store;
+						store && await store.ready;
+						source && await source.ready;
+						let source_document = source && (source.document || source) || this.ownerDocument.createComment("ack:empty");
 						//source_document = source_document.ownerDocument || source_document;
-						if (this.selectNodes(`ancestor::*[@xo-stylesheet or @xo-source]`).some(ancestor => ancestor.getAttribute("xo-stylesheet") == stylesheet && ancestor.source == source_document)) {
+						if (this.selectNodes(`ancestor::*[@xo-stylesheet or @xo-source or @xo-scope]`).some(ancestor => {
+							let ancestor_source = ancestor.getAttributeNode("xo-stylesheet") || ancestor.getAttributeNode("xo-source");
+							return ancestor_source?.source == source?.source && (ancestor.store == store || ancestor.scope == store || ancestor.source == store);
+						})) {
 							console.warn(`A recursion was prevented`, this)
 							return Promise.resolve(this)
 						}
@@ -11557,56 +11566,18 @@ xover.modernize = async function (targetWindow) {
 								this.removeAttribute("xo-suspense")
 							}
 						}
-						let stylesheets = []
 						if (do_render) {
-							if (source_document instanceof Document && this.hasAttribute("xo-source")) {
-								source_document.settings.headers = source_document.settings.headers || new Headers({});
-								if (this instanceof SVGElement) {
-									source_document.settings.headers.set("accept", "application/svg+xml");
-								} else if (this instanceof HTMLImageElement || this instanceof HTMLPictureElement) {
-									source_document.settings.headers.set("accept", "image/*");
-								}
-								if (this.hasAttribute("xo-settings")) {
-									let document = xover.xml.createDocument();
-									let headers = this.getAttribute("xo-settings");
-									try {
-										headers = eval(`({${headers}})`)
-									} catch (e) {
-										try {
-											headers = eval(`({${headers}})`)
-										} catch (e) {
-											throw (e)
-										}
-									}
-									document.settings.headers = new Headers(headers || {});
-									source_document = await source_document.source.fetch.apply(document);
-								}
-							}
-							source_document && await source_document.ready;
-							stylesheets = stylesheet && [stylesheet.value] || [...source_document.stylesheets || []] || [];
-							if (stylesheets.length) {
-								typeof (source_document.observe) === "function" && source_document.observe();
-								stylesheets = stylesheets.map(stylesheet => typeof (stylesheet) === 'string' && { type: 'text/xsl', href: stylesheet, target: self, store: this.store } || stylesheet instanceof ProcessingInstruction && xover.json.fromAttributes(stylesheet.data) || null).filter(stylesheet => stylesheet);
-								for (let stylesheet of stylesheets) {
-									stylesheet.target = stylesheet.target || self;
-								}
-								//source_document = source_document && source_document.document || source_document || xover.xml.createDocument(this.cloneNode(true));
-								//if (source_document instanceof Document) {
-								await XMLDocument.prototype.render.call(source_document, stylesheets);
-								//} else {
-								//    source_document = ;
-								//    await source_document.render(stylesheets);
-								//}
-							} else if (instanceOf.call(source_document.firstElementChild || source_document.firstChild, HTMLElement, SVGElement)) {
-								//let result = await xover.dom.combine(self, body);
-								let result = await XMLDocument.prototype.render.call(source_document, self)
+							if (source_document && (
+								instanceOf.call(source_document, HTMLElement, SVGElement)
+								|| [Node.DOCUMENT_NODE, Node.DOCUMENT_FRAGMENT_NODE].includes(source_document.nodeType) && instanceOf.call(source_document.firstElementChild || source_document.firstChild, HTMLElement, SVGElement)
+							)) {
+								let result = await xover.dom.combine(self, source_document.cloneNode(true));
 								result.stop = self.stop;
-							} else if (source_document.selectSingleNode("xsl:stylesheet")/* && instanceOf.call(source_document, xover.Store)*/) {
-								await xover.sources["#"].render({ type: 'text/xsl', target: self, document: source_document })
-							} else if ((source_document.firstElementChild || {}).namespacecURI == self.namespaceURI) {
-								await XMLDocument.prototype.render.call(source_document, self)
+							} else if (store && typeof (store.render) == 'function') {
+								let result = await store.render({ target: self });
+								result.stop = self.stop;
 							} else {
-								//do nothing   
+								//do nothing
 							}
 						}
 						for (let suspense_node of [self.matches("[xo-schedule],[xo-suspense]") && self, ...self.querySelectorAll("[xo-schedule],[xo-suspense]")]) {
@@ -11762,7 +11733,7 @@ xover.modernize = async function (targetWindow) {
 				if (!XMLDocument.prototype.hasOwnProperty('render')) {
 					Object.defineProperty(XMLDocument.prototype, 'render', {
 						value: async function (target = []) {
-							let self = this;
+							let self = this.document || this;
 							await this.ready;
 							let sentinels = [...this.childNodes]
 								.filter(node => node instanceof Comment && node.sentinel);
@@ -11824,7 +11795,7 @@ xover.modernize = async function (targetWindow) {
 								return Promise.resolve(targets.flat());
 							}
 							let scope = (this.nodeType === Node.ELEMENT_NODE && [xover.spaces["html"], xover.spaces["svg"]].includes(this.namespaceURI)) ? this : this.document || this.ownerDocument || this;
-							let data = instanceOf.call(this, xover.Store, xover.Source) ? this.document.cloneNode(true) : instanceOf.call(this, Document) ? this.cloneNode(true) : this;
+							let data = instanceOf.call(this, xover.Store, xover.Source) ? this.document.cloneNode(true) : this.nodeType === Node.DOCUMENT_NODE ? this.cloneNode(true) : this;
 							stylesheets = stylesheets.length && stylesheets || this.stylesheets;
 							//let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
 							//stylesheets = self_stylesheets.concat(stylesheets);
@@ -11848,7 +11819,7 @@ xover.modernize = async function (targetWindow) {
 								stylesheet_target = typeof (stylesheet_target) == 'string' && document.querySelector(stylesheet_target) || stylesheet_target;
 								let target = instanceOf.call(stylesheet_target, HTMLElement, SVGElement) && stylesheet_target || null;
 
-								if (instanceOf.call(xsl, Document)) { //TODO: Is there any chance that xsl is not a document?
+								if ((xsl || {}).nodeType === Node.DOCUMENT_NODE) { //TODO: Is there any chance that xsl is not a document?
 									await xsl.ready;
 									if (!xsl.selectFirst(`/*/comment()[.='ack:optimized']`)) {
 										const keys = xsl.selectNodes(`//xsl:key/@name`);
@@ -12010,7 +11981,7 @@ xover.modernize = async function (targetWindow) {
 								////    });
 								////});
 
-								xsl && typeof (dom.querySelectorAll) == 'function' && dom.querySelectorAll(`[xo-stylesheet="${xsl.resource}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
+								//xsl && typeof (dom.querySelectorAll) == 'function' && dom.querySelectorAll(`[xo-stylesheet="${xsl.resource}"]`).forEach(el => el.removeAttribute("xo-stylesheet"));
 
 								for (let attr of dom.selectNodes(`//@*[starts-with(local-name(),"on")]`).filter(attr => existsFunction(attr.value))) {
 									let fn = eval(attr.value);
@@ -12046,34 +12017,90 @@ xover.modernize = async function (targetWindow) {
 									//    && `${target.getAttributeNode("xo-stylesheet") || documentElement.getAttributeNode("xo-stylesheet")}` == `${documentElement.getAttributeNode("xo-stylesheet")}`
 									//    && target.constructor === documentElement.constructor
 									//)) {
-									const xo_source = documentElement.getAttributeNode("xo-source") || store && target.getAttribute("xo-source") !== 'active' && documentElement.createAttribute("xo-source", store.tag || store.href) || target.getAttributeNode("xo-source") || null;
-									const xo_stylesheet = documentElement.getAttributeNode("xo-stylesheet") || xsl && documentElement.createAttribute("xo-stylesheet", xsl.tag || xsl.href) || target.getAttributeNode("xo-stylesheet") || null;
+									const legacy_render = documentElement.hasAttribute("xo-stylesheet") || target.hasAttribute && target.hasAttribute("xo-stylesheet");
 
-									let new_target = target.isEquivalentNode(documentElement) && target || null;
-									if (!new_target) {
+									//let { sourceAttr: storeAttr, selector: scope } = xover.references.parse.call(target);
+									//let sourceAttr = target.getAttributeNode("xo-stylesheet") || target.getAttributeNode.hasAttribute("xo-stylesheet");
+
+									//const get_render_document = value => {
+									//	let source = value && xover.sources[value];
+									//	source = source && (source.document || source);
+									//	return source && (source.nodeType === Node.DOCUMENT_NODE ? source : source.ownerDocument) || null;
+									//}
+									//const scope_document = scope && (scope.nodeType === Node.DOCUMENT_NODE ? scope : scope.ownerDocument || scope.document) || null;
+									//const get_store_ref = () => {
+									//	let refs = [
+									//		target.getAttributeNode("xo-scope"),
+									//		target.getAttributeNode("xo-source"),
+									//		documentElement.getAttributeNode("xo-scope"),
+									//		documentElement.getAttributeNode("xo-source")
+									//	].filter(Boolean).map(attr => xover.references.parse.call(attr).sourceKey).filter(Boolean);
+									//	return refs.find(ref => get_render_document(ref) === scope_document) || store && (store.tag || store.href) || "";
+									//}
+									//const store_ref = get_store_ref();
+									//const xo_scope = legacy_render
+									//	? target.getAttributeNode("xo-scope")?.cloneNode() || null
+									//	: documentElement.getAttributeNode("xo-scope") || target.getAttributeNode("xo-scope")?.cloneNode() || null;
+									//if (!legacy_render && xo_scope && store_ref && xover.references.sourceSeparator(xo_scope.value) === -1) {
+									//	xo_scope.value = `${xo_scope.value}@${store_ref}`;
+									//}
+									//const xo_source = legacy_render
+									//	? store_ref && documentElement.createAttribute("xo-source", store_ref) || documentElement.getAttributeNode("xo-source") || target.getAttributeNode("xo-source") || null
+									//	: documentElement.getAttributeNode("xo-source") || xsl && documentElement.createAttribute("xo-source", xsl.tag || xsl.href) || target.getAttributeNode("xo-source") || null;
+									//const xo_stylesheet = legacy_render && (documentElement.getAttributeNode("xo-stylesheet") || xsl && documentElement.createAttribute("xo-stylesheet", xsl.tag || xsl.href) || target.getAttributeNode("xo-stylesheet") || null);
+									const render_document = source => {
+										source = source && (source.document || source);
+										return source && (source.nodeType === Node.DOCUMENT_NODE ? source : source.ownerDocument) || null;
+									}
+									const get_attr_source = attr => {
+										let ref = attr && xover.references.parse.call(attr);
+										return attr && (attr.source || ref.sourceAttr?.source || xover.sources[ref.sourceKey] || xover.sources[attr.value]) || null;
+									}
+									const getSignatureAttributes = target => {
+										let sourceAttr = target.getAttributeNode("xo-stylesheet") || target.getAttributeNode("xo-source");
+										let storeAttr = (sourceAttr || {}).name === 'xo-stylesheet' && target.getAttributeNode("xo-source") || target.getAttributeNode("xo-scope");
+										return { sourceAttr, storeAttr }
+									}
+									const get_render_store = node => get_attr_source(getSignatureAttributes(node).storeAttr);
+									const get_render_source = node => get_attr_source(getSignatureAttributes(node).sourceAttr);
+									let target_scope = target.getAttributeNode("xo-scope");
+									let new_scope_attr = documentElement.getAttributeNode("xo-scope");
+
+									let { sourceAttr: target_source, storeAttr: target_store } = getSignatureAttributes(target);
+									let store_name = (target_store || target_source && target_source.name === "xo-stylesheet" && target.getAttributeNode("xo-source") || {}).name || (legacy_render ? "xo-source" : "xo-scope");
+									let source_name = (target_source || {}).name || (legacy_render ? "xo-stylesheet" : "xo-source");
+									let xo_store = target_store && target_store.cloneNode() || store && documentElement.createAttribute(store_name, store.tag || store.href || self.href);
+									let xo_source = target_source && target_source.cloneNode() || xsl && documentElement.createAttribute(source_name, xsl.tag || xsl.href);
+									let xo_stylesheet;
+									if (xo_source?.name === 'xo-stylesheet') xo_stylesheet = xo_source;
+
+									let xo_scope = target_scope && target_scope.cloneNode() || new_scope_attr;
+
+									let same_target = (target_source || target_store || target_scope) && target.isEquivalentNode(documentElement);
+									if (!same_target) {
 										const id = documentElement.id || target.getAttribute("id") || "";
-										new_target = target.queryChildrenAll(`[id="${id}"],[xo-stylesheet],[xo-source]`).filter(el => xover.sources[el.getAttribute("xo-source")] === scope && xover.sources[el.getAttribute("xo-stylesheet")] === xsl)[0] || target.appendChild(document.createElement("slot", { "xo-source": xo_source, "xo-stylesheet": xo_stylesheet }));
+										let matches = target.queryChildrenAll(`[id="${id}"],[xo-stylesheet],[xo-source],[xo-scope]`).filter(el => {
+											let { sourceAttr, storeAttr } = getSignatureAttributes(el);
+											return render_document(get_attr_source(storeAttr)) === render_document(scope)
+												&& render_document(get_attr_source(sourceAttr)) === render_document(xsl)
+										})
+										let render_attrs = {};
+										if (!matches.length) {
+											if (xo_source) render_attrs[xo_source.name] = xo_source;
+											if (xo_scope && xo_scope !== xo_store) render_attrs[xo_scope.name] = xo_scope;
+											if (xo_source && xo_source.name !== 'xo-stylesheet' && xo_scope && xo_store && xover.references.sourceSeparator(xo_scope.value) === -1 && render_document(get_attr_source(target_store) || store) === render_document(scope)) {
+												render_attrs["xo-scope"] = `${xo_scope.value}@${xo_store.value}`;
+											}
+										}
+										target = matches[0] || target.appendChild(document.createElement("slot", render_attrs));
 										if (id) {
 											documentElement.id = id;
-											new_target.id = id;
+											target.id = id;
 										}
 									}
-									//const suspense_dependants = [];
-									//const dependants = [...documentElement.querySelectorAll('[xo-source],[xo-stylesheet]')].filter(el => !el.shadowRoot && !(el.hasAttribute("xo-source") && el.hasAttribute("xo-stylesheet") && el.closest("*").parentNode.closest(`[xo-source="${el.getAttribute("xo-source")}"][xo-stylesheet="${el.getAttribute("xo-stylesheet")}"]`)));
-									//for (let el of dependants) {
-									//    el.targetDocument = target.targetDocument || target.ownerDocument;
-									//    //if (typeof (target.checkVisibility) === 'function' && target.checkVisibility()) {
-									//    //    xover.sections.add(el);
-									//    //}
-									//    if (el.matches(`[shadowrootmode="composed"]`)) {
-									//        suspense_dependants.push(el.render())
-									//    } else {
-									//        el.render()
-									//    }
-									//};
-									//suspense_dependants.length && await Promise.allSettled(suspense_dependants);
-									target = new_target || target;
-									if (xo_source) Object.defineProperty(xo_source, 'source', { configurable: true, enumerable: false, writable: true, value: scope });
+									if (xo_store) Object.defineProperty(xo_store, 'source', { configurable: true, enumerable: false, writable: true, value: self });
+									if (xo_scope) Object.defineProperty(xo_scope, 'source', { configurable: true, enumerable: false, writable: true, value: scope });
+									if (xo_source) Object.defineProperty(xo_source, 'source', { configurable: true, enumerable: false, writable: true, value: xo_stylesheet ? scope : xsl });
 									if (xo_stylesheet) Object.defineProperty(xo_stylesheet, 'source', { configurable: true, enumerable: false, writable: true, value: xsl });
 									if (documentElement.nodeName.toLowerCase() === 'body' && !["body", "slot"].includes(target.nodeName.toLowerCase())) {
 										let new_node = target.cloneNode()
@@ -12082,9 +12109,11 @@ xover.modernize = async function (targetWindow) {
 										documentElement.replaceWith(new_node);
 										documentElement = new_node;
 									}
+									xo_store && documentElement.importAttributeNode(xo_store, { silent: true });
+									xo_scope && documentElement.importAttributeNode(xo_scope, { silent: true });
 									xo_source && documentElement.importAttributeNode(xo_source, { silent: true });
 									xo_stylesheet && documentElement.importAttributeNode(xo_stylesheet, { silent: true });
-									action = action || ((target.hasAttribute("xo-source") && target.getAttributeNode("xo-source").source || scope) === scope && (target.hasAttribute("xo-stylesheet") && target.getAttributeNode("xo-stylesheet").source || xsl) === xsl) && "combine" || "replace";
+									action = action || render_document(get_render_store(target) || scope) === render_document(scope) && render_document(get_render_source(target) || xsl) === render_document(xsl) && "combine" || "replace";
 									if (action === 'replace' || (target.getAttribute("xo-swap") || '').split(/\s+/g).includes("self::*")) {
 										documentElement.setAttribute("xo-swap", documentElement.getAttribute("xo-swap") || target.getAttribute("xo-swap") || "self::*");
 										documentElement.renderMethod = "replace";
@@ -15265,7 +15294,7 @@ xover.dom.combine = async function (target, new_node) {
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && current.nodeName === 'SLOT' && current.classList.contains("placeholder")) {
 			current.replaceWith(change)
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && change.nodeName === 'SLOT' && change.classList.contains("placeholder")) {
-			if (target.contains((current.closest("[xo-stamp]") || current).parentNode)) {
+			if (target.contains(current)) { //target.contains((current.closest("[xo-stamp]") || current).parentNode)
 				current.remove({ silent: true }) //TODO: Check what are the rules to remove
 			} else {
 				change.remove()
@@ -16487,6 +16516,8 @@ xover.Store = function (xml, ...args) {
 			await xover.ready;
 			let progress;
 			let tag = self.tag;
+			let context = target && target.constructor === Object ? target : { target };
+			target = context.target || target;
 
 			render_manager.set(target || self, render_manager.get(target || self) || xover.delay(1).then(async () => {
 				//if (xover.stores.seed === self && !xover.site.sections[tag].length) {
@@ -16503,7 +16534,12 @@ xover.Store = function (xml, ...args) {
 				let before_event = new xover.listener.Event('beforeRender', { store: this, tag, document }, this);
 				window.dispatchEvent(before_event);
 				if (before_event.defaultPrevented) return Promise.resolve(window.document.createComment("ack:no-content"));
-				let stylesheets = instanceOf.call(target, HTMLElement) && target.hasAttribute("xo-stylesheet") && [{ target, href: target.getAttributeNode("xo-stylesheet"), store: self }] || xover.manifest.getSettings(this, 'stylesheets');
+				let source = (target || {}).nodeType === Node.ELEMENT_NODE && (target.getAttributeNode("xo-stylesheet") || target.getAttributeNode("xo-source")) || undefined;
+				let source_document = (source || {}).nodeType === Node.ATTRIBUTE_NODE && source.value && xover.sources[source.value] || undefined;
+				source_document && await source_document.ready;
+				if (source_document === __document) return;
+				//TODO: considerar que el source_documento puede no terminar de resolverse por autenticación o no se encuentra y puede devolver un comment 404 (no haces nada o haces Promise.reject) o (401 por lo que habría que esperar que se termine de resolver). ESto se aplica aquí o en el render del xml para unificar lógica.
+				let stylesheets = source_document && [{ ...context, target, href: source, store: self }] || xover.manifest.getSettings(this, 'stylesheets');
 				stylesheets = stylesheets.length ? stylesheets : this.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
 				stylesheets = stylesheets.length ? stylesheets : document.stylesheets.map(stylesheet => stylesheet.data).map(data => xover.json.fromAttributes(data)).filter(stylesheet => stylesheet.href);
 				//target = target || (xover.manifest.getSettings(this, 'target') || [])[0];
