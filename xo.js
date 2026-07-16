@@ -4805,25 +4805,6 @@ xover.references.expand = function (value) {
 	return value.replace(/\{\$(state|session):([^\}]*)\}/g, (match, prefix, name) => xover[prefix][name] || match);
 }
 
-xover.references.sourceSeparator = function (value) {
-	if (!value) return -1;
-	for (let index = value.length - 1; index >= 0; index--) {
-		if (value[index] !== "@") continue;
-		let previous = value[index - 1] || "";
-		let sourceKey = value.slice(index + 1).trim();
-		if (!sourceKey || previous === "/" || previous === "[" || previous === "@") continue;
-		if (/[\/\[\]\(\)=<>'"\s]/.test(sourceKey)) continue;
-		return index;
-	}
-	return -1;
-}
-
-xover.references.hasSourceReference = function (node) {
-	let attr = node && node.getAttributeNode && node.getAttributeNode("xo-scope");
-	if (!attr) return false;
-	return xover.references.sourceSeparator(xover.references.expand(attr.value)) !== -1;
-}
-
 xover.references.isSection = function (node) {
 	return node && node.nodeType === Node.ELEMENT_NODE && (node.hasAttribute("xo-source") || node.hasAttribute("xo-stylesheet") || node.hasAttribute("xo-store") || xover.references.hasSourceReference(node));
 }
