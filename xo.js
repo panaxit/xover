@@ -669,12 +669,23 @@ xover.init = async function () {
 				await xover.session.checkStatus();
 			}
 			//await xover.stores.restore();
+			let wait_for_start = async function (request, ready) {
+				let attempting = request && request.attempting;
+				if (attempting) await attempting;
+				if (request && request.state === "suspended") return request;
+				return await ready;
+			}
 			await Promise.all(xover.manifest.start.map(async href => {
 				if (href.constructor === {}.constructor) {
 					let request = new xover.Request(href);
-					return request.fetch();
+					let ready = request.fetch();
+					return wait_for_start(request, ready);
 				} else {
-					return await xover.sources[href].ready && xover.sources[href];
+					let source = xover.sources[href];
+					let ready = source.ready;
+					let request = (source.url || {}).request;
+					await wait_for_start(request, ready);
+					return source;
 				}
 			})).catch((e = {}) => {
 				if (typeof (e) == 'string') e = new Error(e);
@@ -1930,7 +1941,23 @@ Object.defineProperty(xover.listener, 'matches', {
 			predicate = null;
 		}
 		event_type = scoped_event;
-		let default_predicate = Object.fromEntries([['change', '@value'], ['remove', '*'], ['append', '*'], ['render', '*']])
+		let default_predicate = Object.fromEntries([
+			['change', '@value'],
+			['remove', '*'],
+			['append', '*'],
+			['render', '*'],
+			['progress', Element]
+		]);
+		let matches_default = function (context, predicate) {
+			if (!predicate) return true;
+
+			if (typeof predicate === 'function') {
+				return context instanceof predicate;
+			}
+
+			return typeof context.matches === 'function' &&
+				context.matches(predicate);
+		};
 
 		context = context instanceof Window && event_type.split(/^[\w\d_-]+::/)[1] || context;
 		let fns = new Map();
@@ -1938,7 +1965,28 @@ Object.defineProperty(xover.listener, 'matches', {
 			while (context) {
 				let tags = new Set(event_tags, [context.tag]);
 				let handlers = [...xover.listener.get(event_type).values()].map((predicate) => [...predicate.entries()]).flat().map(([predicate, fn]) => [predicate || '', fn]);
-				for (let [, handler] of handlers.filter(([predicate]) => !predicate && (!default_predicate[event_type] || typeof (context.matches) == 'function' && context.matches(default_predicate[event_type])) || predicate[0] == '#' && (tags.has(predicate) || tags.has(predicate.replace(/^#/, ''))) || typeof (context.matches) == 'function' && context.matches(predicate)).filter(([, handler]) => !handler.scope || handler.scope.prototype && context instanceof handler.scope || handler.scope.name /*validates if it's a constructor*/ && existsFunction(handler.scope.name) && handler.scope.name == context.name)) {
+				for (let [, handler] of handlers
+					.filter(([predicate, handler]) =>
+						!predicate && (
+							handler.scope ||
+							matches_default(context, default_predicate[event_type])
+						) ||
+						predicate[0] == '#' && (
+							tags.has(predicate) ||
+							tags.has(predicate.replace(/^#/, ''))
+						) ||
+						context instanceof Element &&
+						context.matches(predicate)
+					)
+					.filter(([, handler]) =>
+						!handler.scope ||
+						handler.scope.prototype &&
+						context instanceof handler.scope ||
+						handler.scope.name &&
+						existsFunction(handler.scope.name) &&
+						handler.scope.name == context.name
+					)
+				) {
 					handler.context = context;
 					fns.set(`[${handler.selectors.join(',')}]=>${handler.toString()}`, handler);
 				}
@@ -3288,12 +3336,13 @@ Object.defineProperty(xover.session, 'checkStatus', {
 	value: async function (settings) {
 		if (!(navigator.onLine || 'session' in xover.server)) return xover.session.status;
 		let server_status = { "status": xover.session.status };
+		let session_handler = 'session' in xover.server && xover.server.session;
 		//if (!((xover.manifest.server || {}).session)) {
 		//    return Promise.reject(new Error("Session endpoint not configured."));
 		//}
-		if ('session' in xover.server) {
+		if (typeof (session_handler) === 'function') {
 			try {
-				server_status = await xover.server.session();
+				server_status = await session_handler();
 			} catch (e) {
 				server_status = { "status": "unauthorized" }
 			}
@@ -3312,14 +3361,15 @@ Object.defineProperty(xover.session, 'checkStatus', {
 
 Object.defineProperty(xover.session, 'login', {
 	value: async function (username, password, ...args) {
-		if ('login' in xover.server) {
+		let login_handler = 'login' in xover.server && xover.server.login;
+		if (typeof (login_handler) === 'function') {
 			try {
 				username = username instanceof HTMLElement ? username.value : username;
 				password = password instanceof HTMLElement ? xover.cryptography.encodeMD5(password.value) : password;
 				xover.session.user_login = username;
 				xover.session.status = 'authorizing';
 				let authorization = `Basic ${btoa(username + ':' + password)}`;
-				let { request, response, return_value } = await xover.server.login(...args, new Headers({ authorization }), (return_value, response, request) => {
+				let { request, response, return_value } = await login_handler(...args, new Headers({ authorization }), (return_value, response, request) => {
 					if (request.url.host === xover.URL(xover.manifest.server.login).host) {
 						xover.session.id = return_value.id
 						xover.session.user_login = username
@@ -3352,9 +3402,10 @@ Object.defineProperty(xover.session, 'login', {
 Object.defineProperty(xover.session, 'logout', {
 	value: async function () {
 		let return_value;
-		if ('logout' in xover.server) {
+		let logout_handler = 'logout' in xover.server && xover.server.logout;
+		if (typeof (logout_handler) === 'function') {
 			try {
-				return_value = await xover.server.logout.apply(xover.server.logout, arguments);
+				return_value = await logout_handler.apply(logout_handler, arguments);
 			} catch (e) {
 				console.error(e);
 			}
@@ -7176,7 +7227,13 @@ xover.modernize = async function (targetWindow) {
 					get: async function () {
 						try {
 							const self = this;
-							if (!self.firstChild) {
+							let sentinel_request = [...self.childNodes]
+								.filter(node => node instanceof Comment)
+								.map(comment => comment.request)
+								.find(request => request && ["fetching", "suspended"].includes(request.state));
+							if (sentinel_request && sentinel_request.fetching) {
+								await sentinel_request.fetching;
+							} else if (!self.firstChild) {
 								if (self.source) {
 									//self.observe();
 									await self.fetch();
@@ -7197,7 +7254,13 @@ xover.modernize = async function (targetWindow) {
 					get: async function () {
 						const self = this;
 						try {
-							if (!self.firstChild) {
+							let sentinel_request = [...self.childNodes]
+								.filter(node => node instanceof Comment)
+								.map(comment => comment.request)
+								.find(request => request && ["fetching", "suspended"].includes(request.state));
+							if (sentinel_request && sentinel_request.fetching) {
+								await sentinel_request.fetching;
+							} else if (!self.firstChild) {
 								if (self.source) {
 									//self.observe();
 									await self.fetch();
@@ -13270,11 +13333,20 @@ xover.Request = function (request, ...args) {
 				}
 				args = xover.json.evaluate(args);
 				request.apply(args);
-				request.fetching = xover.delay(1).then(async () => {
+				let resolve_fetching, reject_fetching;
+				request.fetching = new Promise((resolve, reject) => {
+					resolve_fetching = resolve;
+					reject_fetching = reject;
+				});
+				request.state = "pending";
+				let run_attempt = () => Promise.resolve().then(async () => {
+					if (request.target instanceof Comment && request.target.parentNode instanceof Document) {
+						request.target = request.target.parentNode;
+						request.target.request = request;
+					}
 					let parameters = request.parameters//xover.json.evaluate.call(request.contextNode, request.parameters);
 					if (typeof (fn) === 'function') {
-						request.fetching = fn.apply(request, instanceOf.call(parameters, Array) ? parameters : [parameters]);
-						return request.fetching;
+						return fn.apply(request, instanceOf.call(parameters, Array) ? parameters : [parameters]);
 					};
 					const settings = request.settings;
 
@@ -13614,15 +13686,56 @@ xover.Request = function (request, ...args) {
 					}
 					return Promise.reject(e);
 				});
+				Object.defineProperty(request, `resume`, {
+					writable: true, configurable: true, enumerable: false,
+					value: function () {
+						if (request.state === "resolved" || request.state === "rejected") return request.fetching;
+						if (request.attempting) return request.fetching;
+						request.state = "fetching";
+						request.attempting = run_attempt().then(result => {
+							request.state = "resolved";
+							resolve_fetching(result);
+						}).catch(async failure => {
+							let response = failure instanceof Response ? failure : request.response;
+							let failure_event = new xover.listener.Event('failure', {
+								url, request, response, error: failure,
+								status: response && response.status,
+								statusText: response && response.statusText,
+								sentinel: request.target instanceof Comment ? request.target : null
+							}, response || request);
+							window.dispatchEvent(failure_event);
+							try {
+								await failure_event.detail.returnValue;
+							} catch (listener_error) {
+								request.state = "rejected";
+								reject_fetching(listener_error);
+								return;
+							}
+							if (!request.controller?.signal?.aborted && (failure_event.defaultPrevented || failure_event.cancelBubble)) {
+								request.state = "suspended";
+								xover.requests.add(request);
+								return;
+							}
+							request.state = "rejected";
+							reject_fetching(failure);
+						}).finally(() => {
+							delete request.attempting;
+						});
+						return request.fetching;
+					}
+				});
+				request.resume();
 				return request.fetching;
 			} finally {
-				Promise.allSettled([request.fetching]).then(([{ status, value: result }]) => {
+				Promise.allSettled([request.fetching]).then(([{ status: promise_status, value: result }]) => {
 					xover.requests.delete(request);
 					request.updateProgress(100);
+					delete request.resume;
 					delete request.fetching;
 					if (request.controller?.signal?.aborted) return;
+					if (promise_status !== "fulfilled") return;
 					let response = request.response || { ok: true };
-					window.dispatchEvent(new xover.listener.Event(response.ok ? `success` : 'failure', {
+					window.dispatchEvent(new xover.listener.Event(`success`, {
 						url, request, response, status: response.status, statusText: response.statusText, result
 					}, response));
 				})
@@ -17657,6 +17770,21 @@ xover.listener.on('hotreload', async function (file_path) {
 	}
 	let document = this instanceof Document && this || this.ownerDocument || window.document;
 	const file = new xover.URL(file_path);
+	let sentinel_requests = [...xover.sources.values()]
+		.filter(source => source && typeof (source.selectNodes) === "function")
+		.map(source => source.selectNodes("//comment()"))
+		.flat()
+		.map(comment => comment.request)
+		.filter(request => request && request.state === "suspended");
+	let pending_requests = new Set([...xover.requests, ...sentinel_requests]);
+	let resumed_requests = [...pending_requests].filter(request => {
+		if (request.state !== "suspended" || typeof (request.resume) !== "function") return false;
+		let request_url = request.url;
+		if (!request_url) return false;
+		return `${request_url.pathname || ""}`.toLowerCase() === `${file.pathname || ""}`.toLowerCase()
+			|| file.resource && `${request_url.resource || ""}`.toLowerCase() === `${file.resource}`.toLowerCase();
+	});
+	resumed_requests.forEach(request => request.resume());
 	for (let el of [...document.querySelectorAll("[role=alertdialog],dialog")]) {
 		let stylesheet = el.getAttribute("xo-stylesheet");
 		if (stylesheet && new xover.URL(stylesheet).pathname == file.pathname) continue;
@@ -17671,7 +17799,7 @@ xover.listener.on('hotreload', async function (file_path) {
 	const file_name = file.resource;
 
 	let current_url = new xover.URL(location);
-	let not_found = true;
+	let not_found = !resumed_requests.length;
 	if (current_url.pathname == file.pathname) {
 		return location.reload(true);
 		not_found = false;
@@ -18485,6 +18613,12 @@ xover.listener.on('ErrorEvent', function () {
 xover.listener.on('Response:failure?status=499', function ({ }) {
 	event.preventDefault()
 })
+
+xover.listener.on("failure", function ({ request, response }) {
+	if ([401, 404, 409].includes(response?.status)) {
+		event.preventDefault();
+	}
+});
 
 xover.listener.on('AbortError', function () {
 	return false;
