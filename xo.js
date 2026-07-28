@@ -9286,6 +9286,10 @@ xover.modernize = async function (targetWindow) {
 							let source_document = source && (source.document || source);
 							let first_node = source_document && source_document.firstElementChild;
 							if (!first_node) {
+								let no_content = source_document && [...source_document.childNodes].some(node =>
+									node.nodeType === Node.COMMENT_NODE && node.data.trim() === "ack:no-content"
+								);
+								if (no_content) return xover.stores[source_attr.value] || source;
 								if (wait_until_ready && source) {
 									return (async function () {
 										await source.ready;
@@ -18562,14 +18566,23 @@ xover.listener.on(['load', 'change::meta[name=scroll-restoration]'], function ()
 xover.listener.on('login', async function () {
 	if (!xover.manifest.server.login) return [];
 	let login_url = xover.URL(xover.manifest.server.login);
-	let documents = [...xover.sources.values()].filter(source => instanceOf.call(source, Document, DocumentFragment)).distinct();
-	let pending_requests = documents
+	let documents = [...xover.sources.values()]
+		.map(source => source && (source.document || source))
+		.filter(source => instanceOf.call(source, Document, DocumentFragment))
+		.distinct();
+	let sentinel_requests = documents
 		.map(document => document.selectNodes(`//comment()`))
 		.flat()
-		.map(comment => comment.request)
-		.filter(request => request && request.response && request.response.status == 401 && request.url && request.url.origin == login_url.origin)
-		.distinct();
-	return Promise.allSettled(pending_requests.map(request => request.fetch()));
+		.map(comment => comment.request);
+	let suspended_requests = [...new Set([...xover.requests, ...sentinel_requests])]
+		.filter(request =>
+			request
+			&& request.state === "suspended"
+			&& typeof (request.resume) === "function"
+			&& request.response && request.response.status == 401
+			&& request.url && request.url.origin == login_url.origin
+		);
+	return Promise.allSettled(suspended_requests.map(request => request.resume()));
 });
 
 xover.listener.on('Response:reject', function ({ response = {}, request = {} }) {
