@@ -18628,7 +18628,7 @@ xover.listener.on('Response:failure?status=499', function ({ }) {
 })
 
 xover.listener.on("failure", function ({ request, response }) {
-	if ([401, 404, 409].includes(response?.status)) {
+	if ([401, 409].includes(response?.status)) {
 		event.preventDefault();
 	}
 });
