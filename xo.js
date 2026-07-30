@@ -675,7 +675,7 @@ xover.init = async function () {
 				if (request && request.state === "suspended") return request;
 				return await ready;
 			}
-			await Promise.all(xover.manifest.start.map(async href => {
+			xover.init.started = Promise.allSettled(xover.manifest.start.map(async href => {
 				if (href.constructor === {}.constructor) {
 					let request = new xover.Request(href);
 					let ready = request.fetch();
@@ -1975,7 +1975,7 @@ Object.defineProperty(xover.listener, 'matches', {
 							tags.has(predicate) ||
 							tags.has(predicate.replace(/^#/, ''))
 						) ||
-						context instanceof Element &&
+						typeof (context.matches) === 'function' &&
 						context.matches(predicate)
 					)
 					.filter(([, handler]) =>
@@ -3027,6 +3027,10 @@ Object.defineProperty(xover.Manifest.prototype, 'evaluate', {
 
 xover.manifest = new xover.Manifest();
 xover.messages = new Map();
+xover.statusCodes = {
+	ignored: [404, 499],
+	resumable: [401, 409, 412]
+};
 xover.server = new Proxy({}, {
 	get: function (self, key) {
 		if (key in self) {
@@ -3166,7 +3170,11 @@ xover.session = new Proxy({}, {
 	},
 	set: async function (self, key, new_value) {
 		let old_value = self[key];
-		if (old_value === new_value) return old_value;
+		let has_stored_value = typeof (Storage) !== "undefined" && sessionStorage.getItem(key) !== null;
+		if (old_value === undefined && has_stored_value) {
+			old_value = xover.session.getKey(key);
+		}
+		if (old_value === new_value && !(new_value === undefined && has_stored_value)) return old_value;
 		let before = new xover.listener.Event(`beforeChange::#session:${key}`, { attribute: key, value: new_value, old: old_value }, this);
 		window.dispatchEvent(before);
 		if (before.cancelBubble || before.defaultPrevented) return;
@@ -3412,11 +3420,19 @@ Object.defineProperty(xover.session, 'logout', {
 		} else {
 			xover.init();
 		}
+		let id_token = xover.session.id_token;
 		delete xover.session.id;
 		delete xover.session.user_login;
 		delete xover.session.authorization;
 		xover.session.status = 'unauthorized';
-		window.dispatchEvent(new xover.listener.Event('logout', {}, this));
+		let logout_event = new xover.listener.Event(
+			'logout',
+			{ id_token },
+			this
+		);
+
+		window.dispatchEvent(logout_event);
+		await logout_event.detail.returnValue;
 		return return_value;
 	}
 	, writable: true, enumerable: false, configurable: true
@@ -4036,26 +4052,7 @@ Object.defineProperty(xover.site, 'position', {
 
 Object.defineProperty(xover.site, 'active', {
 	get: function () {
-		let seed = this.seed;
-		let tag = history.state.active || seed;
-		let source = xover.manifest.sources[tag];
-		let visited = new Set();
-		while (typeof (source) === 'string' && source[0] === '#' && !visited.has(source)) {
-			visited.add(source);
-			source = xover.manifest.sources[source];
-		}
-		if (source instanceof Array) {
-			source = source.find(item => typeof (item) === 'string' && item[0] !== '#');
-		}
-		let source_url = typeof (source) === 'string' || source instanceof URL || instanceOf.call(source, xover.URL) ? source : source && source.url;
-		source_url = source_url || xover.manifest.server.login;
-		let source_host = source_url && xover.URL(source_url).host;
-		if (xover.session[`${source_host}:status`] != 'authorized' && 'login' in xover.server && xover.server['login']) {
-			//delete (history.state || {}).active;
-			return "#login";
-		} else {
-			return (history.state || {}).active || seed;
-		}
+		return (history.state || {}).active || this.seed;
 	},
 	set: function (tag) {
 		const changed = history.state.active === undefined ? true : xover.stores[tag] !== xover.stores.active;
@@ -7142,6 +7139,22 @@ xover.modernize = async function (targetWindow) {
 						enumerable: false,
 						get: function () {
 							return this.selectNodes(`//comment()[starts-with(.,'ack:imported-from')]`).map(comment => comment.textContent.replace(/^ack:imported-from "|" ===>+\s*$/g, '')).map(href => xover.sources[href]);
+						}
+					})
+				}
+
+				if (!Document.prototype.hasOwnProperty("dependants")) {
+					Object.defineProperty(Document.prototype, 'dependants', {
+						get: function () {
+							let dependants = new Set();
+							if (!Object.hasOwnProperty(this, "dependants")) {
+								Object.defineProperty(this, 'dependants', {
+									get: function () {
+										return dependants;
+									}
+								})
+							}
+							return dependants;
 						}
 					})
 				}
@@ -11756,6 +11769,16 @@ xover.modernize = async function (targetWindow) {
 					Object.defineProperty(XMLDocument.prototype, 'render', {
 						value: async function (target = []) {
 							let self = this.document || this;
+							let context = instanceOf.call(target, Request) ? { request: target } : target && target.constructor === Object ? target : { target };
+							let request = context.request;
+							if (request) {
+								let dependant_added = !self.dependants.has(request);
+								self.dependants.add(request);
+								if (dependant_added && request.fetching) {
+									Promise.allSettled([request.fetching]).then(() => self.dependants.delete(request));
+								}
+								target = context.target || [];
+							}
 							await this.ready;
 							let sentinels = [...this.childNodes]
 								.filter(node => node instanceof Comment && node.sentinel);
@@ -12707,18 +12730,16 @@ xover.Response = function (response, request) {
 		}
 	});
 	Object.defineProperty(self, 'render', {
-		value: function () {
+		value: function (...args) {
 			let response = /*this.json || */this.document || this.body || `${this.statusText}: ${file_name}`;
 			if (this.status == 404 && decodeURI(file_name).indexOf("{$") != -1) {
 				console.warn(`Couldn't fetch: ${file_name}`)
 			} else if (response instanceof HTMLElement) {
 				return Promise.reject(response)
 			} else if (response.constructor === {}.constructor && response.message) {
-				return String(response.message).render()
+				return String(response.message).render(...args)
 			} else if (typeof (response.render) === 'function') {
-				return response.render()
-			} else if (typeof (response.render) === 'function') {
-				response.render();
+				return response.render(...args)
 			}
 		}
 	});
@@ -13263,21 +13284,7 @@ xover.Request = function (request, ...args) {
 					response = await request.fetch.apply(this, args);
 				} catch (e) {
 					if (sources.length && e instanceof Response && e.status === 404) continue;
-					if (!e) {
-						return Promise.reject(e);
-					}
-					window.dispatchEvent(new xover.listener.Event('failure', { tag: this.tag, response: e, request: source }, this));
-
-					let document = e.document;
-					let targets = []
-					if (e.status != 404 && document && document.render) {
-						targets = await document.render();
-						if (!(targets && targets.length)) {
-							return Promise.reject(e)
-						}
-					} else {
-						return Promise.reject(e);
-					}
+					return Promise.reject(e);
 				}
 			}
 			return response;
@@ -13547,10 +13554,11 @@ xover.Request = function (request, ...args) {
 					//});
 					//window.dispatchEvent(new xover.listener.Event(`response`, { request }, response)); 
 
+					if (response.status == 401) {
+						xover.session[`${response.host}:status`] = 'unauthorized';
+					}
 					if (!response.ok && (typeof (settings.rejectCodes) == 'number' && response.status >= settings.rejectCodes || settings.rejectCodes instanceof Array && settings.rejectCodes.includes(response.status))) {
 						return Promise.reject(response);
-					} else if (response.status == 401 && url.host == location.host) {
-						xover.session.status = "unauthorized";
 					}
 					if (response.status == 204) {
 						return_value = new Comment("ack:no-content");
@@ -13705,7 +13713,11 @@ xover.Request = function (request, ...args) {
 								url, request, response, error: failure,
 								status: response && response.status,
 								statusText: response && response.statusText,
-								sentinel: request.target instanceof Comment ? request.target : null
+								sentinel: request.target instanceof Comment ? request.target : null,
+								statusCodes: {
+									ignored: [...xover.statusCodes.ignored],
+									resumable: [...xover.statusCodes.resumable]
+								}
 							}, response || request);
 							window.dispatchEvent(failure_event);
 							try {
@@ -16593,10 +16605,20 @@ xover.Store = function (xml, ...args) {
 			await xover.ready;
 			let progress;
 			let tag = self.tag;
-			let context = target && target.constructor === Object ? target : { target };
-			target = context.target || target;
+			let context = instanceOf.call(target, Request) ? { request: target } : target && target.constructor === Object ? target : { target };
+			target = context.target;
+			let request = context.request;
 
-			render_manager.set(target || self, render_manager.get(target || self) || xover.delay(1).then(async () => {
+			if (request) {
+				let dependant_added = !__document.dependants.has(request);
+				__document.dependants.add(request);
+				if (dependant_added && request.fetching) {
+					Promise.allSettled([request.fetching]).then(() => __document.dependants.delete(request));
+				}
+			}
+
+			let render_key = target || self;
+			render_manager.set(render_key, render_manager.get(render_key) || xover.delay(1).then(async () => {
 				//if (xover.stores.seed === self && !xover.site.sections[tag].length) {
 				//    progress = xover.sources['loading.xslt'].render({ action: "append" });
 				//}
@@ -16647,11 +16669,11 @@ xover.Store = function (xml, ...args) {
 				}
 			}).finally(async () => {
 				//xover.site.restore();
-				render_manager.delete(target || self);
+				render_manager.delete(render_key);
 				progress = await progress || [];
 				progress.forEach(item => item.remove());
 			}));
-			return render_manager.get(target || self);
+			return render_manager.get(render_key);
 		},
 		writable: true, enumerable: false, configurable: false
 	});
@@ -18591,23 +18613,12 @@ xover.listener.on('Response:reject', function ({ response = {}, request = {} }) 
 	}
 })
 
-xover.listener.on('Response:reject?status=401', function ({ response, request }) {
-	event.preventDefault()
+xover.listener.on('Response:failure?status=401', function ({ response, request }) {
 	let login = (xover.manifest.server || {}).login;
-	if (login != null && login !== false && response.url.origin == xover.URL(login).origin) {
-		let status_key = `${response.url.host}:status`;
-		let status_changed = xover.session[status_key] != 'unauthorized';
-		xover.session[status_key] = 'unauthorized';
-		if (status_changed) {
-			xover.stores.active.render();
-		}
-	}
-	const json = response.json || {};
-	if (json.message) {
-		json.message.render()
-	} else {
-		console.error(`Unauthorized access to ${response.href}`)
-	}
+	if (login == null || login === false || response.url.origin != xover.URL(login).origin) return;
+
+	event.preventDefault()
+	return xover.stores["#login"].render(request);
 })
 
 xover.listener.on('SyntaxError', function (e) {
@@ -18627,10 +18638,14 @@ xover.listener.on('Response:failure?status=499', function ({ }) {
 	event.preventDefault()
 })
 
-xover.listener.on("failure", function ({ request, response }) {
-	if ([401, 409].includes(response?.status)) {
+xover.listener.on("failure", function ({ request, response, statusCodes }) {
+	if (!response || statusCodes.ignored.includes(response.status)) return;
+
+	let rendered_response = response.render(request);
+	if (statusCodes.resumable.includes(response.status)) {
 		event.preventDefault();
 	}
+	return rendered_response;
 });
 
 xover.listener.on('AbortError', function () {
