@@ -663,7 +663,7 @@ xover.init = async function () {
 			Object.assign(xover.spaces, xover.manifest.spaces);
 			if (history.state) delete history.state.active;
 			xover.site.seed = (history.state || {}).seed || top.location.hash || '#';
-			this.init.status = 'initialized';
+			this.init.status = 'manifest-ready';
 			window.dispatchEvent(new xover.listener.Event('xover-initializing', { progress_renders }, this));
 			if (xover.session.status == 'authorized' && 'session' in xover.server) {
 				await xover.session.checkStatus();
@@ -675,15 +675,27 @@ xover.init = async function () {
 				if (request && request.state === "suspended") return request;
 				return await ready;
 			}
-			xover.init.started = Promise.allSettled(xover.manifest.start.map(async href => {
+			xover.init.started = await Promise.allSettled(xover.manifest.start.map(async href => {
 				if (href.constructor === {}.constructor) {
-					let request = new xover.Request(href);
+					let item_settings = href["@settings"] && href["@settings"].constructor === {}.constructor
+						? href["@settings"]
+						: {};
+					let resumable = Object.hasOwn(item_settings, "resumable")
+						? item_settings.resumable
+						: false;
+					let item = Object.assign({}, href, {
+						"@settings": Object.assign({}, item_settings, { resumable })
+					});
+					let request = new xover.Request(item);
+					request.settings.resumable = resumable;
 					let ready = request.fetch();
 					return wait_for_start(request, ready);
 				} else {
 					let source = xover.sources[href];
+					if (source.url) source.url.settings.resumable = false;
 					let ready = source.ready;
 					let request = (source.url || {}).request;
+					if (request) request.settings.resumable = false;
 					await wait_for_start(request, ready);
 					if (href.startsWith("#")) {
 						return xover.stores[href].render();
@@ -728,10 +740,10 @@ xover.init = async function () {
 Object.defineProperty(xover, 'ready', {
 	enumerable: false,
 	get: async function () {
-		if (xover.init.status != 'initialized') {
+		if (xover.init.status != 'manifest-ready') {
 			await xover.init();
 		}
-		return this.init.status == 'initialized';
+		return this.init.status == 'manifest-ready';
 	}
 })
 
@@ -2409,6 +2421,10 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 					if (event.detail) {
 						event.detail.returnValue = returnValue;
 					}
+					if (detail.stopOnReturn) {
+						event.stopImmediatePropagation();
+						break;
+					}
 				}
 				//if (event.srcEvent) {
 				//    event.srcEvent.returnValue = event.returnValue;
@@ -2513,7 +2529,7 @@ Object.defineProperty(xover.listener, 'on', {
 			}
 			return
 		}
-		if (xover.init.status != 'initialized') {
+		if (xover.init.status != 'manifest-ready') {
 			xover.init();
 		}
 		if (!name_or_list) name_or_list = '*';
@@ -3370,13 +3386,21 @@ Object.defineProperty(xover.session, 'checkStatus', {
 	writable: false, enumerable: false, configurable: false
 });
 
+xover.listener.on("encodeValue::input[type=password]", function ({ value }) {
+	return xover.cryptography.encodeMD5(value);
+});
+
 Object.defineProperty(xover.session, 'login', {
 	value: async function (username, password, ...args) {
 		let login_handler = 'login' in xover.server && xover.server.login;
 		if (typeof (login_handler) === 'function') {
 			try {
 				username = username instanceof HTMLElement ? username.value : username;
-				password = password instanceof HTMLElement ? xover.cryptography.encodeMD5(password.value) : password;
+				if (password instanceof HTMLElement) {
+					let value = password.value;
+					let encodedValue = await password.dispatch("encodeValue", { value });
+					password = encodedValue !== undefined ? encodedValue : value;
+				}
 				xover.session.user_login = username;
 				xover.session.status = 'authorizing';
 				let authorization = `Basic ${btoa(username + ':' + password)}`;
@@ -8187,7 +8211,13 @@ xover.modernize = async function (targetWindow) {
 
 				Object.defineProperty(Node.prototype, 'dispatch', {
 					value: function (event_name, ...args) {
-						let detail = { target: this, element: this.closest("*"), attribute: this instanceof Attr ? this : null };
+						let options = args[0] && args[0].constructor === {}.constructor ? args[0] : {};
+						let detail = {
+							target: this,
+							element: this.closest("*"),
+							attribute: this instanceof Attr ? this : null,
+							stopOnReturn: options.stopOnReturn !== undefined ? options.stopOnReturn : true
+						};
 						detail.args = args;
 						if (existsFunction(event_name)) {
 							let fn = eval(event_name);
@@ -13243,12 +13273,32 @@ xover.Request = function (request, ...args) {
 	if (instanceOf.call(source, xover.URL)) {
 		url = source;
 	} else if (source.constructor === {}.constructor) {
-		const sources = Object.entries(source);
+		const settings = source["@settings"] && source["@settings"].constructor === {}.constructor
+			? source["@settings"]
+			: {};
+		const headers = Object.entries(source)
+			.filter(([key]) => key.startsWith("^"))
+			.map(([key, value]) => [key.slice(1), value]);
+		const sources = Object.entries(source)
+			.filter(([key]) => !key.startsWith("@") && !key.startsWith("^"));
 		source = request;
 		fn = /*async */function (...args) {
 			const requests = [];
 			for (let [key, params] of sources) {
-				let request = xover.Request.call(this, key, params);
+				let request = xover.Request.call(this, key);
+				request.parameters = params instanceof Array ? params : [params];
+				for (let [setting, value] of Object.entries(settings)) {
+					if (setting === "headers") continue;
+					request.settings[setting] = value;
+				}
+				if (settings.headers) {
+					for (let [header, value] of new Headers(settings.headers)) {
+						request.headers.set(header, value);
+					}
+				}
+				for (let [header, value] of headers) {
+					request.headers.set(header, value);
+				}
 				//request.url.hash = url.hash;
 				request.tags?.add(url.hash)
 				requests.push(request.fetch?.apply(this, args));
@@ -13284,6 +13334,14 @@ xover.Request = function (request, ...args) {
 	request = url.request || new Request(url, url.settings);
 	url.request = url.request || request;
 	Object.setPrototypeOf(request, xover.Request.prototype);
+	let login_url = xover.manifest.server && xover.manifest.server.login && xover.URL(xover.manifest.server.login);
+	if (
+		login_url
+		&& request.url.origin === login_url.origin
+		&& request.url.pathname === login_url.pathname
+	) {
+		request.settings.resumable = false;
+	}
 	if (!new.target && self instanceof xover.Request && self.handlers.length) request.handlers.merge(self.handlers || []);
 	request.apply(args);
 	if (payload.length) {
@@ -13695,6 +13753,12 @@ xover.Request = function (request, ...args) {
 							resolve_fetching(result);
 						}).catch(async failure => {
 							let response = failure instanceof Response ? failure : request.response;
+							let resumable_statuses = request.settings.resumable;
+							resumable_statuses = resumable_statuses === false
+								? []
+								: resumable_statuses instanceof Array
+									? resumable_statuses
+									: xover.statusCodes.resumable;
 							let failure_event = new xover.listener.Event('failure', {
 								url, request, response, error: failure,
 								status: response && response.status,
@@ -13702,7 +13766,7 @@ xover.Request = function (request, ...args) {
 								sentinel: request.target instanceof Comment ? request.target : null,
 								statusCodes: {
 									ignored: [...xover.statusCodes.ignored],
-									resumable: [...xover.statusCodes.resumable]
+									resumable: [...resumable_statuses]
 								}
 							}, response || request);
 							window.dispatchEvent(failure_event);
@@ -18632,7 +18696,7 @@ xover.listener.on('Response:reject', function ({ response = {}, request = {} }) 
 
 xover.listener.on('Response:failure?status=401', function ({ response, request }) {
 	let login = (xover.manifest.server || {}).login;
-	if (login == null || login === false || response.url.origin != xover.URL(login).origin) return;
+	if (request.settings.resumable === false || login == null || login === false || response.url.origin != xover.URL(login).origin) return;
 
 	event.preventDefault()
 	return xover.stores["#login"].render(request);
