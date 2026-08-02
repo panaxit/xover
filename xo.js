@@ -11652,8 +11652,10 @@ xover.modernize = async function (targetWindow) {
 								|| source_document.nodeType === Node.ELEMENT_NODE && source_document
 							);
 							let source_is_xsl = source_element && source_element.namespaceURI === xover.spaces["xsl"];
+							let source_has_stylesheets = source_document && source_document.stylesheets && source_document.stylesheets.length
+								|| store && store.stylesheets && store.stylesheets.length;
 							let combine_source = source_document && (
-								source_attr && source_attr.name === "xo-source" && !source_is_xsl
+								source_attr && source_attr.name === "xo-source" && !source_is_xsl && !source_has_stylesheets
 								|| instanceOf.call(source_document, HTMLElement, SVGElement)
 								|| [Node.DOCUMENT_NODE, Node.DOCUMENT_FRAGMENT_NODE].includes(source_document.nodeType) && instanceOf.call(source_document.firstElementChild || source_document.firstChild, HTMLElement, SVGElement)
 							);
