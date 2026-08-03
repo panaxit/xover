@@ -4854,15 +4854,19 @@ class HybridMap {
 
 xover.getSource = function (key) {
 	let self = this;
-	let manifest_key = typeof (key) === 'string' ? xover.manifest.getSource(key) : key;
-	manifest_key = xover.normalizeKey(manifest_key);
+	const physicalResource = typeof (key) === 'string' && key.startsWith('~/');
+	let manifest_key = typeof (key) === 'string' && !physicalResource ? xover.manifest.getSource(key) : key;
+	const mapped = manifest_key !== key;
+	manifest_key = physicalResource
+		? xover.sources.caseSensitive ? manifest_key.trim() : manifest_key.trim().toLowerCase()
+		: xover.normalizeKey(manifest_key);
 	if (self.has(manifest_key)) {
 		return self.get(manifest_key);
 	}
 	if (manifest_key === "default") {
 		let source = xover.sources.defaults[key];
 		return source;
-	} else if (key !== manifest_key && typeof (manifest_key) === 'string') {
+	} else if (mapped && typeof (manifest_key) === 'string') {
 		let source = xover.sources[manifest_key];
 		if (instanceOf.call(source, Document, DocumentFragment)) {
 			return source;
@@ -4909,15 +4913,17 @@ xover.sources = new Proxy(new Map(), {
 			key = xover.json.evaluate.call(xover, key);
 		};
 		if (key.indexOf('{$') != -1) return null;
+		let source_key = key;
+		const physicalResource = key.startsWith('~/');
 		if (key.indexOf(".") != -1) {
-			let manifest_key = xover.manifest.sources[key] || key
+			let manifest_key = physicalResource ? key : xover.manifest.sources[key] || key
 			if (typeof (manifest_key) == 'string' && manifest_key !== key) {
 				key = manifest_key
 			}
 			key = xover.URL(key).pathname;
 		}
 		let normalized_key = xover.normalizeKey(key);
-		return xover.getSource.call(self, normalized_key);
+		return xover.getSource.call(self, physicalResource ? source_key : normalized_key);
 	},
 	set: function (self, key, input) {
 		if (!key) return false;
@@ -13290,7 +13296,10 @@ xover.Request = function (request, ...args) {
 			source = `function:${request}`;
 			fn = eval(request)
 		} else {
-			source = xover.manifest.sources[request];
+			const physicalResource = request.startsWith('~/');
+			source = physicalResource
+				? xover.URL(`/${request.slice(2)}`)
+				: xover.manifest.sources[request];
 			if (source === undefined) {
 				source = `local:${request}`;
 			}
@@ -13600,25 +13609,26 @@ xover.Request = function (request, ...args) {
 					refs.forEach(node => { //urls are interpreted to
 						let href = `${node.href || node}`;
 						if (href[0] === '#' || /[{}]/.test(href)) return;
-						//if (href.match(/^[\.\/]/)) {
+						const physicalResource = href.startsWith('~/');
+						const resourceRelative = /^\.\.?[\\/]/.test(href);
 						const resourceBase =
 							(response.headers.get("resource-base") || "remote")
 								.toLowerCase();
 
 						const useLocal =
-							(resourceBase === "local")
-								? href[0] !== "~"
-								: href[0] === "~";
+							physicalResource
+							|| !resourceRelative && resourceBase === "local";
 
 						let url = xover.URL(
-							href.replace(/^~\//, ''),
+							physicalResource ? `/${href.slice(2)}` : href,
 							useLocal ? '' : response.url
 						);
-						// Resource-Base defines the default base URL.
-						// Relative paths use the configured base.
-						// "~/" switches to the opposite base for that specific resource,
-						// allowing local and remote resources to coexist in the same document.
-						let new_href = url.href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
+						// Resource-Base defines the base for unqualified references.
+						// "~/" always selects a physical local resource and bypasses manifest aliases.
+						// "./" and "../" always resolve against the resource containing the reference.
+						let new_href = physicalResource
+							? `~/${url.pathname.replace(/^[\\/]+/, '')}${url.search}${url.hash}`
+							: url.href;//Permite que descargue correctamente los templates, pues con documentos vacíos creados, no se tiene referencia de la URL actual (devuelve about:blank). Con esto se corrige
 						if (href != new_href) {
 							if (node instanceof ProcessingInstruction) {
 								node.href = new_href;
@@ -14174,7 +14184,9 @@ xover.fetch.json = async function (url, settings = {}) {
 	}
 }
 
+const initializingXMLDependencies = new WeakMap();
 xover.xml.initialize = async function (target) {
+	const sourceDocument = instanceOf.call(target, Node) ? target : this;
 	target = instanceOf.call(target, Node) ? target.cloneNode(true) : this;
 	if (!instanceOf.call(target, Node)) return Promise.reject(`xover.xml.initialize: target is not a node`);
 	const url = target.url;
@@ -14193,7 +14205,37 @@ xover.xml.initialize = async function (target) {
 		file_ref.replaceWith(xover.xml.createNode(`<xsl:text>${param_value || ''}</xsl:text>`))
 	}
 	//if (imports.length) {
-	await Promise.all(imports.map(async href => await xover.sources[href].ready && xover.sources[href]));
+	const dependencies = initializingXMLDependencies.get(sourceDocument) || new Set();
+	initializingXMLDependencies.set(sourceDocument, dependencies);
+	const dependsOn = function (source, target, visited = new Set()) {
+		if (source === target) return true;
+		if (!source || visited.has(source)) return false;
+		visited.add(source);
+		return [...(initializingXMLDependencies.get(source) || [])].some(dependency => dependsOn(dependency, target, visited));
+	};
+	try {
+		await Promise.all(imports.map(async href => {
+			const importedSource = xover.sources[href];
+			const sameSource = importedSource === sourceDocument
+				|| importedSource && sourceDocument && importedSource.source && importedSource.source === sourceDocument.source
+				|| dependsOn(importedSource, sourceDocument);
+			if (sameSource) {
+				const physicalHref = `~/${href.replace(/^(?:~\/|[\\/])+/, '')}`;
+				const error = new Error(`Circular resource reference "${href}" resolves to an initializing source. Use "${physicalHref}" to load the physical resource without applying its manifest override.`);
+				console.error(error);
+				throw error;
+			}
+			dependencies.add(importedSource);
+			try {
+				await importedSource.ready;
+				return importedSource;
+			} finally {
+				dependencies.delete(importedSource);
+			}
+		}));
+	} finally {
+		if (!dependencies.size) initializingXMLDependencies.delete(sourceDocument);
+	}
 	function assert(condition, message) {
 		if (!condition) {
 			throw new Error(message);
