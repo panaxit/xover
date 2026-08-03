@@ -913,6 +913,9 @@ xover.dom.Observer = function (target_node = window.document) {
 				if (xover.references.isSection(node) && !mutation.removedNodes.filter(el => el.isEqualNode(node))) {
 					node.render();
 				}
+				if (xover.init.status == 'manifest-ready' && node instanceof Element) {
+					xover.init.customComponents(node);
+				}
 				updateSections.call(node, true);
 				//if (target.hasAttribute("xo-source") && node.hasAttribute("xo-source")) dependants = dependants.concat([node]);
 				//&& `[${target.getAttribute("xo-source") || ''}].[${target.getAttribute("xo-stylesheet") || ''}]` != `[${node.getAttribute("xo-source") || ''}].[${node.getAttribute("xo-stylesheet") || ''}]` && /*!node.context && */node.matches('[xo-source],[xo-stylesheet],[xo-store]')) dependants = dependants.concat([node]);
@@ -1000,6 +1003,9 @@ xover.dom.Observer = function (target_node = window.document) {
 	});
 	observer.observe(target_node, config);
 	updateSections.call(target_node);
+	if (xover.init.status == 'manifest-ready') {
+		xover.init.customComponents(target_node);
+	}
 }
 
 xover.init.dom = async function () {
@@ -1175,14 +1181,33 @@ xover.init.behaviors = async function () {
 	}
 };
 
-xover.init.customComponents = async function () {
+xover.init.customComponents = async function (target = document) {
 	function cloneStylesheet(sharedStylesheet) {
 		const clonedStylesheet = new CSSStyleSheet();
 		clonedStylesheet.replaceSync([...sharedStylesheet.cssRules].map(rule => rule.cssText).join(''));
 		return clonedStylesheet;
 	}
 
-	for (let component_name of Object.keys(xover.manifest.sources).filter(el => el.match(/^[a-zA-Z][^\\.\\/]*$/))) { /*window.document.selectNodes(`//*[starts-with(name(),'px-')]`)*/
+	const source_keys = Object.keys(xover.manifest.sources);
+	const component_names = new Set(source_keys.filter(el => el.match(/^[a-zA-Z][^\\.\\/]*-[^\\.\\/]*$/)));
+	const component_patterns = source_keys
+		.filter(key => /^\^[a-z][a-z0-9._]*-/i.test(key))
+		.map(key => new RegExp(key, 'i'));
+	const nodes = [
+		...(target instanceof Element ? [target] : []),
+		...(target.querySelectorAll?.('*') || [])
+	];
+	for (const node of nodes) {
+		const component_name = node.localName;
+		if (!component_name || !component_name.includes('-') || customElements.get(component_name)) continue;
+		const matches_source = Object.hasOwn(xover.manifest.sources, component_name)
+			|| component_patterns.some(pattern => pattern.test(component_name));
+		if (matches_source && typeof xover.manifest.sources[component_name] === 'string') {
+			component_names.add(component_name);
+		}
+	}
+
+	for (let component_name of component_names) {
 		//let component_name = component.nodeName.toLowerCase();
 		if (customElements.get(component_name)) continue;
 		let class_name = component_name.replace(/-/g, '_');
@@ -13571,9 +13596,10 @@ xover.Request = function (request, ...args) {
 						enumerable: false
 					});
 
-					let refs = !stored_document && return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()") || [];
-					refs.forEach(async node => { //urls are interpreted to 
+					const refs = !stored_document && return_value instanceof Document && return_value.selectNodes("//xsl:import/@href|//xsl:include/@href|//xsl:*//html:link/@href|//xsl:*//html:script/@src|//processing-instruction()|//@xo-store[contains(.,'.')]|//@xo-stylesheet[contains(.,'.')]|//@xo-source[contains(.,'.')]") || [];
+					refs.forEach(node => { //urls are interpreted to
 						let href = `${node.href || node}`;
+						if (href[0] === '#' || /[{}]/.test(href)) return;
 						//if (href.match(/^[\.\/]/)) {
 						const resourceBase =
 							(response.headers.get("resource-base") || "remote")
@@ -15198,8 +15224,8 @@ xover.dom.applyScripts = async function (scripts = []) {
 					}
 					(targetDocument.head || targetDocument.documentElement || targetDocument).appendChild(new_element);
 				}
-			} else if (!attribute && script.innerHTML) {
-				script.innerHTML = xover.string.htmlDecode(script.innerHTML); //Cuando el método de output es html, algunas /entidades /se pueden codificar. Si el output es xml las envía corregidas
+			} else if (!attribute && script.textContent) {
+				script.textContent = xover.string.htmlDecode(script.textContent); //Raw-text elements must bypass innerHTML to avoid serializing entities again
 				if (script.selectSingleNode(`self::html:style`)) {
 					const target = instanceOf.call(this, DocumentFragment) && this || instanceOf.call(this, Document) && targetDocument.querySelector("head,body") || targetDocument.firstElementChild || targetDocument;
 					if (![...target.querySelectorAll(script.localName)].find(node => node.isEqualNode(script))) {
@@ -15304,6 +15330,12 @@ xover.dom.combine = async function (target, new_node) {
 	) {
 		new_node = xover.dom.createXMLView(target, new_node);
 	}
+	// XSLT output can leave character references as literal text inside raw-text
+	// elements. Normalize every nested style/script here; applyScripts only sees
+	// resources placed beside the transformation root.
+	new_node.selectNodes(`descendant-or-self::*[self::html:style or self::html:script[not(@src)]][text()]`).forEach(node => {
+		node.textContent = xover.string.htmlDecode(node.textContent);
+	});
 	let scripts;
 	let script_wrapper = target.ownerDocument.createDocumentFragment();
 	let post_render_scripts = target.ownerDocument.createDocumentFragment();
@@ -15538,7 +15570,11 @@ xover.dom.combine = async function (target, new_node) {
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && current.nodeName === 'SLOT' && current.classList.contains("placeholder")) {
 			current.replaceWith(change)
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && change.nodeName === 'SLOT' && change.classList.contains("placeholder")) {
-			if (target.contains(current)) { //target.contains((current.closest("[xo-stamp]") || current).parentNode)
+			if (xover.references.isSection(current)) {
+				// A placeholder in the new transform must not discard content managed by
+				// its own store/source. Keep the live section and consume the placeholder.
+				change.remove();
+			} else if (target.contains(current)) { //target.contains((current.closest("[xo-stamp]") || current).parentNode)
 				current.remove({ silent: true }) //TODO: Check what are the rules to remove
 			} else {
 				change.remove()
