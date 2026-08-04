@@ -726,6 +726,7 @@ xover.init = async function () {
 		}
 	}).catch(e => {
 		this.init.status = 'error';
+		console.error(e);
         /*return*/ Promise.reject(e); // Ommited return to prevent hitting multiple times unhandled rejection
 	}).finally(async () => {
 		this.init.initializing = 'done';
