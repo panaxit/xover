@@ -12150,7 +12150,7 @@ xover.modernize = async function (targetWindow) {
 									let xo_store = target_store && (target_store === target_scope ? xo_scope : target_store.cloneNode()) || new_store_attr || store && documentElement.createAttribute(store_name, store.tag || store.href || self.href || "");
 									if (xo_scope && ["null", "undefined"].includes(xo_scope.value)) xo_scope.value = "";
 
-									let same_target = documentElement.nodeName.toLowerCase() === 'body' || (target_source || target_store || target_scope) && target.isEquivalentNode(documentElement);
+									let same_target = documentElement.nodeName.toLowerCase() === 'body' || (target_source || target_store || target_scope || documentElement.nodeName.toLowerCase() === target.nodeName.toLowerCase()) && target.isEquivalentNode(documentElement);
 									if (!same_target) {
 										const id = documentElement.id || target.getAttribute("id") || "";
 										let matches = target.queryChildrenAll(`[id="${id}"],[xo-stylesheet],[xo-source],[xo-store],[xo-scope]`).filter(el => {
