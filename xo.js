@@ -1183,6 +1183,8 @@ xover.init.behaviors = async function () {
 };
 
 xover.init.customComponents = async function (target = document) {
+	let custom_components = new Set(target.select(`.//html:*[contains(name(),"-")]`).map(el => el.localName));
+	//let behaviors = new Set(target.select(`.//html:*[@is]`).map(el => el.getAttribute("is")));
 	function cloneStylesheet(sharedStylesheet) {
 		const clonedStylesheet = new CSSStyleSheet();
 		clonedStylesheet.replaceSync([...sharedStylesheet.cssRules].map(rule => rule.cssText).join(''));
@@ -1195,12 +1197,11 @@ xover.init.customComponents = async function (target = document) {
 		.filter(key => /^\^[a-z][a-z0-9._]*-/i.test(key))
 		.map(key => new RegExp(key, 'i'));
 	const nodes = [
-		...(target instanceof Element ? [target] : []),
-		...(target.querySelectorAll?.('*') || [])
+		...custom_components
+		//...behaviors
 	];
-	for (const node of nodes) {
-		const component_name = node.localName;
-		if (!component_name || !component_name.includes('-') || customElements.get(component_name)) continue;
+	for (const component_name of nodes) {
+		if (customElements.get(component_name)) continue;
 		const matches_source = Object.hasOwn(xover.manifest.sources, component_name)
 			|| component_patterns.some(pattern => pattern.test(component_name));
 		if (matches_source && typeof xover.manifest.sources[component_name] === 'string') {
@@ -12055,6 +12056,7 @@ xover.modernize = async function (targetWindow) {
 								////await new Promise(resolve => {
 								////    requestAnimationFrame(() => {
 								////        setTimeout(async () => {
+								xover.init.customComponents(xsl)
 								if (xsl) {
 									action = xsl.action;
 									dom = await data.transform(xsl, { target });
