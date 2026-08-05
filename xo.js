@@ -12482,7 +12482,7 @@ class MutationSet extends Array {
 	}
 
 	consolidate(mutation_filter = function ({ mutation, target, host }) {
-		mutation.attributeName == "xo-static" || [target.closest('.xo-silent,.xo-silent-off') || host.nodeType === Node.ELEMENT_NODE && host || top.window.document.createElement('p')].filter(node => node.classList.contains('xo-silent') && !node.classList.contains('xo-silent-off') || instanceOf.call(node, CustomElement)).length
+		return (mutation.attributeName == "xo-static" || [target.closest('.xo-silent,.xo-silent-off') || host.nodeType === Node.ELEMENT_NODE && host || top.window.document.createElement('p')].filter(node => node.classList.contains('xo-silent') && !node.classList.contains('xo-silent-off') || instanceOf.call(node, CustomElement)).length)
 	}) {
 		const distinctMutationRecords = function (mutationList) {
 			const seenRecords = new Map();
