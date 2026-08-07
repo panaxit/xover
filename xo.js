@@ -1086,10 +1086,12 @@ xover.component.extend = function (target, methods) {
 	}
 };
 
-xover.component.applyScripts = async function (host, root, target = host) {
-	const constructor = target && typeof (target.extend) == "function" ? target : {
+xover.component.applyScripts = async function (host, root) {
+	const constructor = {
+		host,
+
 		extend(methods) {
-			xover.component.extend(target, methods);
+			xover.component.extend(host, methods);
 		}
 	};
 
@@ -1101,9 +1103,9 @@ xover.component.applyScripts = async function (host, root, target = host) {
 	for (const script of scripts.filter(script => script.textContent)) {
 		new Function(
 			"constructor",
-			`
-				let self = this;
-				let parts = this.parts || {};
+			` const self = constructor.host;
+				const parts = self.parts || {};
+
 				${script.textContent}
 			`
 		).call(host, constructor);
@@ -7808,26 +7810,86 @@ xover.modernize = async function (targetWindow) {
 					}
 				})
 
-				Node.host = Node.host || Node.prototype, 'host';
+				Node.host = Node.host || Object.getOwnPropertyDescriptor(Node.prototype, 'host');
+
 				const host_handler = {
 					get: function () {
-						if (this.hasOwnProperty("_host")) return this._host;
-						let current = (this.ownerElement || this).getRootNode({ composed: false }) || this;
-						current = instanceOf.call(current, Document) ? this : current;
-						while (instanceOf.call(current, Node) && !instanceOf.call(current, HTMLIFrameElement, CustomElement, ShadowRoot)) {
-							current = current.parentNode;
+						let host;
+						// Un Attr pertenece al mismo contexto que su elemento.
+						if (instanceOf.call(this, Attr)) {
+							host = this.ownerElement?.host || this.ownerDocument;
 						}
-
-						if (instanceOf.call(current, ShadowRoot)) {
-							return current.host;
+						// Un Document embebido está hospedado por su iframe.
+						else if (instanceOf.call(this, Document)) {
+							host = this.defaultView?.frameElement || this;
 						}
+						else {
+							let current = this;
 
-						return current;
-					}, set: function (input) {
-						this._host = input
+							while (current) {
+								/*
+									Siempre avanzar primero.
+				
+									Así:
+									- un Custom Component nunca es su propio host;
+									- cualquier nodo dentro de él sí puede encontrarlo.
+								*/
+								if (instanceOf.call(current, ShadowRoot)) {
+									current = current.host;
+								} else {
+									current = current.parentNode;
+								}
+								if (!current) break;
+								// Document es el host natural del árbol normal.
+								if (instanceOf.call(current, Document)) {
+									host = current;
+									break;
+								}
+								/*
+									Solamente Custom Elements autónomos reales.
+				
+									No usamos [is], porque en xover esos son behaviors.
+									Además usamos el registry del Document correspondiente
+									para que funcione también dentro de iframes.
+								*/
+								if (instanceOf.call(current, Element)) {
+									const registry =
+										current.ownerDocument?.defaultView?.customElements
+										|| customElements;
+
+									if (registry.get(current.localName)) {
+										host = current;
+										break;
+									}
+								}
+							}
+
+							host ||= this.ownerDocument || this;
+						}
+						// Cachear hasta que explícitamente se invalide.
+						Object.defineProperty(this, 'host', {
+							value: host,
+							writable: true,
+							configurable: true,
+							enumerable: false
+						});
+
+						return host;
+					},
+
+					set: function (input) {
+						Object.defineProperty(this, 'host', {
+							value: input,
+							writable: true,
+							configurable: true,
+							enumerable: false
+						});
 					}
-				}
+				};
+
 				Object.defineProperty(Node.prototype, 'host', host_handler);
+
+				// HTMLAnchorElement ya tiene un .host nativo de URL.
 				Object.defineProperty(HTMLAnchorElement.prototype, 'host', host_handler);
 
 				HTMLCollection.filter = HTMLCollection.filter || Object.getOwnPropertyDescriptor(HTMLCollection.prototype, 'filter');
