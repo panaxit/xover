@@ -843,7 +843,7 @@ xover.dom.Observer = function (target_node = window.document) {
 					} else {
 						target.encapsulate({ mode: target.getAttribute("shadowrootmode") });
 						if (target.shadowRoot && target.checkVisibility()) {
-							if (!target.adoptedStyleSheets) {
+							if (!target.adoptedStyleSheets || !target.adoptedStyleSheets.cssRules.length) {
 								target.adoptStylesheets().then(() => {
 									target.shadowRoot.adoptedStyleSheets = [xover.utils.cloneStylesheet(target.adoptedStyleSheets)];
 								})
@@ -1269,14 +1269,32 @@ xover.init.customComponents = async function (target = document) {
                             }
                         }
                     }
-                    if (combinedCSS) {
-                        this.#adoptedStyleSheets.replaceSync(combinedCSS);
-                    }
+					if (!combinedCSS && this.shadowRoot) {
+						combinedCSS = [...this.ownerDocument.styleSheets].flatMap(stylesheet => {
+							try {
+								return [...stylesheet.cssRules].map(rule => rule.cssText);
+							} catch (e) {
+								return [];
+							}
+						}).join('\\n');
+					}
+					if (combinedCSS) {
+						this.#adoptedStyleSheets.replaceSync(combinedCSS);
+						if (this.shadowRoot && this.checkVisibility()) {
+							this.shadowRoot.adoptedStyleSheets = [cloneStylesheet(this.#adoptedStyleSheets)];
+						}
+					}
                 }
                 
                 attachShadow(options) {
                     const shadowRoot = super.attachShadow(options);
-                    if (this.checkVisibility()) {
+                    if (!this.#adoptedStyleSheets.cssRules.length) {
+                        this.adoptStylesheets('*').then(() => {
+                            if (this.#adoptedStyleSheets.cssRules.length) {
+                                shadowRoot.adoptedStyleSheets = [cloneStylesheet(this.#adoptedStyleSheets)];
+                            }
+                        });
+                    } else if (this.checkVisibility()) {
                         shadowRoot.adoptedStyleSheets =  [cloneStylesheet(this.#adoptedStyleSheets)];
                     }
                     let self = this;
@@ -4231,7 +4249,7 @@ Object.defineProperty(xover.site, 'restore', {
 });
 
 xover.xml = {};
-xover.xml.liveSectionReferences = new WeakMap();
+xover.xml.sectionPlans = new WeakMap();
 
 xover.xml.getDifferences = function (node1, node2, composed = false) {
 	const all_differences = []
@@ -4252,27 +4270,6 @@ xover.xml.getDifferences = function (node1, node2, composed = false) {
 			}
 		}
 
-		// A section can retain identical markup while its caller-bound props
-		// point at another XML node or store. Those props are the only live
-		// state inspected after a structural match; ordinary descendants stay
-		// on the fast path.
-		let isSection = node => node && node.nodeType === Node.ELEMENT_NODE
-			&& xover.references && typeof xover.references.isSection === "function"
-			&& xover.references.isSection(node);
-		let sameSectionProps = (current, change) =>
-			current.scope === change.scope
-			&& current.store === change.store
-			&& current.source === change.source;
-		let compareSections = (current, change) => {
-			if (isSection(current) || isSection(change)) {
-				if (!sameSectionProps(current, change)) all_differences.push(new Map([[current, change]]));
-				return;
-			}
-			for (let index = 0; index < current.childNodes.length; index++) {
-				compareSections(current.childNodes[index], change.childNodes[index]);
-			}
-		};
-		compareSections(node1, node2);
 		return all_differences;
 	}
 	let different_scope = xover.mode === "modern"
@@ -5296,6 +5293,22 @@ xover.references.stamp = function () {
 	Object.defineProperty(node, "stamp", { value, configurable: true });
 	if (target_node !== node) Object.defineProperty(target_node, "stamp", { value, configurable: true });
 	return value;
+}
+
+xover.references.originSignature = function () {
+	let node = this && this.nodeType === Node.ATTRIBUTE_NODE ? this.ownerElement : this;
+	if (!node || !node.nodeType) return "";
+	let stamp = node.stamp;
+	let source_document = xover.references.stampDocument.call(node, stamp);
+	let href = source_document && source_document.source && source_document.source.url && source_document.source.url.href
+		|| source_document && (source_document.URL || source_document.documentURI || source_document.baseURI) || "";
+	return [href, node.localName || node.nodeName, node.id || ""].join("|");
+}
+
+xover.references.normalizeOriginSignature = function (signature) {
+	let parts = `${signature || ""}`.split("|");
+	if (parts.length > 3 && parts[1].startsWith("name=")) return [parts[0], parts.at(-1), ""].join("|");
+	return signature || "";
 }
 
 xover.references.generatedSource = function () {
@@ -12131,7 +12144,10 @@ xover.modernize = async function (targetWindow) {
 								dom.selectNodes(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove();
 								dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode && el.parentNode.removeAttributeNode(el));
 								if (target.shadowRoot) {
-									!target.adoptedStyleSheets && await target.adoptStylesheets(...[...target.ownerDocument.adoptedStyleSheets, ...target.ownerDocument.querySelectorAll(`link[rel="stylesheet"]`)].map(el => xover.URL(el.href)));
+									let adopted_stylesheet = target.adoptedStyleSheets;
+									if (!adopted_stylesheet || !adopted_stylesheet.cssRules.length) {
+										await target.adoptStylesheets(...[...target.ownerDocument.adoptedStyleSheets, ...target.ownerDocument.querySelectorAll(`link[rel="stylesheet"]`)].map(el => xover.URL(el.href)));
+									}
 									//if (dom.nodeType === Node.DOCUMENT_NODE) {
 									//    const fragment = dom.createDocumentFragment();
 									//    fragment.append(...dom.childNodes);
@@ -12241,6 +12257,15 @@ xover.modernize = async function (targetWindow) {
 										new_node.replaceContent(...documentElement.childNodes)
 										documentElement.replaceWith(new_node);
 										documentElement = new_node;
+									}
+									const preserve_unbound_target = target.nodeType === Node.ELEMENT_NODE
+										&& !target.hasAttributes()
+										&& target.localName === documentElement.localName
+										&& target.stamp;
+									if (preserve_unbound_target) {
+										let origin_signature = xover.references.originSignature.call(target);
+										let existing_origin = xover.references.normalizeOriginSignature(target.getAttribute("xo-origin-stamp"));
+										(origin_signature || existing_origin) && documentElement.setAttribute("xo-origin-stamp", existing_origin || origin_signature);
 									}
 									xo_store && xo_store !== xo_scope && documentElement.importAttributeNode(xo_store, { silent: true });
 									xo_scope && documentElement.importAttributeNode(xo_scope, { silent: true });
@@ -14679,6 +14704,17 @@ xover.xml.normalizeChildren = function (nodeA, nodeB, options) {
 		return fingerprint(n)
 	}
 
+	function matchesOrigin(a, b) {
+		if (!(a && b && a.nodeType === Node.ELEMENT_NODE && b.nodeType === Node.ELEMENT_NODE)) return false
+		let a_origin = a.getAttribute("xo-origin-stamp")
+		let b_origin = b.getAttribute("xo-origin-stamp")
+		if (!a_origin && !b_origin) return false
+		a_origin = a_origin && xover.references.normalizeOriginSignature(a_origin)
+		b_origin = b_origin && xover.references.normalizeOriginSignature(b_origin)
+		return a_origin && a_origin === (b_origin || xover.references.originSignature.call(b))
+			|| b_origin && b_origin === xover.references.originSignature.call(a)
+	}
+
 	function buildList(parent) {
 		const list = []
 		for (const n of [...parent.childNodes]) {
@@ -14729,7 +14765,7 @@ xover.xml.normalizeChildren = function (nodeA, nodeB, options) {
 		for (let k = j; k < rawB.length; k++) {
 			const b = rawB[k]
 			const mkb = (metaB.get(b) || {}).mk || ""
-			if (mk && mk === mkb) {
+			if ((mk && mk === mkb) || matchesOrigin(a, b)) {
 				found = k
 				break
 			}
@@ -14824,34 +14860,54 @@ xover.xml.normalizeChildren = function (nodeA, nodeB, options) {
 	return diffs
 }
 
-xover.xml.staticMerge = function (node1, node2) {
-	function isLiveSection(node) {
-		return node && node.nodeType === Node.ELEMENT_NODE
-			&& xover.references && typeof xover.references.isSection === 'function'
-			&& xover.references.isSection(node);
+xover.xml.staticMerge = function (node1, node2, sectionPlan) {
+	const isRootMerge = this !== node1;
+	sectionPlan = sectionPlan || (isRootMerge && { transplants: [] });
+	if (isRootMerge) xover.xml.sectionPlans.set(node2, sectionPlan);
+	function isSection(node) {
+		return node && node.nodeType === Node.ELEMENT_NODE && xover.references.isSection(node);
 	}
 	function sectionKey(node) {
-		if (!node) return '';
-		return [node.nodeName, node.id || '',
-			...['xo-source', 'xo-stylesheet', 'xo-store', 'xo-scope', 'xo-stamp'].map(name => node.getAttribute(name) || '')
-		].join('|');
+		return [node.nodeName, node.id || '', ...["xo-source", "xo-stylesheet", "xo-store"].map(name => node.getAttribute(name) || '')].join("|");
 	}
-	function sections(root) {
-		return [root, ...(root.querySelectorAll ? root.querySelectorAll('[xo-source],[xo-stylesheet],[xo-store]') : [])].filter(isLiveSection);
+	function allSections(root) {
+		return [...(root.querySelectorAll ? root.querySelectorAll('[xo-source],[xo-stylesheet],[xo-store],[xo-origin-stamp],[xo-stamp]') : [])]
+			.filter(node => isSection(node) || node.hasAttribute("xo-origin-stamp"));
 	}
-	function associateLiveSections(current, change) {
+	function originStamp(node) {
+		if (node.hasAttribute("xo-origin-stamp")) return xover.references.normalizeOriginSignature(node.getAttribute("xo-origin-stamp"));
+		return xover.references.originSignature.call(node);
+	}
+	function addTransplant(current, change) {
+		if (sectionPlan.transplants.some(pair => pair.current === current || pair.change === change)) return;
+		sectionPlan.transplants.push({ current, change });
+	}
+	function prepareSections(current, change) {
+		if (!(current && change && current.nodeType === Node.ELEMENT_NODE && change.nodeType === Node.ELEMENT_NODE)) return;
+		for (let [currentChild, changeChild] of xover.xml.normalizeChildren(current, change)) {
+			if (isSection(currentChild) && !isSection(changeChild)) addTransplant(changeChild, currentChild);
+			else if (!isSection(currentChild) && !isSection(changeChild)) prepareSections(currentChild, changeChild);
+		}
+	}
+	if (isRootMerge) {
 		let candidates = new Map();
-		for (let section of sections(change)) {
-			let key = sectionKey(section);
-			candidates.set(key, (candidates.get(key) || []).concat(section));
+		let liveSections = allSections(node1);
+		let originSections = liveSections.filter(node => node.hasAttribute("xo-origin-stamp"));
+		let allCandidates = allSections(node2);
+		for (let candidate of [node2, ...(node2.querySelectorAll ? node2.querySelectorAll("*") : [])]) {
+			if (candidate.nodeType !== Node.ELEMENT_NODE || allCandidates.includes(candidate)) continue;
+			if (originSections.some(live => candidate.localName === live.localName && originStamp(candidate) === originStamp(live))) allCandidates.push(candidate);
 		}
-		for (let section of sections(current)) {
-			let key = sectionKey(section);
-			let candidate = (candidates.get(key) || []).shift();
-			if (candidate) xover.xml.liveSectionReferences.set(candidate, section);
+		for (let candidate of allCandidates) candidates.set(sectionKey(candidate), (candidates.get(sectionKey(candidate)) || []).concat(candidate));
+		for (let live of liveSections) {
+			let candidate = (candidates.get(sectionKey(live)) || []).shift();
+			let liveOriginStamp = originStamp(live);
+			if (!candidate && liveOriginStamp) candidate = allCandidates.find(current => !sectionPlan.transplants.some(pair => pair.current === current)
+				&& current.localName === live.localName && originStamp(current) === liveOriginStamp);
+			if (candidate) addTransplant(candidate, live);
 		}
+		prepareSections(node1, node2);
 	}
-	associateLiveSections(node1, node2);
 	////if (node1.shadowRoot && !node2.shadowRoot && node1.nodeType === Node.ELEMENT_NODE
 	////    && node1.getAttribute("xo-source") == node2.getAttribute("xo-source")
 	////    && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
@@ -14865,7 +14921,7 @@ xover.xml.staticMerge = function (node1, node2) {
 	//    option.checked = !!option.getAttributeNode("checked")
 	//}
 	if (instanceOf.call(node1, HTMLSlotElement)) return;
-	if (this === node1 && node1.hasAttribute("xo-stylesheet")) {
+	if (this === node1 && node1.hasAttribute("xo-stylesheet") && !isSection(node1)) {
 		return node2.replaceWith(node1.cloneNode(true))
 	}
 
@@ -14994,7 +15050,6 @@ xover.xml.staticMerge = function (node1, node2) {
 	if (node1.nodeType === Node.ELEMENT_NODE && !instanceOf.call(node1, CustomElement)) {
 		let differences = xover.xml.normalizeChildren(node1, node2);
 		for (const [childA, childB] of [...differences]) {
-			if (isLiveSection(childA) || isLiveSection(childB)) continue;
 			xover.xml.staticMerge.call(childA, childA, childB)
 		}
 	}
@@ -15094,6 +15149,10 @@ xover.xml.combine = function (target, new_node) {
 	let target_stylesheet = target.nodeType === Node.ELEMENT_NODE && target.getAttribute("xo-stylesheet")
 	let new_source = new_node.nodeType === Node.ELEMENT_NODE && new_node.getAttribute("xo-source")
 	let new_stylesheet = new_node.nodeType === Node.ELEMENT_NODE && new_node.getAttribute("xo-stylesheet")
+	let target_origin_stamp = target.nodeType === Node.ELEMENT_NODE && xover.references.normalizeOriginSignature(target.getAttribute("xo-origin-stamp"));
+	let new_origin_stamp = new_node.nodeType === Node.ELEMENT_NODE
+		&& (xover.references.normalizeOriginSignature(new_node.getAttribute("xo-origin-stamp")) || xover.references.originSignature.call(new_node));
+	let same_origin_target = target_origin_stamp && new_origin_stamp && target_origin_stamp === new_origin_stamp;
 	let new_metaNodes = xover.xml.getMetaNodes.call(new_node);
 	//if (instanceOf.call(target, CustomElement) && !instanceOf.call(new_node, HTMLTemplateElement)) debugger;
 	let same_source = (new_node.getAttributeNode("xo-stylesheet") || new_node.getAttributeNode("xo-source") || target.getAttributeNode("xo-stylesheet") || target.getAttributeNode("xo-source") || {}).source === (target.getAttributeNode("xo-stylesheet") || target.getAttributeNode("xo-source") || new_node.getAttributeNode("xo-stylesheet") || new_node.getAttributeNode("xo-source") || {}).source || false;
@@ -15135,6 +15194,10 @@ xover.xml.combine = function (target, new_node) {
 			target.replaceChildren(...new_metaNodes, ...new_node.content.childNodes)
 		}
 		return target
+	} else if (same_origin_target) {
+		target.applyAttributes(new_node);
+		target.replaceChildren(...new_node.childNodes);
+		return target;
 	} else if (
 		!target.isEquivalentNode(new_node)
 		|| new_node.isEquivalentNode(target) && target.hasOwnProperty("scope") && new_node.hasOwnProperty("scope") && target.scope !== new_node.scope && target.getAttribute("xo-stylesheet") !== new_node.getAttribute("xo-stylesheet")
@@ -15539,6 +15602,8 @@ xover.dom.combine = async function (target, new_node) {
 	});
 
 	let changes = xover.xml.getDifferences.call(target, target, new_node, true);
+	let sectionPlan = xover.xml.sectionPlans.get(new_node);
+	if (sectionPlan && sectionPlan.transplants.length) changes = [new Map([[target, new_node]])];
 	if (!changes.length) {
 		return target;
 	}
@@ -15572,27 +15637,33 @@ xover.dom.combine = async function (target, new_node) {
 			if (Object.prototype.hasOwnProperty.call(candidate, prop)) live[prop] = candidate[prop];
 		}
 	}
-	let transplantLiveSections = function (change) {
-		if (!(change && change.querySelectorAll)) return;
-		for (let candidate of change.querySelectorAll('[xo-source],[xo-stylesheet],[xo-store]')) {
-			let live = xover.xml.liveSectionReferences.get(candidate);
-			if (!live || live === candidate) continue;
-			let ancestor = candidate.parentElement && candidate.parentElement.closest('[xo-source],[xo-stylesheet],[xo-store]');
-			if (ancestor && xover.xml.liveSectionReferences.has(ancestor)) continue;
-			syncLiveSection(live, candidate);
-			candidate.replaceWith(live);
-		}
-	}
 	//let coordinates = active_element.scrollPosition;
 
 	////target.observer && target.observer.disconnect();
-	for (let [[current, change]] of changes.sort(([[a]], [[b]]) => {
-		const aIsXO = a.nodeName.startsWith("XO-");
-		const bIsXO = b.nodeName.startsWith("XO-");
+	let pendingTransplants = sectionPlan && sectionPlan.transplants || [];
+	let transplantSections = function (change) {
+		if (!(change && change.contains)) return;
+		for (let pair of pendingTransplants.filter(pair => !pair.applied && change.contains(pair.current))) {
+			syncLiveSection(pair.change, pair.current);
+			xover.sections.delete(pair.change);
+			pair.current.replaceWith(pair.change);
+			pair.applied = true;
+		}
+	}
+	for (let changeSet of changes.sort((a, b) => {
+		let [[aNode]] = a;
+		let [[bNode]] = b;
+		if (!a.transplant && aNode.contains && aNode.contains(bNode)) return -1;
+		if (!b.transplant && bNode.contains && bNode.contains(aNode)) return 1;
+		const aIsXO = aNode.nodeName.startsWith("XO-");
+		const bIsXO = bNode.nodeName.startsWith("XO-");
 		if (aIsXO && !bIsXO) return 1;
 		if (!aIsXO && bIsXO) return -1;
-		return a.nodeName.localeCompare(b.nodeName);
+		return aNode.nodeName.localeCompare(bNode.nodeName);
 	})) {
+		let [[current, change]] = changeSet;
+		if (current.nodeType === Node.ELEMENT_NODE && current.localName === "slot" && current.classList.contains("placeholder")
+			&& pendingTransplants.some(pair => pair.applied && pair.current === change)) continue;
 		////if ((current instanceof HTMLElement || current instanceof SVGElement) && current !== target && current.hasAttribute("xo-stylesheet")) {
 		////    continue;
 		////}
@@ -15604,11 +15675,10 @@ xover.dom.combine = async function (target, new_node) {
 			target_preceding_siblings = (current.selectNodes("preceding-sibling::comment()") || []).filter(el => el.relatedNode = target);
 			change_preceding_siblings = change.selectNodes("preceding-sibling::comment()");
 		}
-		[...change.querySelectorAll(`slot.placeholder`)].remove();
 		let result = current;
-		let live = xover.xml.liveSectionReferences.get(change);
-		if (live && live === current) syncLiveSection(live, change);
-		transplantLiveSections(change);
+		transplantSections(change);
+		if (pendingTransplants.some(pair => pair.applied && pair.current === change && pair.change === current)) continue;
+		[...change.querySelectorAll(`slot.placeholder`)].remove();
 		let active_element = document.activeElement;
 		let selector, selection, current_value;
 		if (current.contains(document.activeElement)) {
@@ -15640,7 +15710,7 @@ xover.dom.combine = async function (target, new_node) {
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && current.nodeName === 'SLOT' && current.classList.contains("placeholder")) {
 			current.replaceWith(change)
 		} else if (current.nodeType === change.nodeType && current.nodeName !== change.nodeName && change.nodeName === 'SLOT' && change.classList.contains("placeholder")) {
-			if (xover.references.isSection(current)) {
+			if (xover.references.isSection(current) || current.hasAttribute("xo-origin-stamp")) {
 				// A placeholder in the new transform must not discard content managed by
 				// its own store/source. Keep the live section and consume the placeholder.
 				change.remove();
