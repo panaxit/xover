@@ -1185,7 +1185,10 @@ xover.init.behaviors = async function () {
 };
 
 xover.init.customComponents = async function (target = document) {
-	let custom_components = new Set(target.select(`.//html:*[contains(name(),"-")]`).map(el => el.localName));
+	let custom_components = new Set([
+		...(target instanceof Element && target.localName.includes('-') ? [target] : []),
+		...target.select(`.//html:*[contains(name(),"-")]`)
+	].map(el => el.localName));
 	//let behaviors = new Set(target.select(`.//html:*[@is]`).map(el => el.getAttribute("is")));
 	function cloneStylesheet(sharedStylesheet) {
 		const clonedStylesheet = new CSSStyleSheet();
@@ -4604,6 +4607,50 @@ xover.Source = function (tag_name) {
 	if (!(this instanceof xover.Source)) return new xover.Source(tag/*source, tag, manifest_key*/);
 	let self = this;
 	let __document;
+	const requests = new Set();
+	// A source is one logical document. Pagination and auxiliary requests share
+	// its contract; URL#contract remains the per-URL request cache.
+	let contract = null;
+	const rememberRequests = document => {
+		if (!(document && document.nodeType === Node.DOCUMENT_NODE)) return requests;
+		document.request && requests.add(document.request);
+		let walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT);
+		for (let comment = walker.nextNode(); comment; comment = walker.nextNode()) {
+			comment.request && requests.add(comment.request);
+		}
+		return requests;
+	};
+	Object.defineProperty(this, 'requests', {
+		get: function () {
+			return rememberRequests(__document);
+		},
+		enumerable: false,
+		configurable: true
+	});
+	Object.defineProperties(this, {
+		contract: {
+			get: function () {
+				return contract;
+			},
+			enumerable: false,
+			configurable: true
+		},
+		parameters: {
+			get: function () {
+				return this.contract && this.contract.parameters || [];
+			},
+			enumerable: false,
+			configurable: true
+		}
+	});
+	Object.defineProperty(this, 'setContract', {
+		value: function (value) {
+			if (value) contract = value;
+			return contract;
+		},
+		enumerable: false,
+		configurable: true
+	});
 	if (!this.hasOwnProperty("tag")) {
 		Object.defineProperty(this, 'tag', {
 			value: tag,
@@ -4660,6 +4707,10 @@ xover.Source = function (tag_name) {
 			}
 			__document = document;
 			__document.url = __document.url || new xover.Request(this.tag).url;
+			if (__document.url && __document.url.source !== this) {
+				Object.defineProperty(__document.url, 'source', { value: this, configurable: true });
+			}
+			rememberRequests(__document);
 			if (__document.source !== this) {
 				Object.defineProperty(__document, 'source', {
 					value: this,
@@ -4674,7 +4725,7 @@ xover.Source = function (tag_name) {
 
 	Object.defineProperty(this, 'contains', {
 		value: function (node) {
-			return node && (self === node || node.nodeType && __document.contains(node)) || false
+			return !!(node && (self === node || __document === node || __document && __document.contains(node)));
 		},
 		writable: false, enumerable: false, configurable: false
 	});
@@ -4797,6 +4848,9 @@ Object.defineProperty(xover.Source.prototype, `fetch`, {
 			try {
 				request.source = self;
 				request.target = this === self ? document : this;
+				if (xover.manifest.getSettings(request, 'contract').pop()) {
+					request.contract = await self.getContract();
+				}
 				response = await request.fetch.call(this, ...args);
 				return Promise.resolve(response);
 			} catch (e) {
@@ -5557,6 +5611,67 @@ Object.defineProperty(xover.URL.prototype, 'fetch', {
 			return request ? request.fetch.call(this, ...args) : xover.fetch(this, args);
 		}
 	}
+});
+
+Object.defineProperty(xover.URL.prototype, 'getOptions', {
+	value: async function (settings = {}) {
+		if (Object.prototype.hasOwnProperty.call(this, 'contract')) return await this.contract;
+		if (this.source) {
+			let contract = this.source.contract;
+			if (contract) return await contract;
+		}
+		let url = this;
+		let pending = (async function () {
+			let headers = new Headers(url.settings.headers);
+			if (!headers.has('Accept')) headers.set('Accept', 'application/x-xover-contract+headers');
+			let method = settings.method || (headers.get('Accept').includes('application/x-xover-contract+headers') ? 'HEAD' : 'GET');
+			let response = await fetch(url, {
+				method,
+				headers,
+				credentials: url.settings.credentials
+			});
+			if (!response.ok) return null;
+			let contentType = response.headers.get('Content-Type') || '';
+			let declared = response.headers.has('X-Contract-Exists') || contentType.includes('application/x-xover-contract+json');
+			if (!declared) return null;
+			let payload = contentType.includes('json') ? await response.json().catch(() => ({})) : {};
+			let parseParameters = value => (value || '').split(',').filter(Boolean).map(parameter => {
+				let [name, ...properties] = parameter.split(';');
+				return properties.reduce((parameter, property) => {
+					let [key, value] = property.split('=', 2);
+					if (key) parameter[key] = value === 'true' ? true : value === 'false' ? false : value;
+					return parameter;
+				}, { name });
+			});
+			let exists = response.headers.get('X-Contract-Exists');
+			let parameters = response.headers.get('X-Contract-Parameters');
+			let outputParameters = response.headers.get('X-Contract-Output-Parameters');
+			let requiredParameters = new Set(parseParameters(response.headers.get('X-Contract-Required-Parameters')).map(parameter => parameter.name));
+			let contract = {
+				...payload,
+				exists: exists == null ? payload.exists !== false && response.ok : exists === 'true',
+				type: response.headers.get('X-Contract-Type') || payload.type,
+				routine: response.headers.get('X-Contract-Routine') || payload.routine,
+				version: response.headers.get('X-Contract-Version') || payload.version,
+				id: response.headers.get('X-Contract-Id') || payload.contract,
+				parameters: [
+					...(parameters == null ? payload.parameters || [] : parseParameters(parameters)).map(parameter => ({ ...parameter, required: requiredParameters.has(parameter.name) || parameter.required === true })),
+					...parseParameters(outputParameters).map(parameter => ({ ...parameter, output: true }))
+				]
+			};
+			return contract;
+		})();
+		Object.defineProperty(this, 'contract', { value: pending, writable: true, configurable: true });
+		try {
+			this.contract = await pending;
+			return this.contract;
+		} catch (e) {
+			this.contract = null;
+			return null;
+		}
+	},
+	writable: true,
+	configurable: true
 });
 
 Object.defineProperty(xover.URL.prototype, 'settings', {
@@ -7753,7 +7868,7 @@ xover.modernize = async function (targetWindow) {
 						if (!selector) return false;
 						try {
 							if (Node.contains && Node.contains.value && (!selector || instanceOf.call(selector, Node))) {
-								return args.find(el => el === this) || Node.contains.value.apply(this.contentDocument || this.content || this, args.map(arg => arg.ownerElement || arg));
+								return args.find(el => el === this) || Node.contains.value.apply(this.contentDocument || this.content || this, args.map(arg => arg.ownerElement || arg.parentNode || arg));
 							}
 							return this.matches(selector) || !!this.querySelector(selector) || null
 						} catch (e) {
@@ -7995,26 +8110,19 @@ xover.modernize = async function (targetWindow) {
 				Object.defineProperty(URL.prototype, 'matches', {
 					value: function (...args) {
 						let predicate = args.pop();
-						let tags = this.tags || event && event.detail && event.detail.tags || '';
 						try {
-							const { protocol, pathname, resource, searchParams, hash, tags } = this;
 							predicate = instanceOf.call(predicate, URL) ? predicate : new xover.URL(predicate, this);
-							if ((
-								protocol == predicate.protocol
-							) && (
-									!predicate.pathname[1]
-									|| resource.matches(predicate.resource)
-								) && (
-									!predicate.hash
-									|| tags.has(predicate.hash)
-									|| hash.matches(predicate.hash)
-								) && (
-									!predicate.searchParams.size ||
-									[...predicate.searchParams].every(([key, predicate]) => searchParams.has(key) && (!predicate || searchParams.get(key).matches(predicate)))
-								)
-							) {
-								return true
-							}
+							const matchesURL = (url, request) => {
+								const { protocol, resource, searchParams, hash } = url;
+								const tags = request && request.tags || url.tags || event && event.detail && event.detail.tags || new Set();
+								return protocol == predicate.protocol
+									&& (!predicate.pathname[1] || resource.matches(predicate.resource))
+									&& (!predicate.hash || tags.has(predicate.hash) || hash.matches(predicate.hash))
+									&& (!predicate.searchParams.size || [...predicate.searchParams].every(([key, predicate]) => searchParams.has(key) && (!predicate || searchParams.get(key).matches(predicate))));
+							};
+							if (matchesURL(this)) return true;
+							let source = this.source || this.request && this.request.source;
+							return !!(source && source.requests && [...source.requests].some(request => request && request.url && request.url !== this && matchesURL(request.url, request)));
 						} catch (e) {
 							return false
 						}
@@ -13600,6 +13708,12 @@ xover.Request = function (request, ...args) {
 						request.body.push(args[0]);
 					}
 					request.applyManifestHeaders();
+					let source = request.source || request.target && request.target.source;
+					let contract = request.contract || source?.contract || null;
+					request.contract = contract;
+					if (contract?.type) request.settings.headers.set('X-Contract-Type', contract.type);
+					if (contract?.routine) request.settings.headers.set('X-Contract-Routine', contract.routine);
+					if (contract?.id) request.settings.headers.set('X-Contract-Id', contract.id);
 
 					before_event = new xover.listener.Event('beforeFetch', { document: instanceOf.call(request.target, Document) ? request.target : null, context: request.contextNode, contextNode: request.contextNode, target: request.target, tags: request.tags, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url, args }, request);
 					window.dispatchEvent(before_event);
@@ -14111,7 +14225,7 @@ Object.defineProperty(xover.Request.prototype, 'updateProgress', {
 		let event_details = { percent: _progress, request, status: response?.status || request.status, text: response?.statusText || request.statusText, response }
 		let progress_event = new xover.listener.Event('progress', event_details, request);
 		window.dispatchEvent(progress_event);
-		for (let tracker of [...request.trackers].flat(Infinity)) {
+		for (let tracker of [...request.trackers].flat(Infinity).filter(Boolean)) {
 			try {
 				tracker.observe({ attributeFilter: ["value"] })
 			} catch (e) {
@@ -14142,11 +14256,39 @@ Object.defineProperty(xover.Request.prototype, 'settings', {
 		return this.url.settings;
 	}
 })
+
+Object.defineProperty(xover.Source.prototype, 'getOptions', {
+	value: function (settings) {
+		return this.getContract(settings);
+	},
+	writable: true,
+	configurable: true
+});
+
+Object.defineProperty(xover.Source.prototype, 'getContract', {
+	value: async function (settings) {
+		return this.setContract(await this.url.getContract(settings));
+	},
+	writable: true,
+	configurable: true
+});
+
+Object.defineProperty(xover.URL.prototype, 'getContract', {
+	value: function (settings) {
+		return this.getOptions(settings);
+	},
+	writable: true,
+	configurable: true
+});
 Object.defineProperty(xover.Request.prototype, 'applyManifestHeaders', {
 	value: function () {
 		let request = this;
+		for (let [header, value] of [...request.headers]) {
+			if (typeof value === 'string' && value.includes('${')) request.headers.set(header, xover.manifest.evaluate(value));
+		}
 		let headers = xover.manifest.getSettings(request, 'headers');
 		for (let [header, value] of headers) {
+			value = xover.manifest.evaluate(value);
 			if (!request.headers.has(header)) {
 				request.headers.set(header, value);
 			}
@@ -14867,12 +15009,19 @@ xover.xml.staticMerge = function (node1, node2, sectionPlan) {
 	function isSection(node) {
 		return node && node.nodeType === Node.ELEMENT_NODE && xover.references.isSection(node);
 	}
+	function isCustomComponent(node) {
+		return node && node.nodeType === Node.ELEMENT_NODE && node.localName.includes('-') && !!customElements.get(node.localName);
+	}
+	function isLiveContent(node) {
+		return isSection(node) || isCustomComponent(node);
+	}
 	function sectionKey(node) {
+		if (isCustomComponent(node)) return [node.nodeName, node.id || '', node.getAttribute('name') || '', node.getAttribute('xo-slot') || ''].join("|");
 		return [node.nodeName, node.id || '', ...["xo-source", "xo-stylesheet", "xo-store"].map(name => node.getAttribute(name) || '')].join("|");
 	}
 	function allSections(root) {
 		return [...(root.querySelectorAll ? root.querySelectorAll('[xo-source],[xo-stylesheet],[xo-store],[xo-origin-stamp],[xo-stamp]') : [])]
-			.filter(node => isSection(node) || node.hasAttribute("xo-origin-stamp"));
+			.filter(node => isLiveContent(node) || node.hasAttribute("xo-origin-stamp"));
 	}
 	function originStamp(node) {
 		if (node.hasAttribute("xo-origin-stamp")) return xover.references.normalizeOriginSignature(node.getAttribute("xo-origin-stamp"));
@@ -14885,8 +15034,8 @@ xover.xml.staticMerge = function (node1, node2, sectionPlan) {
 	function prepareSections(current, change) {
 		if (!(current && change && current.nodeType === Node.ELEMENT_NODE && change.nodeType === Node.ELEMENT_NODE)) return;
 		for (let [currentChild, changeChild] of xover.xml.normalizeChildren(current, change)) {
-			if (isSection(currentChild) && !isSection(changeChild)) addTransplant(changeChild, currentChild);
-			else if (!isSection(currentChild) && !isSection(changeChild)) prepareSections(currentChild, changeChild);
+			if (isLiveContent(currentChild) && !isLiveContent(changeChild)) addTransplant(changeChild, currentChild);
+			else if (!isLiveContent(currentChild) && !isLiveContent(changeChild)) prepareSections(currentChild, changeChild);
 		}
 	}
 	if (isRootMerge) {
@@ -15383,7 +15532,7 @@ xover.dom.applyScripts = async function (scripts = []) {
 								resolve()
 							};
 							new_element.onerror = function (e) {
-								reject(`Error loading script ${new_element.src}`)
+								reject(new LoadError(`Error loading script ${new_element.src}`, {src: new_element.src}))
 							};
 						});
 					}
@@ -19025,6 +19174,19 @@ xover.listener.on("failure", function ({ request, response, statusCodes }) {
 	return rendered_response;
 });
 
+xover.listener.on('LoadError', function ({ message }) {
+	console.error(message)
+})
+
+class LoadError extends Error {
+	constructor(message, options = {}) {
+		super(message)
+		this.name = 'LoadError'
+		Object.assign(this, options);
+		Error.captureStackTrace?.(this, LoadError);
+	}
+}
+
 xover.listener.on('AbortError', function () {
 	return false;
 })
@@ -19056,9 +19218,9 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
 		}
 		//}
 		if (reason && reason.stack) console.error(reason.stack)
-		if (reason instanceof SyntaxError || reason instanceof TypeError || reason instanceof DOMException) {
+		if (reason instanceof SyntaxError || reason instanceof TypeError || reason instanceof DOMException || reason instanceof Error) {
 			if (xover.listener.has(reason.name)) {
-				window.dispatchEvent(new xover.listener.Event(reason.name, { ...reason }, reason));
+				window.dispatchEvent(new xover.listener.Event(reason.name, { message: reason.message, stack: reason.stack, ...reason }, reason));
 			} else {
 				String(reason).alert()
 				console.error(reason.stack || reason)
