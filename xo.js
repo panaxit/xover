@@ -2317,6 +2317,9 @@ xover.listener.history = new EventHistory();
 
 Object.defineProperty(xover.listener, 'dispatcher', {
 	value: function (event) {
+		let asynchronous = false;
+		const dispatcher_arguments = arguments;
+		const dispatch = async function () {
 		if (xover.listener.off === true) return;
 		let context = event.context || /*!(event instanceof CustomEvent) && */event.target /*|| null*/;
 		if (!context || !context.ownerElement && context.nodeType === Node.ATTRIBUTE_NODE) return;
@@ -2354,6 +2357,10 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 		if (configured_handler) {
 			try {
 				configured_return = configured_handler.call(context, event.detail || {});
+				if (configured_return instanceof Promise) {
+					asynchronous = true;
+					configured_return = await configured_return;
+				}
 				if (configured_return !== undefined && event.detail) event.detail.returnValue = configured_return;
 			} catch (e) {
 				configured_return = e;
@@ -2474,7 +2481,7 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 				} else if ((handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event') {
 					args = [event.srcEvent || event] || detail.args || []
 				} else {
-					args = detail.args || arguments;
+					args = detail.args || dispatcher_arguments;
 				}
 				//args = (event instanceof CustomEvent && (
 				//    event.detail instanceof Array && [...event.detail, event]
@@ -2483,7 +2490,11 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 				//    || (handler.toString().split(/\(|\)/).splice(1, 1)[0] || '') == 'event'
 				//    && [event.srcEvent || event] || event.detail.args || [])
 				//    || arguments) //former method
-				returnValue = /*await */handler.apply(context, args); /*Events shouldn't be called with await, but can return a promise*/
+				returnValue = handler.apply(context, args);
+				if (returnValue instanceof Promise) {
+					asynchronous = true;
+					returnValue = await returnValue;
+				}
 				if (returnValue === undefined && event.type === 'change' && detail.stopPropagation !== false && instanceOf.call(context, Attr) && detail && "old" in detail && context.value === detail.old) {
 					let prev = detail.value
 					detail.value = context.value
@@ -2535,6 +2546,10 @@ Object.defineProperty(xover.listener, 'dispatcher', {
 				}
 			}
 		}
+		};
+		const dispatch_result = dispatch();
+		if (asynchronous && event.detail) event.detail.returnValue = dispatch_result;
+		return dispatch_result;
 	},
 	writable: true, enumerable: false, configurable: false
 });
@@ -2920,7 +2935,16 @@ xover.Manifest = function (manifest = {}) {
 			return true;
 		},
 		has: function (self, key) {
-			return Object.keys(self || {}).some(manifest_key => manifest_key[0] === '^' && key.match(new RegExp(manifest_key, "i")) || manifest_key === key);
+			if (Object.hasOwn(self || {}, key)) {
+				return self[key] !== null && self[key] !== undefined && self[key] !== false;
+			}
+			return Object.keys(self || {}).some(manifest_key =>
+				manifest_key[0] === '^'
+				&& key.match(new RegExp(manifest_key, "i"))
+				&& self[manifest_key] !== null
+				&& self[manifest_key] !== undefined
+				&& self[manifest_key] !== false
+			);
 		}
 	});
 
@@ -3062,7 +3086,7 @@ Object.defineProperty(xover.Manifest.prototype, 'getSettings', {
 						);
 					} else if (this.nodeType && this.matches(key)) {
 						return value
-					} else if (tags.has(`#${key.replace(/^#/, '')}`)) {
+					} else if (tags.has(key) || tags.has(`#${key.replace(/^#/, '')}`)) {
 						return value;
 					} else if (key == url.toString()) {
 					return value;
@@ -3187,10 +3211,11 @@ xover.server = new Proxy({}, {
 			url = new xover.URL(`server:${key}`, undefined, xover.manifest.getSettings)
 			if (instanceOf.call(this, xover.Request, xover.URL)) {
 				let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = this.settings || this;
-				xover.json.combine.call(url.settings, { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal });
+				let inherited_settings = { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal };
+				xover.json.combine.call(url.settings, Object.fromEntries(Object.entries(inherited_settings).filter(([, value]) => value !== undefined)));
 			}
 			request = xover.Request.call(url, endpoint);//, ...args);
-			request.apply(args);
+			request.apply(args.slice());
 			if (self instanceof Request) {
 				self.url.request = request;
 				request.source = self.source;
@@ -3333,7 +3358,7 @@ xover.session = new Proxy({}, {
 		}
 
 		if (new_value != old_value && ["status"].includes(key)) {
-			await xover.stores.active.render()
+			//await xover.stores.active.render()
 			try {
 				xover.network.channel.postMessage(new_value);
 			} catch (e) {
@@ -4937,9 +4962,6 @@ Object.defineProperty(xover.Source.prototype, `fetch`, {
 			try {
 				request.source = self;
 				request.target = this === self ? document : this;
-				if (xover.manifest.getSettings(request, 'contract').pop()) {
-					request.contract = await self.getContract();
-				}
 				response = await request.fetch.call(this, ...args);
 				return Promise.resolve(response);
 			} catch (e) {
@@ -5014,7 +5036,10 @@ xover.getSource = function (key) {
 	let manifest_key = typeof (key) === 'string' && !physicalResource ? xover.manifest.getSource(key) : key;
 	const mapped = manifest_key !== key;
 	if (manifest_key === true) {
-		return xover.sources.defaults[key];
+		const normalized_key = xover.normalizeKey(key);
+		if (self.has(normalized_key)) return self.get(normalized_key);
+		self.set(normalized_key, xover.sources.defaults[key]);
+		return self.get(normalized_key);
 	}
 	if (manifest_key === false || manifest_key === null) {
 		return null;
@@ -5068,15 +5093,18 @@ xover.sources = new Proxy(new Map(), {
 				return result;
 			};
 		}
-		if (key in self) {
-			return self[key]; //.toLowerCase()
-		}
 		if (key.indexOf('{$') != -1) {
 			key = xover.json.evaluate.call(xover, key);
 		};
 		if (key.indexOf('{$') != -1) return null;
 		let source_key = key;
 		const physicalResource = key.startsWith('~/');
+		if (!physicalResource && typeof key === 'string') {
+			key = xover.manifest.getSourceKey(key);
+		}
+		if (key in self) {
+			return self[key]; //.toLowerCase()
+		}
 		if (key.indexOf(".") != -1) {
 			let manifest_key = physicalResource ? key : xover.manifest.sources[key] || key
 			if (typeof (manifest_key) == 'string' && manifest_key !== key) {
@@ -5842,8 +5870,15 @@ Object.defineProperty(xover.URL.prototype, 'relativeTo', {
 });
 
 Object.defineProperty(xover.URL.prototype, 'clone', {
-	value: function () {
-		return new xover.URL(this.toString(), undefined, this.request || {});
+	value: function (settings = {}) {
+		let clone = new xover.URL(this.href);
+		let inherited_settings = {};
+		for (let prop of ['method', 'headers', 'body', 'mode', 'credentials', 'cache', 'redirect', 'referrer', 'integrity', 'keepalive', 'signal']) {
+			let value = this.settings?.[prop];
+			if (value !== undefined) inherited_settings[prop] = prop === 'headers' ? new Headers(value) : value;
+		}
+		xover.json.combine.call(clone.settings, inherited_settings, settings);
+		return clone;
 	}
 });
 
@@ -7783,7 +7818,7 @@ xover.modernize = async function (targetWindow) {
 					})
 				})
 
-				xover.listener.on(`mutate::xsl:*`, function ({ mutations }) {
+					xover.listener.on(`mutate::xsl:*`, function ({ event, mutations }) {
 					if (!(event || {}).defaultPrevented) {
 						mutations.clear()
 					}
@@ -12454,14 +12489,18 @@ xover.modernize = async function (targetWindow) {
 										documentElement.replaceWith(new_node);
 										documentElement = new_node;
 									}
-									const preserve_unbound_target = target.nodeType === Node.ELEMENT_NODE
-										&& !target.hasAttributes()
-										&& target.localName === documentElement.localName
-										&& target.stamp;
-									if (preserve_unbound_target) {
-										let origin_signature = xover.references.originSignature.call(target);
+									// A rendered section must keep the identity of the invocation it
+									// materialized. Parent renders recreate that invocation, and the
+									// reconciler uses this signature to transplant the live child instead
+									// of replacing it with the freshly generated placeholder.
+									const preserves_origin = target.nodeType === Node.ELEMENT_NODE && (
+										xover.references.isSection(target)
+										|| !target.hasAttributes() && target.localName === documentElement.localName && target.stamp
+									);
+									if (preserves_origin) {
 										let existing_origin = xover.references.normalizeOriginSignature(target.getAttribute("xo-origin-stamp"));
-										(origin_signature || existing_origin) && documentElement.setAttribute("xo-origin-stamp", existing_origin || origin_signature);
+										let origin_signature = existing_origin || xover.references.originSignature.call(target);
+										if (origin_signature) documentElement.setAttribute("xo-origin-stamp", origin_signature);
 									}
 									xo_store && xo_store !== xo_scope && documentElement.importAttributeNode(xo_store, { silent: true });
 									xo_scope && documentElement.importAttributeNode(xo_scope, { silent: true });
@@ -13374,7 +13413,7 @@ xover.Response = function (response, request) {
 		get: function () {
 			return body === undefined ? self.processBody() : body;
 		}
-	});
+		});
 	Object.setPrototypeOf(response, this);
 	return response;
 }
@@ -13705,7 +13744,7 @@ xover.Request = function (request, ...args) {
 		request.settings.resumable = false;
 	}
 	if (!new.target && self instanceof xover.Request && self.handlers.length) request.handlers.merge(self.handlers || []);
-	request.apply(args);
+	request.apply(args.slice());
 	if (payload.length) {
 		if (url.method === 'POST' || payload.some(item => instanceOf.call(item, XMLDocument, Document, File, Blob, FormData))) {
 			url.method = 'POST';
@@ -13750,6 +13789,7 @@ xover.Request = function (request, ...args) {
 				}
 				args = xover.json.evaluate(args);
 				xover.json.combine.call(request.settings, xover.manifest.getSettings(request));
+				request.arguments = args.slice();
 				request.apply(args);
 				let resolve_fetching, reject_fetching;
 				request.fetching = new Promise((resolve, reject) => {
@@ -13758,6 +13798,11 @@ xover.Request = function (request, ...args) {
 				});
 				request.state = "pending";
 				let cloned_request;
+				// Function-backed requests never materialize a native Request.  The
+				// effective headers still belong to the accumulated xover request.
+				const getRequestHeaders = () => cloned_request?.headers
+					|| request.headers
+					|| new Headers(request.settings?.headers || {});
 				let run_attempt = () => Promise.resolve().then(async () => {
 					if (request.target instanceof Comment && request.target.parentNode instanceof Document) {
 						request.target = request.target.parentNode;
@@ -13956,7 +14001,7 @@ xover.Request = function (request, ...args) {
 						}
 					});
 
-					if ((cloned_request.headers.get('Accept') || '').toLowerCase().indexOf("xml") != -1 && (response.headers.get('Content-Type') || '').toLowerCase().indexOf("json") != -1) {
+					if ((getRequestHeaders().get('Accept') || '').toLowerCase().indexOf("xml") != -1 && (response.headers.get('Content-Type') || '').toLowerCase().indexOf("json") != -1) {
 						return_value = xover.xml.fromJSON(return_value);
 					}
 
@@ -13999,11 +14044,11 @@ xover.Request = function (request, ...args) {
 						} else if ([409, 449, 503].includes(response.status)) {
 							return Promise.reject(response);
 						} else if (
-							(cloned_request.headers.get("Accept") || "*/*").indexOf("*/*") != -1 ||
-							(cloned_request.headers.get("Accept") || "").split(/\s*,\s*/g).includes(response.headers.get("content-type")) ||
-							xover.mimeTypes[response.bodyType] == cloned_request.headers.get("Accept") ||
-							(cloned_request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(return_value.type) != -1 ||
-							(cloned_request.headers.get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
+							(getRequestHeaders().get("Accept") || "*/*").indexOf("*/*") != -1 ||
+							(getRequestHeaders().get("Accept") || "").split(/\s*,\s*/g).includes(response.headers.get("content-type")) ||
+							xover.mimeTypes[response.bodyType] == getRequestHeaders().get("Accept") ||
+							(getRequestHeaders().get("Accept") || "").replace("text/plain", "text").indexOf(return_value.type) != -1 ||
+							(getRequestHeaders().get("Accept") || "").replace("text/plain", "text").indexOf(response.bodyType) != -1) {
 
 							return Promise.resolve(return_value);
 						} else {
@@ -14016,7 +14061,7 @@ xover.Request = function (request, ...args) {
 				}).then(async response => {
 					let target = request.target;
 					if (!target || response === target) return response;
-					let accept = cloned_request.headers.get("Accept") || '*';
+					let accept = getRequestHeaders().get("Accept") || '*';
 					let node_expected = accept.match(/xml|xsl/i);
 					let html_expected = accept.match(/html/i);
 					let json_expected = accept.match(/json/i);
@@ -14096,8 +14141,8 @@ xover.Request = function (request, ...args) {
 						if (![499, 404].includes(e.status) && e.status >= 400 && document) {
 							document.observe()
 							if (e.status == 412 && document instanceof Node) {
-								xover.ensureSuspense(document);
-								content.sentinel = document;
+								xover.ensureSuspense(response);
+								content.sentinel = response;
 								content.source = this.source;
 							}
 						}
@@ -14129,6 +14174,7 @@ xover.Request = function (request, ...args) {
 									: xover.statusCodes.resumable;
 							let failure_event = new xover.listener.Event('failure', {
 								url, request, response, error: failure,
+								settings: request.settings,
 								status: response && response.status,
 								statusText: response && response.statusText,
 								sentinel: request.target instanceof Comment ? request.target : null,
@@ -14446,7 +14492,7 @@ if (!Object.getOwnPropertyDescriptor(xover.Request.prototype, 'apply')) {
 				if (!args[i]) continue;
 				try {
 					if (typeof (args[i]) == 'function') {
-						request.handlers.push(args[i]);
+						if (!request.handlers.includes(args[i])) request.handlers.push(args[i]); //Cambiar por Set
 						args.splice(i, 1)
 					} else if (args[i] instanceof Headers) {
 						for (const [header, value] of [...args[i]]) {
@@ -14462,7 +14508,7 @@ if (!Object.getOwnPropertyDescriptor(xover.Request.prototype, 'apply')) {
 							searchParams.set(key, value)
 						}
 						args.splice(i, 1)
-					} else if (args[i].constructor === {}.constructor && (!Object.keys(args[i]).length || Object.keys(args[i]).some(key => ["method", "headers", "body", "mode", "credentials", "cache", "redirect", "referrer", "integrity", "keepalive", "signal"].includes(key)))) {
+					} else if (args[i].constructor === {}.constructor && (!Object.keys(args[i]).length || Object.keys(args[i]).some(key => ["method", "headers", "body", "mode", "credentials", "cache", "redirect", "referrer", "integrity", "keepalive", "signal", "contract"].includes(key)))) {
 						//let { method, headers, body, mode, credentials, cache, redirect, referrer, integrity, keepalive, signal } = args[0];
 						xover.json.combine.call(request, args[i]);
 						args.splice(i, 1);
@@ -15144,7 +15190,7 @@ xover.xml.staticMerge = function (node1, node2, sectionPlan) {
 		sectionPlan.transplants.push({
 			current,
 			change,
-			liveGeneration: xover.dom.combineGenerations && xover.dom.combineGenerations.get(change) || 0,
+			origin: originStamp(change),
 			wasConnected: !!change.isConnected
 		});
 	}
@@ -15709,12 +15755,9 @@ xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de
 	const combine_target = target;
 	const combine_generation = (xover.dom.combineGenerations.get(combine_target) || 0) + 1;
 	xover.dom.combineGenerations.set(combine_target, combine_generation);
-	// Parent renders can reserve nested live sections while those sections render
-	// independently. Version each affected section to invalidate stale plans.
-	for (let section of target.querySelectorAll ? target.querySelectorAll('[xo-source],[xo-stylesheet],[xo-store]') : []) {
-		if (!xover.references.isSection(section)) continue;
-		xover.dom.combineGenerations.set(section, (xover.dom.combineGenerations.get(section) || 0) + 1);
-	}
+	// A parent combine can move a managed descendant, but it must not invalidate
+	// that descendant's independent render. Only a newer combine for this exact
+	// target supersedes the current operation.
 	const isCurrentCombine = () => xover.dom.combineGenerations.get(combine_target) === combine_generation;
 	let document = target.ownerDocument || window.document;
 	let source_element = new_node && (
@@ -15892,9 +15935,9 @@ xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de
 		&& [...root.querySelectorAll("slot.placeholder")]
 			.filter(xover.xml.isSyntheticPlaceholder)
 			.forEach(placeholder => placeholder.remove());
-	discardSyntheticPlaceholders(target);
-	discardSyntheticPlaceholders(new_node);
 	if (!changes.length) {
+		discardSyntheticPlaceholders(target);
+		discardSyntheticPlaceholders(new_node);
 		return target;
 	}
 	//let preceding_siblings = [];
@@ -15931,17 +15974,39 @@ xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de
 
 	////target.observer && target.observer.disconnect();
 	let pendingTransplants = sectionPlan && sectionPlan.transplants || [];
-	let transplantSections = function (change) {
+	let findCurrentSection = function (pair) {
+		if (!(pair.origin && combine_target && combine_target.querySelectorAll)) return null;
+		return [combine_target, ...combine_target.querySelectorAll('[xo-origin-stamp]')].find(section =>
+			section.isConnected
+			&& xover.references.normalizeOriginSignature(section.getAttribute("xo-origin-stamp")) === pair.origin
+		) || null;
+	}
+	let transplantSections = function (change, current) {
 		if (!(change && change.contains)) return;
 		for (let pair of pendingTransplants.filter(pair => !pair.applied && change.contains(pair.current))) {
 			if (!isCurrentCombine()) return;
-			if (pair.wasConnected && !pair.change.isConnected
-				|| pair.liveGeneration !== (xover.dom.combineGenerations.get(pair.change) || 0)) {
+			let live = pair.change;
+			if (pair.wasConnected && !live.isConnected) live = findCurrentSection(pair);
+			if (!live) {
 				pair.stale = true;
 				continue;
 			}
-			syncLiveSection(pair.change, pair.current);
-			pair.current.replaceWith(pair.change);
+			if (pair.current === change && live === current) {
+				// The difference already compares the reserved candidate with its
+				// live counterpart. Keep the live node connected and consume only
+				// the detached candidate. Enclosing changes are processed first, so
+				// relocation has already happened when the parent required it.
+				syncLiveSection(live, pair.current);
+				pair.current.remove();
+				pair.change = live;
+				pair.applied = true;
+				continue;
+			}
+			// Moving the live node is safe even when its own render is in flight:
+			// that render keeps operating on the same node at its new location.
+			syncLiveSection(live, pair.current);
+			pair.current.replaceWith(live);
+			pair.change = live;
 			pair.applied = true;
 		}
 	}
@@ -15972,7 +16037,7 @@ xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de
 			change_preceding_siblings = change.selectNodes("preceding-sibling::comment()");
 		}
 		let result = current;
-		transplantSections(change);
+		transplantSections(change, current);
 		if (pendingTransplants.some(pair => pair.applied && pair.current === change && pair.change === current)) continue;
 		[...change.querySelectorAll(`slot.placeholder`)].remove();
 		let active_element = document.activeElement;
@@ -16054,6 +16119,12 @@ xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de
 			target = result;
 		}
 	}
+	// Synthetic slots are references used by the change and transplant plans.
+	// Removing them before the loop makes A-only live sections disappear and
+	// prevents B-only nodes from being inserted. At this point every applicable
+	// placeholder has either been consumed or can safely be discarded.
+	discardSyntheticPlaceholders(target);
+	discardSyntheticPlaceholders(new_node);
 	//if (coordinates) coordinates.target.scrollPosition = { behavior: 'instant', top: coordinates.y, left: coordinates.x };
 	await xover.init.behaviors.call(target);
 	post_render_scripts.childNodes.length && xover.delay(1).then(() => xover.dom.applyScripts.call(target, post_render_scripts.childNodes));
@@ -19265,26 +19336,25 @@ xover.listener.on('login', function () {
 	return login_store && login_store.resume();
 });
 
-xover.listener.on("failure", function ({ request, response, statusCodes }) {
+xover.listener.on("failure", function ({ event, request, response, statusCodes }) {
 	if (!response || statusCodes.ignored.includes(response.status)) return;
-	let rendered_response = response.render(request);
+	let rendered_response = response.render();
 	if (statusCodes.resumable.includes(response.status)) {
 		event.preventDefault();
 	}
-	let sentinel = request && request.target instanceof Comment && request.target.sentinel;
-	if (sentinel && response.status === 412) {
-		xover.ensureSuspense(sentinel).suspense.then(() => request.resume && request.resume());
+	if (response.status === 412) {
+		xover.ensureSuspense(response).suspense.then(() => request.resume && request.resume());
 	}
 	return rendered_response;
 });
 
-xover.listener.on('Response:reject', function ({ response = {}, request = {} }) {
+xover.listener.on('Response:reject', function ({ event, response = {}, request = {} }) {
 	if (!response.ok && ((request.url || {}).pathname || '').indexOf(`.manifest`) != -1) {
 		event.preventDefault();
 	}
 })
 
-xover.authenticationFailure = function ({ response, request }) {
+xover.authenticationFailure = function ({ event, response, request }) {
 	let authentication = request.settings.authentication;
 	if (authentication === undefined || authentication === false || request.settings.resumable === false) return;
 
@@ -19328,13 +19398,13 @@ xover.authenticationFailure = function ({ response, request }) {
 	});
 }
 
-xover.listener.on('Response:failure?status=401#server:request', xover.authenticationFailure)
+xover.listener.on('Response:failure?settings.authentication&status=401', xover.authenticationFailure)
 
 xover.listener.on('SyntaxError', function (e) {
 	console.error(e)
 })
 
-xover.listener.on('ErrorEvent', function () {
+xover.listener.on('ErrorEvent', function (event) {
 	if (!event.lineno) return;
 	let args = { message: event.message, filename: event.filename, lineno: event.lineno, colno: event.colno }
 	console.error(event.message, args)
