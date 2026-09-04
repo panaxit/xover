@@ -4952,17 +4952,30 @@ Object.defineProperty(xover.Source.prototype, `fetch`, {
 		const self = this;
 		let tag = self.tag;
 		let url = this.url;
-		let request = (url || {}).request || url || new xover.Request(tag);
 		let document = self.document;
 		return async function (...args) {
-			if (tag[0] == '#' && xover.manifest.init.status != 'initialized') {
+			if (tag && tag[0] == '#' && xover.manifest.init.status != 'initialized') {
 				await xover.manifest.init();
 			}
-			let response;
+			let response, request;
 			try {
+				let target = this === self || !this ? document : this;
+				// A logical source can resolve to a function-backed request while its URL
+				// remains local (for example, #report -> server:request). Rebuilding the
+				// request from that URL drops the resolver and yields ack:no-content.
+				// Keep one request per target, but construct it from the source tag.
+				if (url) {
+					request = url.requests.get(target);
+					if (!request) {
+						request = new xover.Request(tag);
+						url.requests.set(target, request);
+					}
+				} else {
+					request = new xover.Request(tag);
+				}
 				request.source = self;
-				request.target = this === self ? document : this;
-				response = await request.fetch.call(this, ...args);
+				request.target = target;
+				response = await request.fetch.call(target, ...args);
 				return Promise.resolve(response);
 			} catch (e) {
 				//if (!e) {
@@ -5672,10 +5685,10 @@ xover.URL.prototype = Object.create(URL.prototype);
 for (let prop of ['method', 'headers', 'body', 'mode', 'credentials', 'cache', 'redirect', 'referrer', 'integrity', 'keepalive', 'signal']) {
 	Object.defineProperty(xover.URL.prototype, prop, {
 		get: function () {
-			return (this.request || {})[prop];
+			return this.settings[prop];
 		},
 		set: function (input) {
-			return (this.request || {})[prop] = input;
+			return this.settings[prop] = input;
 		}
 	})
 }
@@ -5690,24 +5703,35 @@ Object.defineProperty(xover.URL.prototype, 'tryParse', {
 	}
 })
 
+Object.defineProperty(xover.URL.prototype, 'requests', {
+	get: function () {
+		if (!Object.hasOwnProperty(this, 'requests')) {
+			Object.defineProperty(this, 'requests', {
+				value: new Map(),
+				writable: false,
+				enumerable: false,
+				configurable: true
+			});
+		}
+		return this.requests;
+	}
+});
+
 Object.defineProperty(xover.URL.prototype, 'request', {
 	get: function () {
-		if (!Object.hasOwnProperty(this, "request")) {
-			return null
-		}
-		return this.request;
-	}, set: function (input) {
-		delete this.settings.headers;
-		Object.defineProperty(input, 'url', {
-			value: this
-			, writable: true
-		})
-		Object.defineProperty(this, 'request', {
-			value: input
-			, writable: true
-		})
+		const url = this;
+		return function (...args) {
+			const target = this === url ? url : this.target || this;
+			if (!url.requests.has(target)) {
+				url.requests.set(target, new xover.Request(url, ...args));
+			}
+			return url.requests.get(target);
+		};
+	},
+	set: function (request) {
+		this.requests.set(this, request);
 	}
-})
+});
 
 //Object.defineProperty(xover.URL.prototype, 'tags', {
 //    get: function () {
@@ -5729,8 +5753,9 @@ Object.defineProperty(xover.URL.prototype, 'fetch', {
 	get: function () {
 		const self = this;
 		return async function (...args) {
-			let request = self.request || new xover.Request(self, self.settings);
-			return request ? request.fetch.call(this, ...args) : xover.fetch(this, args);
+			let target = this || self;
+			let request = self.request.call(target);
+			return request ? request.fetch.call(target, ...args) : xover.fetch(target, args);
 		}
 	}
 });
@@ -13732,8 +13757,12 @@ xover.Request = function (request, ...args) {
 	if (url && typeof (request) === 'string' && request[0] === "#") {
 		url.hash = request
 	}
-	request = url.request || new Request(url, url.settings);
-	url.request = url.request || request;
+	request = new Request(url, url.settings);
+	Object.defineProperty(request, 'url', {
+		value: url,
+		writable: true,
+		configurable: true
+	});
 	Object.setPrototypeOf(request, xover.Request.prototype);
 	let login_url = xover.manifest.server && xover.manifest.server.login && xover.URL(xover.manifest.server.login);
 	if (
