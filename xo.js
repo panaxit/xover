@@ -690,9 +690,9 @@ xover.init = async function () {
 				} else {
 					let source = xover.sources[href];
 					if (source.url) source.url.settings.resumable = false;
-					let ready = source.ready;
-					let request = (source.url || {}).request;
+					let request = source.url && source.url.request.call(source.source || source);
 					if (request) request.settings.resumable = false;
+					let ready = source.ready;
 					await wait_for_start(request, ready);
 					if (href.startsWith("#")) {
 						return xover.stores[href].render();
@@ -4803,6 +4803,13 @@ xover.Source = function (tag_name) {
 		});
 	}
 
+	Object.defineProperty(this, 'target', {
+		enumerable: true,
+		get: function () {
+			return this.document;
+		}
+	});
+
 	Object.defineProperty(this, 'document', {
 		enumerable: true,
 		get: function () {
@@ -4960,19 +4967,7 @@ Object.defineProperty(xover.Source.prototype, `fetch`, {
 			let response, request;
 			try {
 				let target = this === self || !this ? document : this;
-				// A logical source can resolve to a function-backed request while its URL
-				// remains local (for example, #report -> server:request). Rebuilding the
-				// request from that URL drops the resolver and yields ack:no-content.
-				// Keep one request per target, but construct it from the source tag.
-				if (url) {
-					request = url.requests.get(target);
-					if (!request) {
-						request = new xover.Request(tag);
-						url.requests.set(target, request);
-					}
-				} else {
-					request = new xover.Request(tag);
-				}
+				request = url ? url.request.call(target === document ? self : target) : new xover.Request(tag);
 				request.source = self;
 				request.target = target;
 				response = await request.fetch.call(target, ...args);
@@ -5723,7 +5718,20 @@ Object.defineProperty(xover.URL.prototype, 'request', {
 		return function (...args) {
 			const target = this === url ? url : this.target || this;
 			if (!url.requests.has(target)) {
-				url.requests.set(target, new xover.Request(url, ...args));
+				// A source URL may be the logical local URL of a manifest alias. Build
+				// from the source tag so function-backed mappings remain available.
+				const input = url.source && url.source.tag || url;
+				const request = new xover.Request(input);
+				for (const setting of Reflect.ownKeys(url.settings)) {
+					const value = url.settings[setting];
+					if (setting === 'headers') {
+						for (const [header, header_value] of value) request.headers.set(header, header_value);
+					} else if (value !== undefined) {
+						request.settings[setting] = value;
+					}
+				}
+				request.apply(args.slice());
+				url.requests.set(target, request);
 			}
 			return url.requests.get(target);
 		};
