@@ -3909,7 +3909,11 @@ xover.xml.createDocument = function (xml, options = { autotransform: true, mime_
                         new_node = new_node.replace(/\^/g, '');
                         result = xover.xml.createDocument.call(context, new_node, options);
                     } else if (String(message).match(/prefix|prefijo/)) {
-                        let prefix = (parsererror.textContent).match(/(?:prefix|prefijo)\s+([^\s]+\b)/).pop();
+                        let parser_message = parsererror.textContent || '';
+                        let match = parser_message.match(/\b([\w.-]+):[\w.-]+\s+(?:prefix|prefijo)\s+(?:is|está|esta|no|not)\b/i)
+                            || parser_message.match(/(?:prefix|prefijo)\s+["']?([\w.-]+)["']?\b/i);
+                        let prefix = match && match[1];
+                        if (/^(?:is|está|esta|no|not|unbound)$/i.test(prefix || '')) prefix = null;
                         let namespace = context.resolveNS(prefix) || xover.spaces[prefix] || null;
                         if (!namespace || sXML.indexOf(` xmlns:${prefix}=`) != -1) {
                             //xml.documentElement.appendChild(message.documentElement);
@@ -9741,7 +9745,7 @@ xover.modernize = async function (targetWindow) {
                                                     let ready = source.ready;
                                                     throw (ready);
                                                 }
-                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value.indexOf('@') != -1 ? name.value.replace(/"/g, "&quot;") : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template xmlns:xsl="http://www.w3.org/1999/XSL/Transform" mode="globalization:${param_name}" match="${name.value.indexOf('@') != -1 ? name.value.replace(/"/g, "&quot;") : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
                                             }
                                         };
