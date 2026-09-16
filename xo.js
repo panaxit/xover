@@ -4914,7 +4914,7 @@ xover.Source = function (tag_name) {
 				if (!__document.firstChild) {
 					await store.fetch();
 				}
-				let document = __document.cloneNode(true);
+				let document = __document;
 				window.dispatchEvent(new xover.listener.Event('beforeRender', { store: this, tag, document }, this));
 				let renders = [];
 				let sections = !target && xover.site.sections.filter(el => el.store && el.store === self) || [];
@@ -9454,27 +9454,21 @@ xover.modernize = async function (targetWindow) {
 							let self = this;
 							let context = self.closest(`[xo-store],[xo-source],[xo-scope],[xo-stylesheet]`) || self.section || self;
 							let scope_attr = context && context.getAttributeNode && context.getAttributeNode("xo-scope");
-							let scope_source = scope_attr && scope_attr.source;
-							let scope_document = scope_source && scope_source.document || scope_source;
-							let has_bound_scope = scope_attr && Object.prototype.hasOwnProperty.call(scope_attr, "scope");
-							let has_bound_source = scope_attr && Object.prototype.hasOwnProperty.call(scope_attr, "scopeSource");
-							// Keep the resolved node for aliases, but only while its source document
-							// is still the document that produced it. A fetch can replace that document
-							// on the same Source instance.
-							let bound_scope = has_bound_scope && (!has_bound_source || scope_attr.scopeSource === scope_document) ? scope_attr.scope : undefined;
+							let scope_owner = scope_attr || context && context.getAttributeNode && (
+								context.getAttributeNode("xo-store") || context.getAttributeNode("xo-source"));
+							let bound_scope = scope_owner && Object.prototype.hasOwnProperty.call(scope_owner, "scope") ? scope_owner.scope : undefined;
 							let scope = bound_scope !== undefined ? bound_scope : (() => {
 								if (scope_attr) {
 									let value = xover.references.expand(scope_attr.value || "");
 									let collection = value.indexOf("set:") == 0;
 									let selector = collection ? value.substring(4).trim() : value;
-									let source = scope_source;
+									let source = scope_attr.source;
 									let resolve_scope = source => {
 										source = source && source.document || source;
 										let node = collection ? xover.references.findAll.call(source, selector) : xover.references.find.call(source, selector);
 										let resolved = node || (!selector ? source : null) || source;
 										if (resolved) {
 											Object.defineProperty(scope_attr, 'scope', { value: resolved, configurable: true, writable: true, enumerable: false });
-											Object.defineProperty(scope_attr, 'scopeSource', { value: source, configurable: true, writable: true, enumerable: false });
 										}
 										return resolved;
 									}
@@ -10192,7 +10186,16 @@ xover.modernize = async function (targetWindow) {
 								} else if (source.nodeType == Node.ATTRIBUTE_NODE) { //[...new_node.attributes].filter(attr => !attr.namespaceURI) //Is it necessary to copy attributes with namespaces?
 									const attr = source;
 									//if (static.contains(`@${attr.name}`) && !static.contains(`-@${attr.name}`)) continue;
-									if (attr.isEqualNode(target.attributes[attr.name])) continue;
+									const target_attr = target.attributes[attr.name];
+									if (attr.isEqualNode(target_attr)) {
+										// Attribute text alone does not carry the concrete node selected by
+										// a render. Refresh these bindings even when xo-scope itself has
+										// the same selector, otherwise a component keeps the old response.
+										for (const prop of ['source', 'scope', 'store']) {
+											if (Object.prototype.hasOwnProperty.call(attr, prop)) Object.defineProperty(target_attr, prop, { value: attr[prop], configurable: true, writable: true, enumerable: false });
+										}
+										continue;
+									}
 									source = attr.ownerElement;
 									if (attr.name == "class") {
 										if (!target.hasAttribute(attr.name)) target.setAttribute(attr.name, "");
@@ -11385,9 +11388,6 @@ xover.modernize = async function (targetWindow) {
 					if (deep && this.hasOwnProperty("source")) {
 						this.formerParent = this.parentNode;
 						clone.source = this.source;
-					}
-					if (deep) for (const prop of ['scope', 'scopeSource', 'store']) {
-						if (Object.prototype.hasOwnProperty.call(this, prop)) Object.defineProperty(clone, prop, { value: this[prop], configurable: true, writable: true, enumerable: false });
 					}
 					return clone;
 				}
@@ -15278,7 +15278,6 @@ xover.xml.normalizeChildren = function (nodeA, nodeB, options) {
 }
 
 xover.xml.staticMerge = function (node1, node2, sectionPlan) {
-	if (!instanceOf.call(node2, HTMLTemplateElement) && xover.references.scopeChanged(node1, node2)) return;
 	const isRootMerge = this !== node1;
 	sectionPlan = sectionPlan || (isRootMerge && { transplants: [] });
 	if (isRootMerge) xover.xml.sectionPlans.set(node2, sectionPlan);
@@ -15305,6 +15304,17 @@ xover.xml.staticMerge = function (node1, node2, sectionPlan) {
 		return xover.references.originSignature.call(node);
 	}
 	function addTransplant(current, change) {
+		// An unrendered invocation inherits its parent's scope. Compare its source
+		// and store with the live section, not that inherited scope with the child's
+		// resolved data node. Two rendered sections still compare their node identity.
+		const invocation_source = current && current.getAttribute('xo-source') || '';
+		const isInvocation = isSection(current) && !current.hasAttribute('xo-scope')
+			&& !current.hasAttribute('xo-origin-stamp')
+			// A shell can invoke a named fragment as xo-source="#menu".  Its
+			// rendered section identifies the same source through xo-store="#menu".
+			// Only fragment references use this bridge; aliases remain independent.
+			&& invocation_source.startsWith('#') && invocation_source === change.getAttribute('xo-store');
+		if (!isInvocation && xover.references.scopeChanged(change, current)) return;
 		if (sectionPlan.transplants.some(pair => pair.current === current || pair.change === change)) return;
 		sectionPlan.transplants.push({
 			current,
@@ -15339,6 +15349,10 @@ xover.xml.staticMerge = function (node1, node2, sectionPlan) {
 		}
 		prepareSections(node1, node2);
 	}
+	// A changed scope replaces this branch in combine.  The root pass still has
+	// to reserve independent sections first (for example the shell's #menu
+	// invocation), so they can be moved into the replacement tree intact.
+	if (!instanceOf.call(node2, HTMLTemplateElement) && xover.references.scopeChanged(node1, node2)) return;
 	////if (node1.shadowRoot && !node2.shadowRoot && node1.nodeType === Node.ELEMENT_NODE
 	////    && node1.getAttribute("xo-source") == node2.getAttribute("xo-source")
 	////    && node1.getAttribute("xo-stylesheet") == node2.getAttribute("xo-stylesheet")
