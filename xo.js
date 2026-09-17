@@ -15304,16 +15304,16 @@ xover.xml.staticMerge = function (node1, node2, sectionPlan) {
 		return xover.references.originSignature.call(node);
 	}
 	function addTransplant(current, change) {
-		// An unrendered invocation inherits its parent's scope. Compare its source
-		// and store with the live section, not that inherited scope with the child's
-		// resolved data node. Two rendered sections still compare their node identity.
-		const invocation_source = current && current.getAttribute('xo-source') || '';
+		const renderScope = node => {
+			const attr = node && (node.getAttributeNode('xo-store') || node.getAttributeNode('xo-source'));
+			const source = attr && attr.source;
+			return source && (source.document || source) || node && node.scope;
+		};
+		// An unrendered section has not selected its local xo-scope yet. Compare the
+		// resolved render-input references, never the source/store attribute text.
 		const isInvocation = isSection(current) && !current.hasAttribute('xo-scope')
 			&& !current.hasAttribute('xo-origin-stamp')
-			// A shell can invoke a named fragment as xo-source="#menu".  Its
-			// rendered section identifies the same source through xo-store="#menu".
-			// Only fragment references use this bridge; aliases remain independent.
-			&& invocation_source.startsWith('#') && invocation_source === change.getAttribute('xo-store');
+			&& !xover.references.scopeChanged({ scope: renderScope(change) }, { scope: renderScope(current) });
 		if (!isInvocation && xover.references.scopeChanged(change, current)) return;
 		if (sectionPlan.transplants.some(pair => pair.current === current || pair.change === change)) return;
 		sectionPlan.transplants.push({
