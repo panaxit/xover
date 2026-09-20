@@ -5801,7 +5801,10 @@ Object.defineProperty(xover.URL.prototype, 'getOptions', {
 		}
 		let url = this;
 		let pending = (async function () {
-			let headers = new Headers(url.settings.headers);
+			// Contract discovery is a real request too. Resolve manifest expressions
+			// before sending it so protected endpoints receive the same credentials as
+			// the request that follows.
+			let headers = new Headers(xover.json.evaluate([...url.settings.headers]));
 			if (!headers.has('Accept')) headers.set('Accept', 'application/x-xover-contract+headers');
 			let method = settings.method || (headers.get('Accept').includes('application/x-xover-contract+headers') ? 'HEAD' : 'GET');
 			let response = await fetch(url, {
@@ -13493,7 +13496,7 @@ xover.Response = function (response, request) {
 		get: function () {
 			return body === undefined ? self.processBody() : body;
 		}
-		});
+	});
 	Object.setPrototypeOf(response, this);
 	return response;
 }
@@ -13931,6 +13934,15 @@ xover.Request = function (request, ...args) {
 						return Promise.reject(new TypeError(`No function is associated with ${url}`));
 					}
 					const settings = request.settings;
+					let source = request.source || target && target.source;
+					let contract = request.contract || source?.contract || null;
+					// A contract-enabled endpoint must be inspected before its first data
+					// request. URL.getContract caches the result per URL, while Source keeps
+					// the resolved contract available to its related requests.
+					if (settings.contract === true && !contract) {
+						contract = await url.getContract();
+						source?.setContract?.(contract);
+					}
 
 					//if (instanceOf.call(self, xover.Request)) {
 					//	debugger
@@ -13992,8 +14004,6 @@ xover.Request = function (request, ...args) {
 					} else if (args.length && args[0]) {
 						request.body.push(args[0]);
 					}
-					let source = request.source || target && target.source;
-					let contract = request.contract || source?.contract || null;
 					request.contract = contract;
 
 					before_event = new xover.listener.Event('beforeFetch', { document: instanceOf.call(target, Document) ? target : null, target, tags: request.tags, parameters: request.parameters, settings: url.settings, searchParams: url.searchParams, href: url.href, localpath: url.localpath, pathname: url.pathname, resource: url.resource, hash: url.hash, url, args }, request);
