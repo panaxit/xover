@@ -719,8 +719,6 @@ xover.init = async function () {
 			// Finish the initial DOM pass before signalling initialization.  A pageshow
 			// can otherwise start a second pass while these sections are still merging.
 			await xover.site.sections.render();
-			//let active = xover.stores.active;
-			//active && !document.querySelector(`[id="${self.tag.replace(/^#/, "")}"]`) && !sections.find(section => section.store == active && !section.hasAttribute("xo-stylesheet")) && await active.render(); // store will render only if there isn't any section requesting it and it doesn't have xo-stylesheet attribute
 
 			return Promise.resolve();
 		} catch (e) {
@@ -729,8 +727,10 @@ xover.init = async function () {
 	}).catch(e => {
 		this.init.status = 'error';
 		console.error(e);
-        /*return*/ Promise.reject(e); // Ommited return to prevent hitting multiple times unhandled rejection
+		throw e;
 	}).finally(async () => {
+		// Retain the rejected initialization promise; do not announce success on failure.
+		if (this.init.status === 'error') return;
 		this.init.initializing = 'done';
 		progress_renders = await progress_renders || [];
 		window.dispatchEvent(new xover.listener.Event(`xover-initialized`, { progress_renders }, this));
@@ -784,6 +784,7 @@ xover.dom.Observer = function (target_node = window.document) {
 
 	const document = (target_node.ownerDocument || target_node);
 	const observer = new MutationObserver((mutationsList, observer) => {
+		xover.waitFor?.resumeDOM?.();
 		if ([DragEvent].includes((event || {}).constructor)) return;
 		let url = document.url;
 		for (let [, handlers] of xover.listener.get('intersect') || []) {
@@ -2910,7 +2911,7 @@ xover.Manifest = function (manifest = {}) {
 					}
 					return result
 				}
-			} else if (key in self) {
+			} else if (Object.hasOwn(self, key) || key in self) {
 				source = self[key];
 				if (typeof (source) == 'function') {
 					return source;
@@ -2920,12 +2921,12 @@ xover.Manifest = function (manifest = {}) {
 				}
 				return source;
 			}
-			source = Object.keys(self).reverse().find(manifest_key => key[0] == '#' && manifest_key[1] && manifest_key === '#' + xover.URL(key.substring(1)).pathname.slice(location.pathname.length) || manifest_key[0] === '^' && key.matches(manifest_key));
+			source = Object.keys(self).reverse().find(manifest_key => key[0] == '#' && manifest_key[1] && manifest_key === '#' + xover.URL(key.substring(1))?.pathname.slice(location.pathname.length) || manifest_key[0] === '^' && key.matches(manifest_key));
 			if (/^\^/.test(source)) {
-				source = xover.json.evaluate.call(new RegExp(source, "gi"), xover.manifest.sources[source], key)
+				source = xover.json.evaluate.call(new RegExp(source, "gi"), self[source], key)
 				self[key] = source
 			} else if (source) {
-				source = xover.manifest.sources[source];
+				source = self[source];
 			} else if (key.indexOf(".") != -1) {
 				source = key;
 			}
@@ -4718,6 +4719,7 @@ xover.xml.parseErrors = function (result, sXML, options, context) {
 
 	if (!result || !result.getElementsByTagName) return result
 	if ((result.getElementsByTagName('parsererror').length || 0) == 0) return result
+	if (options.silent) return false
 
 	for (let parsererror of [...result.querySelectorAll('parsererror div, parsererror sourcetext')]) {
 		let message = parsererror.nodeName == 'sourcetext'
@@ -4789,6 +4791,7 @@ xover.xml.parseErrors = function (result, sXML, options, context) {
 xover.Source = function (tag_name) {
 	const tag = tag_name;
 	if (!(this instanceof xover.Source)) return new xover.Source(tag);
+	this.tags = new Set(tag ? [tag] : []);
 	let expiration_ms = function (expiry) {
 		if (expiry == null) return null;
 		let ms = 0;
@@ -5005,7 +5008,9 @@ xover.Source = function (tag_name) {
 					renders = renders.concat(document.render(stylesheets))
 				}
 				renders = await Promise.all(renders);
-				if (!renders.length && (target || active_store === self)) document.render({ target: target || window.document.body, store: self });
+				if (!renders.length) {
+				renders = [await document.render({ target, store: self })].flat();
+				}
 				return renders;
 			}).then((renders) => {
 				window.dispatchEvent(new xover.listener.Event('domLoaded', { targets: renders }, this));
@@ -5067,7 +5072,9 @@ Object.defineProperty(xover.Source.prototype, `fetch`, {
 				request = url.request.call(target === document ? self : target);
 				request.source = document.source || self;
 				request.target = target;
+				for (const tag of self.tags) request.tags.add(tag);
 				response = await request.fetch.call(target, ...args);
+				for (const tag of request.tags) self.tags.add(tag);
 				// This is the request whose response was applied to the source document.
 				// Keep it separate from the mutable source URL so URL#dirty can compare
 				// pending parameters with the last applied snapshot.
@@ -5161,6 +5168,7 @@ xover.getSource = function (key) {
 		: xover.normalizeKey(manifest_key);
 	if (self.has(manifest_key)) {
 		let document = self.get(manifest_key);
+		document.source && document.source.tags.add(key);
 		if (typeof key === 'string' && key !== manifest_key) {
 			self.set(xover.normalizeKey(key), document);
 		}
@@ -5172,6 +5180,7 @@ xover.getSource = function (key) {
 	} else if (mapped && typeof (manifest_source) === 'string') {
 		let source = xover.sources[manifest_source];
 		if (instanceOf.call(source, Document, DocumentFragment)) {
+			source.source && source.source.tags.add(key);
 			self.set(manifest_key, source);
 			return source;
 		}
@@ -6189,6 +6198,7 @@ Object.defineProperty(xover.URL.prototype, 'basepath', {
 });
 Object.defineProperty(URL.prototype, 'path', {
 	get: function () {
+		const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		let pathname = this.pathname.replace(/[^/]+$/, "")
 		if (this.origin == window.location.origin) {
 			let base = (location.basepath || "").replace(/^\/|\/$/g, "")
@@ -6923,11 +6933,76 @@ xover.format = function (value, mask, locale = navigator.language) {
 	return formatted;
 };
 
-xover.modernize = async function (targetWindow) {
+// Capture the framework URL while xo.js is executing, before an async load or iframe.
+const xoverScript = document.currentScript || [...document.scripts].reverse().find(script => /(^|\/)xo(?:\.min)?\.js(?:\?|$)/.test(script.src));
+const xoverScriptURL = xoverScript && xoverScript.src;
+const xoverScriptNonce = xoverScript && xoverScript.nonce;
+const modernizingWindows = new WeakMap();
+
+function supportsXSLT(targetWindow) {
 	try {
-		targetWindow = targetWindow || toString.call(this) == '[object Window]' ? this : window;
-		if (targetWindow.modernized) return;
+		const parser = new targetWindow.DOMParser();
+		const processor = new targetWindow.XSLTProcessor();
+		const xml = parser.parseFromString('<test/>', 'application/xml');
+		processor.importStylesheet(parser.parseFromString('<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0"><xsl:param name="value"/><xsl:template match="/"><ok value="{$value}"/></xsl:template></xsl:stylesheet>', 'application/xml'));
+		processor.setParameter(null, 'value', 'ready');
+		if (processor.transformToDocument(xml)?.documentElement?.getAttribute('value') === 'ready'
+			&& processor.transformToFragment(xml, targetWindow.document)?.querySelector('ok')?.getAttribute('value') === 'ready') return true;
+	} catch (_) { /* Missing, disabled or broken native XSLT. */ }
+	return false;
+}
+
+function ensureXSLT(targetWindow) {
+	// The bootstrap may already be running, for example in a public XML page.
+	if (targetWindow.xoverXsltReady) return targetWindow.xoverXsltReady.then(() => {
+		if (!supportsXSLT(targetWindow)) throw new Error('XOver: XSLT polyfill is not functional');
+	});
+	if (supportsXSLT(targetWindow)) return;
+	return new Promise((resolve, reject) => {
+		let script;
+		let settled = false;
+		const timer = setTimeout(() => finish(new Error('XOver: XSLT initialization timed out')), 35000);
+		function finish(error) {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			if (script) script.onload = script.onerror = null;
+			if (error) reject(error); else resolve();
+		}
+		try {
+			if (!xoverScriptURL) throw new Error('XOver: cannot locate xo.js to load the local XSLT polyfill');
+			const document = targetWindow.document;
+			script = document.createElementNS('http://www.w3.org/1999/xhtml', 'script');
+			script.src = new URL('polyfills/xslt.js', xoverScriptURL).href;
+			script.charset = 'utf-8';
+			script.setAttribute('data-autoload', 'false');
+			if (xoverScriptNonce) script.nonce = xoverScriptNonce;
+			script.onerror = () => finish(new Error(`XOver: unable to load XSLT bootstrap: ${script.src}`));
+			script.onload = () => {
+				if (!targetWindow.xoverXsltReady) return finish(new Error('XOver: XSLT bootstrap did not initialize'));
+				Promise.resolve(targetWindow.xoverXsltReady).then(() => {
+					if (!supportsXSLT(targetWindow)) throw new Error('XOver: XSLT polyfill is not functional');
+				}).then(() => finish(), finish);
+			};
+			(document.head || document.documentElement).appendChild(script);
+		} catch (error) { finish(error); }
+	});
+}
+
+xover.modernize = function (targetWindow) {
+	targetWindow = targetWindow || (toString.call(this) == '[object Window]' ? this : window);
+	if (!modernizingWindows.has(targetWindow)) {
+		modernizingWindows.set(targetWindow, modernizeWindow(targetWindow));
+	}
+	return modernizingWindows.get(targetWindow);
+};
+
+async function modernizeWindow(targetWindow) {
+	try {
+		if (targetWindow.modernized === true) return;
 		targetWindow.modernized = 'modernizing'
+		const xsltReady = ensureXSLT(targetWindow);
+		let xsltExtensionsReady;
 		with (targetWindow) {
 			Attr.value = Attr.value || Object.getOwnPropertyDescriptor(Attr.prototype, 'value');
 
@@ -7072,6 +7147,38 @@ xover.modernize = async function (targetWindow) {
 
 			xover.waitFor = async function (condition, timeout) {
 				let self = this;
+				// DOM waits are resumed by the shared observer, without polling.
+				if (condition && typeof condition.selector === 'string') {
+					return new Promise((resolve, reject) => {
+						const root = condition.root || window.document;
+						const signal = condition.signal;
+						let timer;
+						let settled = false;
+						const finish = (error, target) => {
+							if (settled) return;
+							settled = true;
+							xover.waitFor.suspended.delete(entry);
+							clearTimeout(timer);
+							signal?.removeEventListener('abort', abort);
+							error ? reject(error) : resolve(target);
+						};
+						const abort = () => finish(signal.reason || new DOMException('Aborted', 'AbortError'));
+						const entry = {
+							selector: condition.selector, root, context: self,
+							resume() {
+								try {
+									const target = root.querySelector(this.selector);
+									if (target) finish(null, target);
+								} catch (error) { finish(error); }
+							}
+						};
+						if (signal?.aborted) { abort(); return; }
+						xover.waitFor.suspended.add(entry);
+						signal?.addEventListener('abort', abort, { once: true });
+						if (timeout) timer = setTimeout(() => finish(new TimeoutError('')), timeout);
+						entry.resume();
+					});
+				}
 				return new Promise((resolve, reject) => {
 					const startTime = Date.now();
 
@@ -7099,6 +7206,11 @@ xover.modernize = async function (targetWindow) {
 					check();
 				});
 			}
+
+			xover.waitFor.suspended = new Set();
+			xover.waitFor.resumeDOM = function () {
+				for (const entry of [...xover.waitFor.suspended]) entry.resume();
+			};
 
 			xover.suspense = async function (fn, ...args) {
 				let self = this;
@@ -7845,7 +7957,12 @@ xover.modernize = async function (targetWindow) {
 					});
 				}
 
-				for (let prop of ['hash', 'href', 'resource', 'tags']) { //'hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'username'
+				Object.defineProperty(Document.prototype, 'tags', {
+					get: function () {
+						return this.source && this.source.tags || (this.url || {}).tags;
+					}
+				});
+				for (let prop of ['hash', 'href', 'resource']) { //'hash', 'host', 'hostname', 'href', 'origin', 'parameters', 'password', 'pathname', 'port', 'protocol', 'resource', 'search', 'searchParams', 'username'
 					Object.defineProperty(Document.prototype, prop, {//leaving only the most important. host prop interferes with document's container
 						get: function () {
 							return (this.url || {})[prop];
@@ -8036,6 +8153,7 @@ xover.modernize = async function (targetWindow) {
 							self.connect()
 							return;
 						}
+						const callback = typeof observer == 'function' ? observer : null;
 						if (!((observer.constructor || {}).name == 'MutationObserver')) {
 							observer = new MutationObserver(observer)
 						}
@@ -8054,7 +8172,7 @@ xover.modernize = async function (targetWindow) {
 								xover.sources[source_id] = this;
 							}
 						}
-						const _observer = {}
+						const _observer = { observer }
 						if (!self.hasOwnProperty('observer')) {
 							Object.defineProperty(self, 'observer', {
 								get: function () {
@@ -8066,12 +8184,12 @@ xover.modernize = async function (targetWindow) {
 							Object.defineProperty(self.observer, 'disconnect', {
 								value: function (ms = 1) {
 									_observer.disconnected = true;
-									let mutations = mutation_observer.takeRecords()
-									mutation_observer.disconnect();
+									let mutations = observer.takeRecords()
+									observer.disconnect();
 									if (ms || mutations.length) {
 										xover.delay(ms || 1).then(async () => {
-											ms && mutation_observer.observe(self, config);
-											mutations.length && callback(mutations);
+											ms && observer.observe(self, config);
+											mutations.length && callback && callback(mutations, observer);
 										});
 									}
 								},
@@ -8082,7 +8200,7 @@ xover.modernize = async function (targetWindow) {
 							Object.defineProperty(self.observer, 'connect', {
 								value: function () {
 									delete _observer.disconnected;
-									mutation_observer.observe(self, config);
+										observer.observe(self, config);
 								},
 								writable: false, enumerable: false, configurable: false
 							});
@@ -11107,6 +11225,7 @@ xover.modernize = async function (targetWindow) {
 				//	}
 				//}
 
+				const extendXSLTProcessor = function () {
 				XSLTProcessor.importStylesheet = XSLTProcessor.importStylesheet || XSLTProcessor.prototype.importStylesheet;
 				XSLTProcessor.prototype.importStylesheet = function (style) {
 					if (!this.stylesheet) {//!Object.hasOwnProperty(this, "params")) {
@@ -11194,6 +11313,9 @@ xover.modernize = async function (targetWindow) {
 					const resultXml = await resultP;
 					return xover.xml.createDocument(resultXml);
 				}
+
+				};
+				xsltExtensionsReady = xsltReady ? xsltReady.then(extendXSLTProcessor) : extendXSLTProcessor();
 
 				ProcessingInstruction.prototype.replaceBy = function (new_element) {
 					if (new_element !== this) {
@@ -12426,6 +12548,7 @@ xover.modernize = async function (targetWindow) {
 							const render_scope = scope.nodeType === Node.DOCUMENT_NODE ? scope.documentElement : scope;
 							let data = instanceOf.call(this, xover.Store, xover.Source) ? this.document.cloneNode(true) : this.nodeType === Node.DOCUMENT_NODE ? this.cloneNode(true) : this;
 							stylesheets = stylesheets.length && stylesheets || this.stylesheets;
+							if (!stylesheets.length) stylesheets = [{}];
 							//let self_stylesheets = this.stylesheets.map(stylesheet => Object.fromEntries(Object.entries(xover.json.fromAttributes(stylesheet.data)))).filter(stylesheet => stylesheet.target == 'self');
 							//stylesheets = self_stylesheets.concat(stylesheets);
 							stylesheets.forEach(stylesheet => {
@@ -12444,7 +12567,7 @@ xover.modernize = async function (targetWindow) {
 								//    xsl.href = xsl.href || ""
 								//}
 								let store = stylesheet.store instanceof xover.Store && stylesheet.store || typeof (stylesheet.store) == 'string' && xover.stores[stylesheet.store] || stylesheet.store || xover.stores.active.document == self && xover.stores.active || null;
-								let configured_target = stylesheet.target;
+								let configured_target = stylesheet.target || source && (source.settings.target || (xover.manifest.getSettings(source, 'target') || [])[0]);
 								let stylesheet_target = stylesheet && stylesheet.nodeType === Node.ELEMENT_NODE ? stylesheet
 									: configured_target && configured_target.nodeType === Node.ELEMENT_NODE ? configured_target
 										: typeof (configured_target) === 'string' && configured_target || 'body';
@@ -12478,12 +12601,23 @@ xover.modernize = async function (targetWindow) {
 									let selector = stylesheet_target.replace(/@(#[-\w]+)/g, (match, dependency) => get_dependency_selector(dependency));
 
 									target = document.querySelector(selector);
-									for (let dependency of dependencies) {
-										if (target) break;
-										let dependency_store = xover.stores[dependency];
-										if (!dependency_store || dependency_store === store || document.querySelector(get_dependency_selector(dependency))) continue;
-										await dependency_store.render();
-										target = document.querySelector(selector);
+									if (!target && (dependencies.length || configured_target)) {
+										const controller = new AbortController();
+										const waiting = xover.waitFor.call(self, { selector, root: document, signal: controller.signal });
+										try {
+											// Register the wait before a dependency can insert its target.
+											const renders = dependencies.filter(dependency => !document.querySelector(get_dependency_selector(dependency))).map(async dependency => {
+												const dependency_store = xover.stores[dependency];
+												// A source can name its own invocation inside the parent target.
+												if (dependency_store.document === self) return;
+												return dependency_store.render();
+											});
+											// The target may exist while the shell's own sections are still loading.
+											target = await Promise.race([waiting, Promise.all(renders).then(() => waiting)]);
+										} catch (error) {
+											controller.abort(error);
+											throw error;
+										}
 									}
 								}
 
@@ -12906,9 +13040,11 @@ xover.modernize = async function (targetWindow) {
 				}
 			}
 
+			if (xsltExtensionsReady) await xsltExtensionsReady;
 			targetWindow.modernized = true;
 		}
 	} catch (e) {
+		targetWindow.modernized = false;
 		throw (e)
 	} finally {
 		if (targetWindow !== top.window) {
@@ -13337,6 +13473,7 @@ xover.Response = function (response, request) {
 		}
 	});
 	let body = undefined;
+	let processingBody;
 	Object.defineProperty(self, 'processBody', {
 		value: async function () {
 			const contentLength = response.headers.get('content-length');
@@ -13623,7 +13760,7 @@ xover.Response = function (response, request) {
 	});
 	Object.defineProperty(response, 'body', {
 		get: function () {
-			return body === undefined ? self.processBody() : body;
+			return body === undefined ? processingBody ||= self.processBody() : body;
 		}
 	});
 	Object.setPrototypeOf(response, this);
@@ -15112,6 +15249,7 @@ xover.xml.isValid = function (input) {
 xover.xml.tryParse = function (input) {
 	try {
 		let output = xover.xml.createDocument(input, { silent: true });
+		if (output === false) return false;
 		return (output.getElementsByTagName('parsererror') || []).length && input || output;
 	} catch (e) {
 		return false;
@@ -15717,7 +15855,7 @@ xover.xml.combine = function (target, new_node) {
 	}
 	if (!instanceOf.call(new_node, HTMLTemplateElement) && xover.references.scopeChanged(target, new_node)) {
 		xover.xml.getMetaNodes.call(target).forEach(node => node.remove());
-		target.replaceWith(...xover.xml.getMetaNodes.call(new_node), new_node);
+	target.replaceWith(...xover.xml.getMetaNodes.call(new_node), new_node);
 		return new_node;
 	}
 	//if (target.nodeType === Node.ELEMENT_NODE && new_node.nodeType === Node.ELEMENT_NODE && !target.staticAttributes && target.hasAttributes() && (
@@ -16020,7 +16158,7 @@ xover.dom.applyScripts = async function (scripts = []) {
 					(targetDocument.head || targetDocument.documentElement || targetDocument).appendChild(new_element);
 				}
 			} else if (!attribute && script.textContent) {
-				script.textContent = xover.string.htmlDecode(script.textContent); //Raw-text elements must bypass innerHTML to avoid serializing entities again
+				script.textContent = xover.string.htmlDecode(script.textContent);
 				if (script.selectSingleNode(`self::html:style`)) {
 					const target = instanceOf.call(this, DocumentFragment) && this || instanceOf.call(this, Document) && targetDocument.querySelector("head,body") || targetDocument.firstElementChild || targetDocument;
 					if (![...target.querySelectorAll(script.localName)].find(node => node.isEqualNode(script))) {
@@ -16543,7 +16681,7 @@ xover.listener.on(['append::iframe[xo-source],iframe[xo-stylesheet]', 'init::ifr
 	try {
 		const contentWindow = iframe.contentWindow;
 		contentWindow.xover = (xover || parent.xover);
-		xover.modernize.call(contentWindow);
+		xover.modernize.call(contentWindow).catch(error => console.error('XOver iframe modernization failed', error));
 		contentWindow.addEventListener('message', function (event) {
 			if (event.origin === location.origin && event.data.type === 'applyStyles') {
 				const document = this.document;
@@ -16875,6 +17013,8 @@ xover.Store = function (xml, ...args) {
 	let _this_arguments = args;
 	if (!(xml instanceof Document)) return Promise.reject(`A Store should be created with a document`);
 	let __document = xml;
+	// Observe store documents before seeding or fetching can mutate them.
+	__document.observe();
 	if (__document.source instanceof xover.Source && !__document.source.hasOwnProperty("save")) {
 		Object.defineProperty(__document.source, 'save', {
 			value: async function () {
@@ -17645,6 +17785,7 @@ xover.Store = function (xml, ...args) {
 			//}));
 			//await render_manager.get(__document);
 			await __document.ready;
+			await __document.observe();
 			await this.initialize();
 			return __document
 		}
@@ -19625,7 +19766,7 @@ xover.listener.on(`change?old^="blob"&!element.namespaceURI~="xhtml"::@*[.='']`,
 	return removed_file;
 })
 
-xover.modernize();
+xover.modernize().catch(error => console.error('XOver modernization failed', error));
 
 xover.dom.toExcel = (function (table, name) {
 	if (!table.nodeType) table = document.getElementById(table);
@@ -19769,8 +19910,8 @@ xover.listener.on(['unhandledrejection', 'error'], async (event) => {
 		window.dispatchEvent(error_event);
 		if (error_event.defaultPrevented || error_event.cancelBubble) return;
 	}
-	await xover.ready;
 	try {
+		await xover.ready;
 		let reason = event.error || event.message || event.reason;
 		if (!reason || reason == 'Script error.') return;
 		// Cancelling a request is an expected control-flow outcome.  Its promise

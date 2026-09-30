@@ -347,3 +347,6 @@ healthchecksdb
 /panax/post from v12 entity - Proveedor que marca error.xml
 *.patch
 /tests
+!/tests/
+/tests/*
+!/tests/xslt-browser.cjs
