@@ -350,3 +350,8 @@ healthchecksdb
 !/tests/
 /tests/*
 !/tests/xslt-browser.cjs
+!/tests/listener-object.cjs
+!/tests/store-cache.cjs
+!/tests/searchparams-transform.cjs
+!/tests/refresh-widget.cjs
+!/tests/link-navigation.cjs
