@@ -9,6 +9,8 @@ Para una integración nueva, usa el [ejemplo mínimo](references/getting-started
 
 En un proyecto existente, identifica la versión del framework y sigue la ruta concreta: interacción, nodo o atributo en scope, evento, consumidor y render. Lee el componente comparable y busca los símbolos relevantes en `xo.js`. Antes de editar un widget, verifica qué recurso resuelve el manifest; puede haber copias locales y recursos compartidos con el mismo nombre.
 
+Para cargar y renderizar datos de una vista XOver, declara la fuente, la XSLT y su destino en el manifest o en los atributos de XOver que ya usa el proyecto. Si necesitas iniciar una petición desde JavaScript, usa la API de XOver. Evita crear una ruta paralela con `window.fetch`, `DOMParser`, `XSLTProcessor` o inserción manual del HTML del reporte. Así la petición y el render conservan su contexto, eventos y reactividad.
+
 - Para componer widgets o generar componentes desde XSLT, consulta [componentes y vistas](references/components.md).
 - Para depurar contexto, peticiones, eventos o render, consulta [scope y reactividad](references/runtime.md).
 
