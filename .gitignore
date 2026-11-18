@@ -355,3 +355,4 @@ healthchecksdb
 !/tests/searchparams-transform.cjs
 !/tests/refresh-widget.cjs
 !/tests/link-navigation.cjs
+!/tests/missing-stylesheet.cjs

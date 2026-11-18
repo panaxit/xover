@@ -1569,12 +1569,13 @@ xover.initializeElementListeners = function (document = window.document) {
 		}
 	});
 
-	document.querySelectorAll('textarea').forEach(el => el.addEventListener('mouseup', function () {
-		let el = event.srcElement;
+	document.querySelectorAll('textarea').forEach(el => el.addEventListener('mouseup', function (event) {
+		let el = event.currentTarget;
 		let scope = el.scope;
 		if (scope instanceof Attr) {
-			scope.parentNode.set(`height:${scope.localName}`, el.offsetHeight, { silent: true });
-			scope.parentNode.set(`width:${scope.localName}`, el.offsetWidth, { silent: true });
+			if (!scope.ownerElement) return;
+			scope.ownerElement.set(`height:${scope.localName}`, el.offsetHeight, { silent: true });
+			scope.ownerElement.set(`width:${scope.localName}`, el.offsetWidth, { silent: true });
 		} else if (scope instanceof Element) {
 			scope.set('state:height', el.offsetHeight, { silent: true });
 			scope.set('state:width', el.offsetWidth, { silent: true });
@@ -6334,6 +6335,10 @@ xover.spaces["store-state"] = "http://panax.io/store/state"
 xover.spaces["searchParams"] = "http://panax.io/site/searchParams"
 xover.spaces["meta"] = "http://panax.io/site/meta"
 xover.spaces["state"] = "http://panax.io/state"
+// Textarea resize metadata belongs to the framework, including when its scope
+// is an XML attribute. Applications need not declare these prefixes themselves.
+xover.spaces["height"] = "http://panax.io/state/height"
+xover.spaces["width"] = "http://panax.io/state/width"
 xover.spaces["svg"] = "http://www.w3.org/2000/svg"
 xover.spaces["temp"] = "http://panax.io/temp"
 xover.spaces["transformiix"] = "http://www.mozilla.org/TransforMiix"
@@ -9741,6 +9746,12 @@ async function modernizeWindow(targetWindow) {
 
 							let resolve_slot = scope => {
 								let slot = self.closest('[xo-slot]') || self.closest('[slot]') || self.closest('input[name],textarea[name],select[name]');
+                                // Explicitly unbound native controls must not inherit the document scope,
+                                // including when their slot is outside the current rendering context.
+                                if (slot && slot.getAttributeNode && slot.getAttributeNode('xo-slot')?.value === '') {
+                                    this.scopeNode = this.ownerDocument.createComment('ack:no-slot');
+                                    return this.scopeNode;
+                                }
 								if (slot && context && context.contains && context.contains(slot)) {
 									slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || slot.attributes && slot.attributes["name"] || '';
 								} else {
@@ -9749,7 +9760,13 @@ async function modernizeWindow(targetWindow) {
 								if (!slot && this.nodeType === Node.TEXT_NODE) slot = 'text()';
 
 								if (scope && slot) {
-									slot = slot.value || slot;
+									// An explicitly empty slot leaves native controls unbound.
+									// Do not fall back to the Attr object when its value is empty.
+									slot = typeof slot === 'string' ? slot : slot.value;
+									if (typeof slot !== 'string' || !slot) {
+										this.scopeNode = this.ownerDocument.createComment('ack:no-slot');
+										return this.scopeNode;
+									}
 									let apply_slot = scope => {
 										scope = scope && scope.document || scope;
 										if (!scope || !scope.nodeType) return null;
@@ -9957,6 +9974,8 @@ async function modernizeWindow(targetWindow) {
 						let scope_store = this.closest(`[xo-store],[xo-source],[xo-stylesheet]`) || document.createElement("p");
 						let store_attr = scope_store.getAttributeNode && (scope_store.getAttributeNode("xo-store") || scope_store.hasAttribute("xo-stylesheet") && scope_store.getAttributeNode("xo-source")) || null;
 						if (store_attr) {
+							// These aliases follow navigation; a cached invocation must not freeze them.
+							if (["seed", "active"].includes(store_attr.value)) return xover.stores[store_attr.value];
 							if (Object.prototype.hasOwnProperty.call(store_attr, "store")) return store_attr.store;
 							if (Object.prototype.hasOwnProperty.call(store_attr, "source")) {
 								const source = store_attr.source;
@@ -12717,7 +12736,11 @@ async function modernizeWindow(targetWindow) {
 								if (!(dom && dom.nodeType)) continue;
 								dom.selectNodes(`//@*[name()="xo:id"]`).remove(); // provisionally removes xo:id attributes
 								dom.selectNodes(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove();
-								dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => el.parentNode && el.parentNode.removeAttributeNode(el));
+								dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => {
+                                    // Preserve the explicit opt-out on native form controls.
+                                    if (el.value === '' && ['input', 'select', 'textarea', 'button', 'progress'].includes(el.ownerElement?.localName)) return;
+                                    el.parentNode && el.parentNode.removeAttributeNode(el);
+                                });
 								if (target.shadowRoot) {
 									let adopted_stylesheet = target.adoptedStyleSheets;
 									if (!adopted_stylesheet || !adopted_stylesheet.cssRules.length) {
@@ -16667,7 +16690,7 @@ xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de
 	//    document.head.appendChild(script);
 	//}
 
-	let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-store=""],[xo-scope=""],[xo-slot=""]');
+	let unbound_elements = target.querySelectorAll('[xo-source=""],[xo-store=""],[xo-scope=""]');
 	if (unbound_elements.length) {
 		console.warn(`There ${unbound_elements.length > 1 ? 'are' : 'is'} ${unbound_elements.length} disconnected element${unbound_elements.length > 1 ? 's' : ''}`, unbound_elements)
 	}
@@ -19788,7 +19811,7 @@ xover.listener.on(['change::*[value][xo-slot]:not([onchange]):not([type*="time"]
 //    if (!(srcElement.files && srcElement.files[0])) return;
 //    let store = await xover.storehouse.files;
 //    let scope = this.scope;
-//    if (!scope) return;
+//    if (!scope || scope.nodeType === Node.COMMENT_NODE) return;
 //    let _attribute = scope instanceof Attr && scope.name || scope instanceof Text && 'text()' || undefined;
 //    store.add(srcElement.files).forEach(record => {
 //        [...srcElement.ownerDocument.querySelectorAll(`*[for="${srcElement.id}"] img`)].forEach(img => img.src = record.uid);
