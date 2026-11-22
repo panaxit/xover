@@ -19882,11 +19882,24 @@ xover.listener.on(['load', 'change::meta[name=scroll-restoration]'], function ()
 	xover.site.scrollRestoration = (document.querySelector('meta[name=scroll-restoration]') || document.createElement('p')).getAttribute("content") || history.scrollRestoration
 });
 
-xover.listener.on('login', function () {
-	let login_store = xover.session.authenticationStore;
+xover.listener.on('login', async function ({ request: loginRequest }) {
 	delete xover.session.authenticationStore;
-	return login_store && login_store.resume();
-});
+	const origin = loginRequest?.url?.origin;
+	if (!origin) return;
+
+	await Promise.all([...xover.requests.suspended]
+		.filter(request => request.url?.origin === origin && request.response?.url?.origin === origin
+			&& request.response.status === 401 && request.settings.resumable !== false
+			&& typeof request.settings.authentication === "string" && request.settings.authentication.startsWith("#"))
+		.map(async request => {
+			// A fast login can finish before the 401 handler suspends its attempt.
+			const response = request.response;
+			await request.attempting;
+			if (request.state !== "suspended" || request.response !== response
+				|| request.controller?.signal.aborted || typeof request.resume !== "function") return;
+			request.resume();
+		}));
+}, { priority: -1 });
 
 xover.listener.on("failure", function ({ event, request, response, statusCodes }) {
 	if (!response || statusCodes.ignored.includes(response.status)) return;
@@ -19945,15 +19958,7 @@ xover.authenticationFailure = function ({ event, response, request }) {/*TODO: R
 		if (!login_store) return;
 
 		event.preventDefault();
-		Object.defineProperty(request, 'authenticationResource', {
-			value: authentication,
-			writable: true,
-			configurable: true
-		});
-		xover.session.authenticationStore = login_store;
-		let rendering = login_store.render(request);
-		login_store.suspense.then(resume);
-		return rendering;
+		return login_store.render(request);
 	});
 }
 
