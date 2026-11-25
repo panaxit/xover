@@ -38,6 +38,17 @@ after(async () => { await browser?.close(); await new Promise(resolve => server?
 
 async function pageFor(mode) {
   const page = await browser.newPage();
+  await page.addInitScript(xslText => {
+    window.nativeXsltSupported = false;
+    try {
+      const parser = new DOMParser();
+      const source = parser.parseFromString('<test/>', 'application/xml');
+      const processor = new XSLTProcessor();
+      processor.importStylesheet(parser.parseFromString(xslText, 'application/xml'));
+      window.nativeXsltSupported = !!processor.transformToDocument(source)?.documentElement &&
+        !!processor.transformToFragment(source, document)?.firstElementChild;
+    } catch {}
+  }, xsl);
   if (mode) await page.addInitScript(mode => {
     if (mode === 'absent') delete window.XSLTProcessor;
     if (mode === 'throws') window.XSLTProcessor = class { constructor() { throw Error('disabled'); } };
@@ -63,6 +74,36 @@ test('URL paths escape deployment prefixes without an external helper', async ()
   await page.close();
 });
 
+test('empty action slots retain XML context while empty value slots stay unbound', async () => {
+  const page = await pageFor();
+  await page.goto(origin + '/test.html');
+  const result = await page.evaluate(async () => {
+    await xover.modernize();
+    const xml = xover.xml.createDocument('<rows><row/></rows>', { autotransform: false });
+    const row = xml.documentElement.firstElementChild;
+    const host = document.createElement('section');
+    host.setAttribute('xo-scope', '/rows/row');
+    Object.defineProperty(host.getAttributeNode('xo-scope'), 'source', { value: xml });
+    host.innerHTML = '<div xo-slot=""><button xo-slot="">Remove</button></div>' +
+      '<input xo-slot="" value="local"><textarea xo-slot="">local</textarea>' +
+      '<select xo-slot=""><option>local</option></select><span contenteditable="true" xo-slot="">local</span>';
+    const button = host.querySelector('button');
+    let received;
+    xover.listener.on('test:card-action', function () { received = this; });
+    button.scope.dispatch('test:card-action');
+    return {
+      containerScope: host.querySelector('div').scope === row,
+      buttonScope: button.scope === row,
+      eventContext: received === row,
+      editorsUnbound: [...host.querySelectorAll('input,textarea,select,[contenteditable]')]
+        .every(editor => editor.scope.nodeType === Node.COMMENT_NODE),
+      unchanged: row.attributes.length === 0
+    };
+  });
+  assert.deepEqual(result, { containerScope: true, buttonScope: true, eventContext: true, editorsUnbound: true, unchanged: true });
+  await page.close();
+});
+
 test('layered manifest source proxies preserve null overrides without recursion', async () => {
   const page = await pageFor();
   await page.goto(origin + '/test.html');
@@ -76,7 +117,7 @@ test('layered manifest source proxies preserve null overrides without recursion'
   await page.close();
 });
 
-for (const mode of [undefined, 'absent', 'throws', 'null']) test(`full XOver transformation: ${mode || 'native'}`, async () => {
+for (const mode of [undefined, 'absent', 'throws', 'null']) test(`full XOver transformation: ${mode || 'browser default'}`, async () => {
   const page = await pageFor(mode);
   const requested = [];
   page.on('request', req => requested.push(req.url()));
@@ -97,7 +138,7 @@ for (const mode of [undefined, 'absent', 'throws', 'null']) test(`full XOver tra
     const output = transformed.documentElement || transformed.querySelector('ok');
     return { same, modernized: window.modernized, doc: doc.documentElement.getAttribute('value'),
       fragment: fragment.querySelector('ok').getAttribute('value'), transformed: output.getAttribute('value'), text: output.lastChild.textContent,
-      polyfill: !!processor.isPolyfill?.() };
+      polyfill: !!processor.isPolyfill?.(), native: window.nativeXsltSupported };
   }, xsl);
   assert.equal(result.same, true);
   assert.equal(result.modernized, true);
@@ -106,8 +147,9 @@ for (const mode of [undefined, 'absent', 'throws', 'null']) test(`full XOver tra
   // XOver supplies false for this unbound parameter in both implementations.
   assert.equal(result.transformed, 'false');
   assert.equal(result.text, ' xml');
-  assert.equal(result.polyfill, !!mode);
-  assert.equal(requested.some(url => url.includes('/polyfills/')), !!mode);
+  const needsPolyfill = !!mode || !result.native;
+  assert.equal(result.polyfill, needsPolyfill);
+  assert.equal(requested.some(url => url.includes('/polyfills/')), needsPolyfill);
   await page.close();
 });
 

@@ -9746,11 +9746,15 @@ async function modernizeWindow(targetWindow) {
 
 							let resolve_slot = scope => {
 								let slot = self.closest('[xo-slot]') || self.closest('[slot]') || self.closest('input[name],textarea[name],select[name]');
-                                // Explicitly unbound native controls must not inherit the document scope,
-                                // including when their slot is outside the current rendering context.
+                                // Empty slots on value editors explicitly disable value binding. XSLT also
+                                // generates empty slots on containers and action buttons; those still need
+                                // their XML context for scope.dispatch() and must not become unbound editors.
                                 if (slot && slot.getAttributeNode && slot.getAttributeNode('xo-slot')?.value === '') {
-                                    this.scopeNode = this.ownerDocument.createComment('ack:no-slot');
-                                    return this.scopeNode;
+                                    if (slot.matches('input,textarea,select,[contenteditable]')) {
+                                        this.scopeNode = this.ownerDocument.createComment('ack:no-slot');
+                                        return this.scopeNode;
+                                    }
+                                    slot = null;
                                 }
 								if (slot && context && context.contains && context.contains(slot)) {
 									slot = slot.ownerElement && slot || slot.getAttributeNode("xo-slot") || slot.attributes && slot.attributes["name"] || '';
