@@ -534,6 +534,9 @@ xover.init = async function () {
     let progress_renders = [];
     this.init.initializing = this.init.initializing || xover.delay(1).then(async () => {
         try {
+            if (typeof window.xsltPolyfillReady === "function") {
+                await window.xsltPolyfillReady();
+            }
             await xover.modernize();
             xover.init.Observer();
             await xover.manifest.init();
@@ -3710,8 +3713,8 @@ Object.defineProperty(URL.prototype, 'fetch', {
         if (expiry) {
             let storehouse = await xover.storehouse.sources;
             stored_document = !xover.session.disableCache && await storehouse.get(request.url.href);
-            if (stored_document && (!stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
-                original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
+            if (stored_document instanceof File && (Date.now() - stored_document.lastModified) < expiry) {
+                original_response = new Response(await stored_document.arrayBuffer(), { headers: { "Cache-Control": "no-store", "Content-Type": stored_document.type || "application/octet-stream" } })
             }
         }
         const controller = new AbortController();
@@ -6036,8 +6039,8 @@ xover.modernize = async function (targetWindow) {
                         });
                     }
                     for (let stylesheet of xsl.select(`xsl:*`)) {
-                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:name" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="name()"/></xsl:template>`))
-                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:value" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="."/></xsl:template>`))
+                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:name" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="name()"/></xsl:template>`))
+                        stylesheet.prepend(xover.xml.createNode(`<xsl:template xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:debug="${xover.spaces["debug"]}" priority="0" mode="debug:value" match="@*|*"><xsl:if test="position()!=1">, </xsl:if><xsl:value-of select="."/></xsl:template>`))
                     }
                     for (let el of xsl.select(`//xsl:template//@xo:use-attribute-sets`)) {
                         let attribute_sets = el.value.split(/\s+/g);
@@ -7988,7 +7991,7 @@ xover.modernize = async function (targetWindow) {
                                                         }
                                                     });
                                                 }
-                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template mode="globalization:${param_name}" match="${name.value.indexOf('@') != -1 ? name.value.replace(/"/g, "&quot;") : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
+                                                let templates = source.select(`//data/@name`).map(name => xover.xml.createNode(`<xsl:template xmlns:xsl="http://www.w3.org/1999/XSL/Transform" mode="globalization:${param_name}" match="${name.value.indexOf('@') != -1 ? name.value.replace(/"/g, "&quot;") : `text()[.='${name.value}']|@*[.='${name.value}']|*[name()='${name.value}']`}"><xsl:text><![CDATA[${name.parentNode.selectFirst("value").textContent}]]></xsl:text></xsl:template>`));
                                                 param.replaceWith(...templates)
                                             }
                                         } catch (e) {
@@ -9685,8 +9688,8 @@ xover.fetch = async function (url, ...args) {
     if (expiry) {
         let storehouse = await xover.storehouse.sources;
         stored_document = !xover.session.disableCache && await storehouse.get(request.url.href);
-        if (stored_document && (!stored_document.lastModifiedDate || (Date.now() - stored_document.lastModifiedDate) < expiry)) {
-            original_response = new Response(stored_document, { headers: { "Cache-Control": "no-store" } })
+        if (stored_document instanceof File && (Date.now() - stored_document.lastModified) < expiry) {
+            original_response = new Response(await stored_document.arrayBuffer(), { headers: { "Cache-Control": "no-store", "Content-Type": stored_document.type || "application/octet-stream" } })
         }
     }
 
