@@ -4076,6 +4076,7 @@ Object.defineProperty(xover.site, 'stylesheets', {
 });
 
 xover.sections = new Set();
+const active_store_views = new WeakMap();
 Object.defineProperty(xover.site, 'sections', {
 	get() {
 		let sections = new Proxy(Array.from(xover.sections), {
@@ -4320,18 +4321,8 @@ Object.defineProperty(xover.site, 'active', {
 		const changed = history.state.active === undefined ? true : xover.stores[tag] !== xover.stores.active;
 		history.state.active = tag;
 		if (changed) {
-			let active_store = xover.stores.active;
-			const sections = [...xover.sections].filter(el => active_store.contains(el.store));
-			if (sections.length) {
-				for (const section of sections) {
-					if (section.initialChildNodes) {
-						section.replaceContent(section.initialChildNodes || [])
-					}
-					section.render()
-				}
-			} else {
-				xover.stores.active.render()
-			}
+			// The store renders both its own view and the sections bound to it.
+			xover.stores.active.render();
 		}
 		/*
 		let store = xover.stores[tag];
@@ -12277,6 +12268,7 @@ async function modernizeWindow(targetWindow) {
 
 				let section_renderer_handler = async function () {
 					await xover.ready;
+					let render_store;
 					xover.manager.render.set(this, xover.manager.render.get(this) || xover.delay(1).then(async () => {
 						const target = this; //TODO: Revisar si esta lógica va aquí o en el render/combine
 						// Mutations can discover a child section while its enclosing section is
@@ -12295,7 +12287,8 @@ async function modernizeWindow(targetWindow) {
 						//if (!this.ownerDocument.contains(this)) return;
 						if (!(this.hasAttribute("xo-stylesheet") || this.hasAttribute("xo-source"))) return true;
 						let source_attr = this.getAttributeNode("xo-stylesheet") || this.getAttributeNode("xo-source");
-						let store = await this.store || this.ownerDocument.createComment("ack:no-scope");
+						render_store = await this.store;
+						let store = render_store || this.ownerDocument.createComment("ack:no-scope");
 						let source = source_attr && xover.sources[source_attr.value] || store;
 						store && await store.ready;
 						source && await source.ready;
@@ -12381,6 +12374,10 @@ async function modernizeWindow(targetWindow) {
 						return Promise.reject(e)
 					}).finally(async () => {
 						xover.manager.render.delete(this);
+						// A navigation may have requested this section while its previous render was still running.
+						if (render_store && this.isConnected && this.matches('[xo-source="active"],[xo-store="active"]') && this.store !== render_store) {
+							void this.render();
+						}
 					}));
 					return xover.manager.render.get(this);
 				}
@@ -12610,6 +12607,8 @@ async function modernizeWindow(targetWindow) {
 									: configured_target && configured_target.nodeType === Node.ELEMENT_NODE ? configured_target
 										: typeof (configured_target) === 'string' && configured_target || 'body';
 								let target = stylesheet_target && stylesheet_target.nodeType === Node.ELEMENT_NODE ? stylesheet_target : null;
+								const isCurrentStore = () => !(stylesheet.activeView || stylesheet.activeSection) || xover.stores.active === store;
+								if (!isCurrentStore()) continue;
 
 								if ((xsl || {}).nodeType === Node.DOCUMENT_NODE) { //TODO: Is there any chance that xsl is not a document?
 									await xsl.ready;
@@ -12727,7 +12726,7 @@ async function modernizeWindow(targetWindow) {
 								////        setTimeout(async () => {
 								xover.init.customComponents(xsl)
 								if (xsl) {
-									action = xsl.action;
+									action = xsl.action || action;
 									dom = await data.transform(xsl, { target });
 								} else if (instanceOf.call(data.firstElementChild, HTMLElement, SVGElement)) {
 									action = "replace"
@@ -12737,7 +12736,7 @@ async function modernizeWindow(targetWindow) {
 								if (!target.checkVisibility()) {
 									console.warn("Target is not visible");
 								}
-								if (!(dom && dom.nodeType)) continue;
+								if (!(dom && dom.nodeType) || !isCurrentStore()) continue;
 								dom.selectNodes(`//@*[name()="xo:id"]`).remove(); // provisionally removes xo:id attributes
 								dom.selectNodes(`//html:script/@*[name()='xo:id']|//html:style/@*[name()='xo:id']|//html:meta/@*[name()='xo:id']|//html:link/@*[name()='xo:id']`).remove();
 								dom.selectNodes('//@xo-slot[.="" or .="xo:id"]').forEach(el => {
@@ -12796,6 +12795,9 @@ async function modernizeWindow(targetWindow) {
 									//    stylesheet_href && el.setAttributeNode(el.getAttributeNode("xo-stylesheet") || el.createAttributeNS(null, "xo-stylesheet", stylesheet_href));
 									//}
 								}
+								if (!isCurrentStore()) continue;
+								const mount = stylesheet.activeView && configured_target && action !== 'append' ? target : null;
+								let previous_views = [];
 								if (documentElement.nodeType === Node.ELEMENT_NODE) {
 									const legacy_render = documentElement.hasAttribute("xo-stylesheet") || target.hasAttribute && target.hasAttribute("xo-stylesheet");
 
@@ -12847,14 +12849,19 @@ async function modernizeWindow(targetWindow) {
 											return render_document(get_attr_source(storeAttr)) === render_document(scope)
 												&& render_document(get_attr_source(sourceAttr)) === render_document(xsl)
 										})
+										if (mount) {
+											// Views use the same outlet across routes. Leave its other children alone.
+											previous_views = [...mount.children].filter(el => active_store_views.has(el) && active_store_views.get(el) !== store);
+										}
+										const mounted_view = matches[0] || previous_views.shift();
 										let render_attrs = {};
-										if (!matches.length) {
+										if (!mounted_view) {
 											if (xo_source) render_attrs[xo_source.name] = xo_source;
 											if (xo_store && xo_store !== xo_scope) render_attrs[xo_store.name] = xo_store;
 											if (xo_scope) render_attrs[xo_scope.name] = xo_scope;
 										}
-										target = matches[0] || target.appendChild(document.createElement("slot", render_attrs));
-										if (!matches.length) { /*TODO: Revisar este cambio de la IA*/
+										target = mounted_view || target.appendChild(document.createElement("slot", render_attrs));
+										if (!mounted_view) {
 											// The placeholder represents data already being rendered. Resolving
 											// its scope from the URL can create another, empty source document.
 											const placeholder_scope = target.getAttributeNode("xo-scope") || target.getAttributeNode(store_name) || target;
@@ -12928,7 +12935,19 @@ async function modernizeWindow(targetWindow) {
 									}
 								}
 								let old = target.cloneNode(true);
-								target = await xover.dom.combine.call(this, target, dom);
+								if (!isCurrentStore()) continue;
+								if (mount && target.parentElement === mount && !active_store_views.has(target)) {
+									active_store_views.set(target, store);
+								}
+								target = await xover.dom.combine.call(this, target, dom, isCurrentStore);
+								if (mount && target.parentElement === mount) {
+									if (isCurrentStore() || !active_store_views.has(target)) active_store_views.set(target, store);
+									if (isCurrentStore()) {
+										for (const view of [...mount.children]) {
+											if (active_store_views.has(view) && active_store_views.get(view) !== store) view.remove();
+										}
+									}
+								}
 								//Object.defineProperty(target, 'scope', { value: this, writable: true, configurable: true, enumerable: true });
 								//target.contextNode = scope;
 
@@ -16297,7 +16316,7 @@ xover.dom.applyScripts = async function (scripts = []) {
 	return Promise.resolve(scripts)
 }
 
-xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de trasplantes
+xover.dom.combine = async function (target, new_node, isCurrent = () => true) { //TODO: revisar flujo de trasplantes
 	xover.dom.combineGenerations = xover.dom.combineGenerations || new WeakMap();
 	const combine_target = target;
 	const combine_generation = (xover.dom.combineGenerations.get(combine_target) || 0) + 1;
@@ -16305,7 +16324,7 @@ xover.dom.combine = async function (target, new_node) { //TODO: revisar flujo de
 	// A parent combine can move a managed descendant, but it must not invalidate
 	// that descendant's independent render. Only a newer combine for this exact
 	// target supersedes the current operation.
-	const isCurrentCombine = () => xover.dom.combineGenerations.get(combine_target) === combine_generation;
+	const isCurrentCombine = () => isCurrent() && xover.dom.combineGenerations.get(combine_target) === combine_generation;
 	let document = target.ownerDocument || window.document;
 	let source_element = new_node && (
 		new_node.documentElement
@@ -17887,16 +17906,15 @@ xover.Store = function (xml, ...args) {
 			target = context.target;
 			let request = context.request;
 
+			const active_view = !target && xover.stores.active === self;
+			const active_section = target?.matches?.('[xo-source="active"],[xo-store="active"]');
 			let render_key = target || self;
 			render_manager.set(render_key, render_manager.get(render_key) || xover.delay(1).then(async () => {
-				//if (xover.stores.seed === self && !xover.site.sections[tag].length) {
-				//    progress = xover.sources['loading.xslt'].render({ action: "append" });
-				//}
-				let active_store = xover.stores.active
 				if (!__document.firstChild) {
 					await self.ready;
 				}
-				if (active_store instanceof xover.Store && active_store === self) {
+				if ((active_view || active_section) && xover.stores.active !== self) return [];
+				if (xover.stores.active === self) {
 					xover.site.hash = self.hash// + self.url.search; // TODO: make sure search part is present in hash
 				}
 				let document = __document//.cloneNode(true);
@@ -17925,6 +17943,7 @@ xover.Store = function (xml, ...args) {
 					stylesheets = [{ target: target || (xover.manifest.getSettings(this, 'target') || [])[0], store: self }];
 					//return xover.site.sections.filter(section => section.store === self).map(section => section.render());
 				}
+				if (active_view || active_section) stylesheets = stylesheets.map(stylesheet => ({ ...stylesheet, activeView: active_view, activeSection: active_section }));
 				let renders = await XMLDocument.prototype.render.call(self, stylesheets);
 				renders = [renders].flat(Infinity);
 				renders = await Promise.all(renders);
